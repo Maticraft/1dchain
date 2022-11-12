@@ -1,0 +1,1 @@
+Repository for 1D chain tight binding model realizing Majorana zero modes.
