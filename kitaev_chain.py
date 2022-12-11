@@ -13,6 +13,12 @@ class KitaevChain():
         self.H_csr = self.construct_open_boundary_hamiltonian_csr(N)
         self.H_csr_block = self.construct_open_boundary_hamiltonian_csr_site_blocks(N)
 
+    # Spin block formalism (blocks are formed for different sites for a given spin)
+    # Exemplary for N=2
+    # mu t delta 0
+    # t* -mu 0 -delta*
+    # delta* 0 mu t
+    # 0 -delta -t* -mu
     def construct_open_boundary_hamiltonian(self, N):
         H = np.zeros((2*N, 2*N), dtype=np.complex128)
         for i in range(2*N):              
@@ -35,6 +41,12 @@ class KitaevChain():
             H[N+i, i+1] = -self.delta
         return H
 
+    # Site block formalism (blocks are formed for different spins on a given site)
+    # Exemplary for N=2
+    # mu 0 t delta
+    # 0 -mu -delta -t
+    # t* -delta* mu 0
+    # delta* -t* 0 -mu
     def construct_open_boundary_hamiltonian_site_blocks(self, N):
         block_size = 2
         H = np.zeros((block_size*N, block_size*N), dtype=np.complex128)
