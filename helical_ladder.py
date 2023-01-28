@@ -89,7 +89,7 @@ class SpinLadder(Hamiltonian):
 
     
     def get_label(self):
-        return majorana_polarization(self.H, axis='total', site='avg'), count_mzm_states(self.H)
+        return f"{majorana_polarization(self.H, axis='total', site='avg')}, {count_mzm_states(self.H)}"
 
 
 
