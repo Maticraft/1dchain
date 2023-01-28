@@ -4,7 +4,7 @@ import pandas as pd
 from tqdm import tqdm
 
 from data_utils import Hamiltonian, generate_data
-from majorana_utils import count_mzm_states
+from majorana_utils import count_mzm_states, majorana_polarization
 
 DEFAULT_PARAMS = {'N': 70, 'M': 2, 'delta': 0.3, 'mu': 0.9, 'J': 1., 'delta_q': np.pi}
 
@@ -90,7 +90,7 @@ class SpinLadder(Hamiltonian):
 
     
     def get_label(self):
-        return count_mzm_states(self.H)
+        return majorana_polarization(self.H, axis='total', site='avg'), count_mzm_states(self.H)
 
 
 
@@ -142,7 +142,7 @@ def generate_params(N, M, N_samples):
 N = 70
 M = 2
 
-N_samples = 1000000
+N_samples = 100000
 
 # generate_param_data(N, M, N_samples, './data/spin_ladder/spin_ladder_70_2.csv')
 
