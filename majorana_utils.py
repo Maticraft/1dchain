@@ -5,20 +5,22 @@ from data_utils import Hamiltonian
 import matplotlib.pyplot as plt
 
 
-def count_mzm_states(H: np.ndarray):
+def count_mzm_states(H: np.ndarray, threshold = 1e-5):
     eigvals = np.linalg.eigvalsh(H)
-    return np.sum(np.abs(eigvals) < 1e-10)
+    return np.sum(np.abs(eigvals) < threshold)
 
 
 def majorana_polarization(
     H: np.ndarray,
-    threshold: float = 1e-7,
+    threshold: float = 1e-5,
     axis: str = 'total',
     site: t.Optional[t.Union[int, str]] = 'avg'
 ):
     eigvals, eigvecs = np.linalg.eigh(H)
     zm = eigvecs[:, np.abs(eigvals) < threshold]
     if zm.shape[1] == 0:
+        if site == 'all':
+            return {'all': 0}
         return 0.
 
     if type(site) == int:
@@ -32,7 +34,7 @@ def majorana_polarization(
         
     if site == 'avg':
         return np.mean(list(P_m.values()))
-    if site == 'all':
+    elif site == 'all':
         return P_m
     else:
         raise ValueError('site must be one of "avg", "all", or an integer')
@@ -40,11 +42,11 @@ def majorana_polarization(
 
 def majorana_polarization_site(zero_mode: np.ndarray, axis: str = 'total'):
     if axis == 'total':
-        return np.mean(np.abs(zero_mode[1, :] * zero_mode[3, :] - zero_mode[0, :] * zero_mode[2, :]))
+        return 2*np.sum(np.abs(zero_mode[1, :] * zero_mode[3, :].conj() - zero_mode[0, :] * zero_mode[2, :].conj()))
     if axis == 'x':
-        return np.mean(np.real(zero_mode[1, :] * zero_mode[3, :] + zero_mode[0, :] * zero_mode[2, :]))
+        return 2*np.sum(np.real(zero_mode[1, :] * zero_mode[3, :].conj() - zero_mode[0, :] * zero_mode[2, :].conj()))
     if axis == 'y':
-        return np.mean(np.imag(zero_mode[1, :] * zero_mode[3, :] - zero_mode[0, :] * zero_mode[2, :]))
+        return 2*np.sum(np.imag(zero_mode[1, :] * zero_mode[3, :].conj() - zero_mode[0, :] * zero_mode[2, :].conj()))
 
 
 def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: t.List[t.Any], params: t.Dict[str, t.Any], filename: str, **kwargs: t.Dict[str, t.Any]):
@@ -66,3 +68,26 @@ def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: t.List[t.Any], params:
     plt.xlabel('q/π')
     plt.ylabel('Energy')
     plt.savefig(filename)
+    plt.close()
+
+
+def plot_eigvec(H: np.ndarray, component: int, filename: str, **kwargs: t.Dict[str, t.Any]):
+    if component < 0 or component > 3:
+        raise ValueError("Wrong component")
+    eigvals, eigvecs = np.linalg.eigh(H)
+
+    density = []
+    for i in range(eigvecs.shape[0] // 4):
+        density.append(np.abs(eigvecs[4*i + component, np.abs(eigvals) < 1.e-5]))
+
+    if 'ylim' in kwargs:
+        plt.ylim(kwargs['ylim'])
+    if 'xlim' in kwargs:
+        plt.xlim(kwargs['xlim'])
+
+    chart = plt.plot(density)
+    plt.legend(chart, ('C+^', 'C+v', 'C^', 'Cv'))
+    plt.xlabel('Site')
+    plt.ylabel('Probability density')
+    plt.savefig(filename)
+    plt.close()

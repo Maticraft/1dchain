@@ -3,13 +3,13 @@ import pandas as pd
 from tqdm import tqdm
 
 from data_utils import Hamiltonian, generate_data
-from majorana_utils import count_mzm_states, majorana_polarization
+from majorana_utils import count_mzm_states, majorana_polarization, plot_eigvals, plot_eigvec
 
 DEFAULT_PARAMS = {'N': 70, 'M': 2, 'delta': 0.3, 'mu': 0.9, 'J': 1., 'delta_q': np.pi}
 
 
 class SpinLadder(Hamiltonian):
-    def __init__(self, N, M, mu = 0.9, delta = 0.3, J = 1, q = np.pi, delta_q = 0, t = 1, S = 1, theta = np.pi/2):
+    def __init__(self, N, M, mu = 0.9, delta = 0.3, J = 1, q = np.pi/2, delta_q = np.pi, t = 1, S = 1, theta = np.pi/2):
         self.block_size = 4
         self.M = M
         self.N = N
@@ -89,7 +89,10 @@ class SpinLadder(Hamiltonian):
 
     
     def get_label(self):
-        return f"{majorana_polarization(self.H, axis='total', site='avg')}, {count_mzm_states(self.H)}"
+        mp = majorana_polarization(self.H, threshold=1.e-5, axis='total', site='all')
+        mp_min = min(mp.values())
+        mp_max = max(mp.values())
+        return f"{mp_min}, {mp_max}, {count_mzm_states(self.H)}"
 
 
 
@@ -144,6 +147,15 @@ M = 2
 N_samples = 100000
 
 # generate_param_data(N, M, N_samples, './data/spin_ladder/spin_ladder_70_2.csv')
+#plot_eigvals(SpinLadder, 'q', np.arange(0., np.pi, 0.01), {'N': 70, 'M': 2}, './plot.png', xnorm= np.pi, ylim=[-0.4, 0.4], xlim=[0., 1.])
+
+# H = SpinLadder(N, M, q=np.pi/2)
+# print(H.get_label())
+# plot_eigvec(H.get_hamiltonian(), 0, './eigvec_0.png', ylim=[0., 0.2])
+# plot_eigvec(H.get_hamiltonian(), 1, './eigvec_1.png', ylim=[0., 0.2])
+# plot_eigvec(H.get_hamiltonian(), 2, './eigvec_2.png', ylim=[0., 0.2])
+# plot_eigvec(H.get_hamiltonian(), 3, './eigvec_3.png', ylim=[0., 0.2])
+
 
 params = generate_params(N, M, N_samples)
 generate_data(SpinLadder, params, './data/spin_ladder/70_2')
