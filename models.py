@@ -146,13 +146,13 @@ class Decoder(nn.Module):
     def _get_convs(self):
         convs = []
         if self.upsample_method == 'transpose':
-            for _ in range(self.conv_num):
+            for _ in range(1, self.conv_num):
                 convs.append(nn.ConvTranspose2d(self.kernel_num, self.kernel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))
                 convs.append(nn.ReLU())
                 convs.append(nn.BatchNorm2d(self.kernel_num))
             convs.append(nn.ConvTranspose2d(self.kernel_num, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))
         else:
-            for _ in range(self.conv_num):
+            for _ in range(1, self.conv_num):
                 convs.append(nn.Upsample(scale_factor=self.stride, mode=self.upsample_method))
 
                 convs.append(nn.Conv2d(self.kernel_num, self.kernel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))

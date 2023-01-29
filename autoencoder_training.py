@@ -21,7 +21,7 @@ model_name = 'symmetric_autoencoder_2_2'
 # Params
 params = {
     'epochs': 20,
-    'batch_size': 512,
+    'batch_size': 256,
     'N': 140,
     'in_channels': 2,
     'block_size': 4,
