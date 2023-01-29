@@ -198,7 +198,7 @@ def train_autoencoder(
     total_loss = 0
 
     print(f'Epoch: {epoch}')
-    for x, _ in tqdm(train_loader):
+    for x, _ in tqdm(train_loader, 'Training model'):
         x = x.to(device)
         if site_permutation:
             x = site_perm(x, encoder_model.N, encoder_model.block_size)
@@ -215,7 +215,7 @@ def train_autoencoder(
     
     total_loss /= len(train_loader)
     print(f'Loss: {total_loss}\n')
-    
+
     return total_loss
 
 
@@ -236,7 +236,7 @@ def test_autoencoder(
 
     total_loss = 0
 
-    for x, _ in tqdm(test_loader):
+    for x, _ in tqdm(test_loader, "Testing model"):
         x = x.to(device)
         if site_permutation:
             x = site_perm(x, encoder_model.N, encoder_model.block_size)
