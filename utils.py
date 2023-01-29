@@ -111,18 +111,22 @@ def plot_convergence(results_path: str, save_path: str, read_label: bool = False
         skip_rows = 1
         with open(results_path) as f:
             labels = f.readline()
+            data = f.readlines()
         labels = labels.split(DELIMITER)
+        data = [[float(x) for x in row.split(DELIMITER)] for row in data]
+        data = np.array(data)
     else:
         skip_rows = 0
-        labels = None
-    data = np.loadtxt(results_path, delimiter= DELIMITER, skiprows= skip_rows)
-
-    if not labels:
+        with open(results_path) as f:
+            data = f.readlines()
+        data = [[float(x) for x in row.split(DELIMITER)] for row in data]
+        data = np.array(data)
         labels = [f'{i}' for i in range(len(data[0, :]))]
 
     for i in range(1, len(data[0, :])):
         plt.plot(data[:, 0], data[:, i], label = labels[i])
     plt.xlabel(labels[0])
     plt.ylabel('Loss')
+    plt.legend()
     plt.savefig(save_path)
     plt.close()

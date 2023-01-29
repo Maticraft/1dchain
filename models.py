@@ -121,11 +121,11 @@ class Decoder(nn.Module):
     def _get_convs_input_size(self):
         if self.upsample_method == 'transpose':
             input_size = (self.N*self.block_size - self.dilation*(self.kernel_size-1) - 1) // self.stride + 1
-            for _ in range(self.conv_num):
+            for _ in range(1, self.conv_num):
                 input_size = (input_size - self.dilation*(self.kernel_size-1) - 1) // self.stride + 1
         else:
             input_size = ((self.N*self.block_size - 1) * self.stride + self.dilation*(self.kernel_size-1) + 1) // self.scale_factor
-            for _ in range(self.conv_num):
+            for _ in range(1, self.conv_num):
                 input_size = ((input_size - 1) * self.stride + self.dilation*(self.kernel_size-1) + 1) // self.scale_factor
         return input_size
 
@@ -168,6 +168,7 @@ class Decoder(nn.Module):
         x = x.view(-1, self.kernel_num, self.convs_input_size, self.convs_input_size)
         x = self.convs(x)
         return x
+
 
 
 def site_perm(x: torch.Tensor, N: int, block_size: int):
