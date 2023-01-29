@@ -103,7 +103,7 @@ def load_autoencoder(root_dir: str, epoch: int):
 def save_data_list(data: t.List[t.Any], path: str, mode:str = 'a'):
     data_str = [str(x) for x in data]
     with open(path, mode) as f:
-        f.write(DELIMITER.join(data_str))
+        f.write(f'{DELIMITER.join(data_str)}\n')
 
 
 def plot_convergence(results_path: str, save_path: str, read_label: bool = False):

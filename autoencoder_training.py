@@ -81,7 +81,7 @@ encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr=params['lr'])
 decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=params['lr'])
 
 save_data_list(['Epoch', 'Train loss', 'Test loss'], loss_path, mode='w')
-for epoch in range(params['epochs']):
+for epoch in range(1, params['epochs'] + 1):
     tr_loss = train_autoencoder(encoder, decoder, train_loader, epoch, device, encoder_optimizer, decoder_optimizer)
     te_loss = test_autoencoder(encoder, decoder, test_loader, device)
     save_autoencoder(encoder, decoder, root_dir, epoch)
