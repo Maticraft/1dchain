@@ -20,10 +20,19 @@ class Hamiltonian(abc.ABC):
 
 class HamiltionianDataset(Dataset):
 
-    def __init__(self, dictionary: str, root_dir: str, data_limit: t.Optional[int] = None):
+    def __init__(
+        self,
+        dictionary: str,
+        root_dir: str,
+        data_limit: t.Optional[int] = None,
+        label_idx: t.Union[int, t.Tuple[int, int]] = 1,
+        threshold: float = 1.e-5,
+    ):
         self.dictionary = self.load_dict(dictionary)
         self.root_dir = root_dir
         self.data_limit = data_limit
+        self.label_idx = label_idx
+        self.threshold = threshold
 
       
     def __len__(self) -> int:
@@ -42,10 +51,17 @@ class HamiltionianDataset(Dataset):
         matrix_r = np.real(matrix)
         matrix_im = np.imag(matrix)
 
-        tensor = torch.from_numpy(np.stack((matrix_r, matrix_im), axis=0))
+        tensor = torch.from_numpy(np.stack((matrix_r, matrix_im), axis=0)).float()
 
-        label = int(self.dictionary[idx][1])
-        label = torch.tensor(label).double()
+        if type(self.label_idx) == int:
+            label = abs(float(self.dictionary[idx][self.label_idx]))
+            label = 1. if label > self.threshold else 0.
+        elif type(self.label_idx) == tuple:
+            label = float(self.dictionary[idx][self.label_idx[0]]) * float(self.dictionary[idx][self.label_idx[1]])
+            label = 1. if label < -self.threshold else 0.
+        else:
+            raise ValueError("Wrong label_idx type")
+        label = torch.tensor(label)
         label = label.unsqueeze(0)
 
         return (tensor, label)

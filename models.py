@@ -153,13 +153,13 @@ class Decoder(nn.Module):
             convs.append(nn.ConvTranspose2d(self.kernel_num, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))
         else:
             for _ in range(self.conv_num):
-                convs.append(nn.Upsample(scale_factor=self.stride, mode='nearest'))
+                convs.append(nn.Upsample(scale_factor=self.stride, mode=self.upsample_method))
 
                 convs.append(nn.Conv2d(self.kernel_num, self.kernel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))
                 convs.append(nn.ReLU())
                 convs.append(nn.BatchNorm2d(self.kernel_num))
             convs.append(nn.Conv2d(self.kernel_num, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))
-            convs.append(nn.Upsample(scale_factor=self.stride, mode='nearest'))
+            convs.append(nn.Upsample(scale_factor=self.stride, mode=self.upsample_method))
         return nn.Sequential(*convs)
 
     
@@ -215,6 +215,8 @@ def train_autoencoder(
     
     total_loss /= len(train_loader)
     print(f'Loss: {total_loss}\n')
+    
+    return total_loss
 
 
 def test_autoencoder(
@@ -246,3 +248,5 @@ def test_autoencoder(
     
     total_loss /= len(test_loader)
     print(f'Loss: {total_loss}\n')
+
+    return total_loss
