@@ -46,10 +46,9 @@ class Encoder(nn.Module):
         return output_size
 
 
-
     def _get_convs(self):
         convs = []
-        convs.append(nn.Conv2d(self.channel_num, self.kernel_num, kernel_size= self.kernel_size, stride=self.block_size, dilation=self.dilation))
+        convs.append(nn.Conv2d(self.channel_num, self.kernel_num, kernel_size= self.kernel_size, stride=self.stride, dilation=self.dilation))
         convs.append(nn.ReLU())
         convs.append(nn.BatchNorm2d(self.kernel_num))
         for _ in range(1, self.conv_num):

@@ -16,12 +16,12 @@ loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
 # Model name
-model_name = 'symmetric_autoencoder_2_2'
+model_name = 'symmetric_autoencoder_2_2_k2s2'
 
 # Params
 params = {
     'epochs': 20,
-    'batch_size': 256,
+    'batch_size': 128,
     'N': 140,
     'in_channels': 2,
     'block_size': 4,
@@ -32,8 +32,8 @@ params = {
 
 # Architecture
 encoder_params = {
-    'kernel_size': params['block_size'],
-    'stride': params['block_size'],
+    'kernel_size': 2,
+    'stride': 2,
     'dilation': 1,
     'fc_num': 2,
     'conv_num': 2,
@@ -42,8 +42,8 @@ encoder_params = {
 }
 
 decoder_params = {
-    'kernel_size': params['block_size'],
-    'stride': params['block_size'],
+    'kernel_size': 2,
+    'stride': 2,
     'dilation': 1,
     'fc_num': 2,
     'conv_num': 2,
