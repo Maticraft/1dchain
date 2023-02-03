@@ -1,8 +1,10 @@
 import typing as t
 
 import numpy as np
-from data_utils import Hamiltonian
 import matplotlib.pyplot as plt
+
+from data_utils import Hamiltonian
+from models import Encoder, Decoder, reconstruct_hamiltonian
 
 
 def count_mzm_states(H: np.ndarray, threshold = 1e-5):
@@ -55,7 +57,44 @@ def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: t.List[t.Any], params:
         model_params = params.copy()
         model_params[xaxis] = x
         ladder = model(**model_params)
-        energies.append(np.linalg.eigvalsh(ladder.H))
+        energies.append(np.linalg.eigvalsh(ladder.get_hamiltonian()))
+
+    if 'ylim' in kwargs:
+        plt.ylim(kwargs['ylim'])
+    if 'xlim' in kwargs:
+        plt.xlim(kwargs['xlim'])
+    if 'xnorm' in kwargs:
+        xparams = xparams / kwargs['xnorm']
+
+    plt.plot(xparams, energies)
+    plt.xlabel('q/π')
+    plt.ylabel('Energy')
+    plt.savefig(filename)
+    plt.close()
+
+
+def plot_autoencoder_eigvals(
+    model: Hamiltonian,
+    encoder: Encoder,
+    decoder: Decoder,
+    xaxis: str,
+    xparams: t.List[t.Any],
+    params: t.Dict[str, t.Any],
+    filename: str,
+    **kwargs: t.Dict[str, t.Any]
+):
+    energies = []
+    for x in xparams:
+        model_params = params.copy()
+        model_params[xaxis] = x
+        param_model = model(**model_params)
+
+        H = param_model.get_hamiltonian()
+        H_rec = reconstruct_hamiltonian(H, encoder, decoder)
+
+        print(np.mean(np.abs(H - H_rec)))
+
+        energies.append(np.linalg.eigvalsh(H_rec))
 
     if 'ylim' in kwargs:
         plt.ylim(kwargs['ylim'])

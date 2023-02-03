@@ -141,21 +141,11 @@ def generate_params(N, M, N_samples):
     return params
 
 
-N = 70
-M = 2
+if __name__ == '__main__':
+    N = 70
+    M = 2
 
-N_samples = 100000
+    N_samples = 100000
 
-# generate_param_data(N, M, N_samples, './data/spin_ladder/spin_ladder_70_2.csv')
-#plot_eigvals(SpinLadder, 'q', np.arange(0., np.pi, 0.01), {'N': 70, 'M': 2}, './plot.png', xnorm= np.pi, ylim=[-0.4, 0.4], xlim=[0., 1.])
-
-# H = SpinLadder(N, M, q=np.pi/2)
-# print(H.get_label())
-# plot_eigvec(H.get_hamiltonian(), 0, './eigvec_0.png', ylim=[0., 0.2])
-# plot_eigvec(H.get_hamiltonian(), 1, './eigvec_1.png', ylim=[0., 0.2])
-# plot_eigvec(H.get_hamiltonian(), 2, './eigvec_2.png', ylim=[0., 0.2])
-# plot_eigvec(H.get_hamiltonian(), 3, './eigvec_3.png', ylim=[0., 0.2])
-
-
-params = generate_params(N, M, N_samples)
-generate_data(SpinLadder, params, './data/spin_ladder/70_2')
+    params = generate_params(N, M, N_samples)
+    generate_data(SpinLadder, params, './data/spin_ladder/70_2')
