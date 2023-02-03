@@ -29,12 +29,12 @@ ylim = (-0.5, 0.5)
 
 
 # Model name
-model_name = 'symmetric_autoencoder_1_2_k140d4'
+model_name = 'asymmetric_autoencoder_up_nearest'
 
 # Params
 params = {
     'epochs': 20,
-    'batch_size': 256,
+    'batch_size': 64,
     'N': 140,
     'in_channels': 2,
     'block_size': 4,
@@ -45,25 +45,29 @@ params = {
 
 # Architecture
 encoder_params = {
-    'kernel_size': 140,
-    'stride': 1,
-    'dilation': 4,
-    'fc_num': 2,
-    'conv_num': 1,
-    'kernel_num': 16,
-    'hidden_size': 32,
+    'kernel_size': 4,
+    'kernel_size1': 4,
+    'stride': 2,
+    'stride1': 4,
+    'dilation': 1,
+    'fc_num': 4,
+    'conv_num': 5,
+    'kernel_num': 64,
+    'kernel_num1': 32,
+    'hidden_size': 128,
 }
 
 decoder_params = {
-    'kernel_size': 140,
+    'kernel_size': 3,
+    'kernel_size1': 3,
     'stride': 1,
-    'dilation': 4,
-    'fc_num': 2,
-    'conv_num': 1,
-    'kernel_num': 16,
-    'hidden_size': 32,
-    'upsample_method': 'transpose',
-    'scale_factor': 2*params['block_size'], # does matter only for upsample_method 'nearest' or 'bilinear'
+    'dilation': 1,
+    'fc_num': 4,
+    'conv_num': 4,
+    'kernel_num': 64,
+    'hidden_size': 128,
+    'upsample_method': 'nearest',
+    'scale_factor': 2, # does matter only for upsample_method 'nearest' or 'bilinear'
 }
 
 # Set the root dir
@@ -91,6 +95,9 @@ test_loader = DataLoader(test_data, params['batch_size'])
 
 encoder = Encoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
 decoder = Decoder(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
+
+print(encoder)
+print(decoder)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 

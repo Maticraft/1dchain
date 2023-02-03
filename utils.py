@@ -127,6 +127,7 @@ def plot_convergence(results_path: str, save_path: str, read_label: bool = False
         plt.plot(data[:, 0], data[:, i], label = labels[i])
     plt.xlabel(labels[0])
     plt.ylabel('Loss')
+    plt.yscale('log')
     plt.legend()
     plt.savefig(save_path)
     plt.close()

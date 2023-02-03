@@ -73,18 +73,19 @@ class Decoder(nn.Module):
             for _ in range(2, self.conv_num):
                 if self.stride > 1:
                     raise ValueError("Upsample not implemented for stride larger than 1")
-                convs.append(nn.Upsample(scale_factor=self.stride, mode=self.upsample_method))
+                convs.append(nn.Upsample(scale_factor=self.scale_factor, mode=self.upsample_method))
                 convs.append(nn.Conv2d(self.kernel_num, self.kernel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation, padding='same'))
                 convs.append(nn.ReLU())
                 convs.append(nn.BatchNorm2d(self.kernel_num))
             if self.conv_num > 1:
-                convs.append(nn.Upsample(scale_factor=self.stride, mode=self.upsample_method))
+                convs.append(nn.Upsample(scale_factor=self.scale_factor, mode=self.upsample_method))
                 convs.append(nn.Conv2d(self.kernel_num, self.kernel_num1, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation, padding='same'))
                 convs.append(nn.ReLU())
                 convs.append(nn.BatchNorm2d(self.kernel_num1))
 
-            convs.append(nn.Conv2d(self.kernel_num1, self.channel_num, kernel_size=self.kernel_size1, stride=self.stride1, dilation=self.dilation1))
-            convs.append(nn.Upsample(scale_factor=self.stride, mode=self.upsample_method))
+            convs.append(nn.Upsample(scale_factor=self.scale_factor, mode=self.upsample_method))
+            convs.append(nn.Conv2d(self.kernel_num1, self.channel_num, kernel_size=self.kernel_size1, stride=self.stride1, dilation=self.dilation1, padding='same'))
+
         return nn.Sequential(*convs)
 
 
