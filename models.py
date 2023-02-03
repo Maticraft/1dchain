@@ -29,17 +29,28 @@ class Decoder(nn.Module):
         self.block_size = output_size[2]
         self.representation_dim = representation_dim
 
-        self.kernel_size = kwargs.get('kernel_size', self.block_size)
-        self.stride = kwargs.get('stride', self.block_size)
-        self.dilation = kwargs.get('dilation', 1)
         self.fc_num = kwargs.get('fc_num', 2)
-        self.upsample_method = kwargs.get('upsample_method', 'transpose')
-        self.conv_num = kwargs.get('conv_num', 1)
-        self.kernel_num = kwargs.get('kernel_num', 32)
         self.hidden_size = kwargs.get('hidden_size', 128)
+
+        self.upsample_method = kwargs.get('upsample_method', 'transpose')
+        
+        self.conv_num = kwargs.get('conv_num', 1)
+        self.kernel_size = kwargs.get('kernel_size', self.block_size)
+        self.kernel_size1 = kwargs.get('kernel_size1', self.kernel_size)
+        self.stride = kwargs.get('stride', self.block_size)
+        self.stride1 = kwargs.get('stride1', self.stride)
+        self.dilation = kwargs.get('dilation', 1)
+        self.dilation1 = kwargs.get('dilation1', self.dilation)
+        self.kernel_num = kwargs.get('kernel_num', 32)
+        self.kernel_num1 = kwargs.get('kernel_num1', self.kernel_num)
         self.scale_factor = kwargs.get('scale_factor', 2*self.stride)
+
         self.convs_input_size = self._get_convs_input_size()
-        self.fcs_output_size = (self._get_convs_input_size() ** 2) * self.kernel_num
+
+        if self.conv_num > 1:
+            self.fcs_output_size = (self._get_convs_input_size() ** 2) * self.kernel_num
+        else:
+            self.fcs_output_size = (self._get_convs_input_size() ** 2) * self.kernel_num1
 
         self.fcs = self._get_fcs()
         self.convs = self._get_convs()
@@ -48,32 +59,44 @@ class Decoder(nn.Module):
     def _get_convs(self):
         convs = []
         if self.upsample_method == 'transpose':
-            for _ in range(1, self.conv_num):
+            for _ in range(2, self.conv_num):
                 convs.append(nn.ConvTranspose2d(self.kernel_num, self.kernel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))
                 convs.append(nn.ReLU())
                 convs.append(nn.BatchNorm2d(self.kernel_num))
-            convs.append(nn.ConvTranspose2d(self.kernel_num, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))
-        else:
-            for _ in range(1, self.conv_num):
-                convs.append(nn.Upsample(scale_factor=self.stride, mode=self.upsample_method))
+            if self.conv_num > 1:
+                convs.append(nn.ConvTranspose2d(self.kernel_num, self.kernel_num1, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))
+                convs.append(nn.ReLU())
+                convs.append(nn.BatchNorm2d(self.kernel_num1))
 
-                convs.append(nn.Conv2d(self.kernel_num, self.kernel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))
+            convs.append(nn.ConvTranspose2d(self.kernel_num1, self.channel_num, kernel_size=self.kernel_size1, stride=self.stride1, dilation=self.dilation1))
+        else:
+            for _ in range(2, self.conv_num):
+                if self.stride > 1:
+                    raise ValueError("Upsample not implemented for stride larger than 1")
+                convs.append(nn.Upsample(scale_factor=self.stride, mode=self.upsample_method))
+                convs.append(nn.Conv2d(self.kernel_num, self.kernel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation, padding='same'))
                 convs.append(nn.ReLU())
                 convs.append(nn.BatchNorm2d(self.kernel_num))
-            convs.append(nn.Conv2d(self.kernel_num, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))
+            if self.conv_num > 1:
+                convs.append(nn.Upsample(scale_factor=self.stride, mode=self.upsample_method))
+                convs.append(nn.Conv2d(self.kernel_num, self.kernel_num1, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation, padding='same'))
+                convs.append(nn.ReLU())
+                convs.append(nn.BatchNorm2d(self.kernel_num1))
+
+            convs.append(nn.Conv2d(self.kernel_num1, self.channel_num, kernel_size=self.kernel_size1, stride=self.stride1, dilation=self.dilation1))
             convs.append(nn.Upsample(scale_factor=self.stride, mode=self.upsample_method))
         return nn.Sequential(*convs)
 
 
     def _get_convs_input_size(self):
         if self.upsample_method == 'transpose':
-            input_size = (self.N*self.block_size - self.dilation*(self.kernel_size-1) - 1) // self.stride + 1
+            input_size = (self.N*self.block_size - self.dilation1*(self.kernel_size1-1) - 1) // self.stride1 + 1
             for _ in range(1, self.conv_num):
                 input_size = (input_size - self.dilation*(self.kernel_size-1) - 1) // self.stride + 1
         else:
-            input_size = ((self.N*self.block_size - 1) * self.stride + self.dilation*(self.kernel_size-1) + 1) // self.scale_factor
+            input_size = self.N*self.block_size // self.scale_factor
             for _ in range(1, self.conv_num):
-                input_size = ((input_size - 1) * self.stride + self.dilation*(self.kernel_size-1) + 1) // self.scale_factor
+                input_size = input_size // self.scale_factor
         return input_size
 
     
@@ -119,24 +142,38 @@ class Encoder(nn.Module):
         self.representation_dim = representation_dim
 
         self.kernel_size = kwargs.get('kernel_size', self.block_size)
+        self.kernel_size1 = kwargs.get('kernel_size1', self.kernel_size)
         self.stride = kwargs.get('stride', self.block_size)
+        self.stride1 = kwargs.get('stride1', self.stride)
         self.dilation = kwargs.get('dilation', 1)
+        self.dilation1 = kwargs.get('dilation1', self.dilation)
         self.fc_num = kwargs.get('fc_num', 2)
         self.conv_num = kwargs.get('conv_num', 1)
         self.kernel_num = kwargs.get('kernel_num', 32)
+        self.kernel_num1 = kwargs.get('kernel_num1', self.kernel_num)
         self.hidden_size = kwargs.get('hidden_size', 128)
-        self.convs_output_size = (self._get_convs_output_size() ** 2) * self.kernel_num
-        
+
+        if self.conv_num > 1:
+            self.convs_output_size = (self._get_convs_output_size() ** 2) * self.kernel_num
+        else:
+            self.convs_output_size = (self._get_convs_output_size() ** 2) * self.kernel_num1
+
         self.convs = self._get_convs()
         self.fcs = self._get_fcs()
 
 
     def _get_convs(self):
         convs = []
-        convs.append(nn.Conv2d(self.channel_num, self.kernel_num, kernel_size= self.kernel_size, stride=self.stride, dilation=self.dilation))
+        convs.append(nn.Conv2d(self.channel_num, self.kernel_num1, kernel_size= self.kernel_size1, stride=self.stride1, dilation=self.dilation1))
         convs.append(nn.ReLU())
-        convs.append(nn.BatchNorm2d(self.kernel_num))
-        for _ in range(1, self.conv_num):
+        convs.append(nn.BatchNorm2d(self.kernel_num1))
+
+        if self.conv_num > 1:
+            convs.append(nn.Conv2d(self.kernel_num1, self.kernel_num, kernel_size= self.kernel_size, stride=self.stride, dilation=self.dilation))
+            convs.append(nn.ReLU())
+            convs.append(nn.BatchNorm2d(self.kernel_num))
+
+        for _ in range(2, self.conv_num):
             convs.append(nn.Conv2d(self.kernel_num, self.kernel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))
             convs.append(nn.ReLU())
             convs.append(nn.BatchNorm2d(self.kernel_num))
@@ -144,7 +181,7 @@ class Encoder(nn.Module):
 
 
     def _get_convs_output_size(self):
-        output_size = (self.N*self.block_size - self.dilation*(self.kernel_size-1) - 1) // self.stride + 1
+        output_size = (self.N*self.block_size - self.dilation1*(self.kernel_size1-1) - 1) // self.stride1 + 1
         for _ in range(1, self.conv_num):
             output_size = (output_size - self.dilation*(self.kernel_size-1) - 1) // self.stride + 1
         return output_size
