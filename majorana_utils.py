@@ -96,8 +96,6 @@ def plot_autoencoder_eigvals(
         else:
             H_rec = reconstruct_hamiltonian(H, encoder, decoder)
 
-        print(np.mean(np.abs(H - H_rec)))
-
         energies.append(np.linalg.eigvalsh(H_rec))
 
     if 'ylim' in kwargs:
