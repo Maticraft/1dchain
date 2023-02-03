@@ -1,9 +1,12 @@
 import os
 
+import numpy as np
 from torch.utils.data import random_split, DataLoader
 import torch
 
 from data_utils import HamiltionianDataset
+from helical_ladder import  DEFAULT_PARAMS, SpinLadder
+from majorana_utils import plot_autoencoder_eigvals
 from models import Encoder, Decoder, train_autoencoder, test_autoencoder
 from utils import save_autoencoder_params, save_autoencoder, save_data_list, plot_convergence
 
@@ -15,6 +18,15 @@ save_dir = './autoencoder/spin_ladder/70_2'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
+
+# Reference eigvals plot params
+eigvals_sub_path = 'eigvals/eigvals_spectre_autoencoder{}.png'
+x_axis = 'q'
+x_values = np.arange(0., np.pi, 0.1)
+xnorm = np.pi
+ylim = (-0.5, 0.5)
+
+
 # Model name
 model_name = 'symmetric_autoencoder_1_2_k140d4'
 
@@ -25,7 +37,7 @@ params = {
     'N': 140,
     'in_channels': 2,
     'block_size': 4,
-    'representation_dim': 1,
+    'representation_dim': 100,
     'lr': 1.e-4,
 }
 
@@ -87,4 +99,7 @@ for epoch in range(1, params['epochs'] + 1):
     te_loss = test_autoencoder(encoder, decoder, test_loader, device)
     save_autoencoder(encoder, decoder, root_dir, epoch)
     save_data_list([epoch, tr_loss, te_loss], loss_path)
+
+    eigvals_path = os.path.join(root_dir, eigvals_sub_path.format(f'_ep{epoch}'))
+    plot_autoencoder_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, xnorm=xnorm, ylim=ylim)
 plot_convergence(loss_path, convergence_path, read_label=True)
