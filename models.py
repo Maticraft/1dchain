@@ -170,17 +170,17 @@ class Encoder(nn.Module):
         return x
 
 
-def reconstruct_hamiltonian(H: np.ndarray, encoder: Encoder, decoder: Decoder):
+def reconstruct_hamiltonian(H: np.ndarray, encoder: Encoder, decoder: Decoder, device: torch.device = torch.device('cpu')):
     encoder.eval()
     decoder.eval()
     with torch.no_grad():
         H_torch = torch.from_numpy(H)
         H_torch = torch.stack((H_torch.real, H_torch.imag), dim= 0)
-        H_torch = H_torch.unsqueeze(0).float()
+        H_torch = H_torch.unsqueeze(0).float().to(device)
 
         latent_vec = encoder(H_torch)
         H_torch_rec = decoder(latent_vec)
-        H_rec = torch.complex(H_torch_rec[:, 0, :, :], H_torch_rec[:, 1, :, :]).squeeze().numpy()
+        H_rec = torch.complex(H_torch_rec[:, 0, :, :], H_torch_rec[:, 1, :, :]).squeeze().cpu().numpy()
     return H_rec
 
 

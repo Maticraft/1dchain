@@ -20,7 +20,8 @@ convergence_file = 'convergence.png'
 
 
 # Reference eigvals plot params
-eigvals_sub_path = 'eigvals/eigvals_spectre_autoencoder{}.png'
+eigvals_sub_dir = 'eigvals'
+eigvals_plot_name = 'eigvals_spectre_autoencoder{}.png'
 x_axis = 'q'
 x_values = np.arange(0., np.pi, 0.1)
 xnorm = np.pi
@@ -73,6 +74,10 @@ if not os.path.isdir(root_dir):
 loss_path = os.path.join(root_dir, loss_file)
 convergence_path = os.path.join(root_dir, convergence_file)
 
+eigvals_sub_path = os.path.join(root_dir, eigvals_sub_dir)     
+if not os.path.isdir(eigvals_sub_path):
+    os.makedirs(eigvals_sub_path)
+
 save_autoencoder_params(params, encoder_params, decoder_params, root_dir)
 
 data = HamiltionianDataset(dictionary_path, matrices_path, label_idx=(1, 2))
@@ -100,6 +105,6 @@ for epoch in range(1, params['epochs'] + 1):
     save_autoencoder(encoder, decoder, root_dir, epoch)
     save_data_list([epoch, tr_loss, te_loss], loss_path)
 
-    eigvals_path = os.path.join(root_dir, eigvals_sub_path.format(f'_ep{epoch}'))
-    plot_autoencoder_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, xnorm=xnorm, ylim=ylim)
+    eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))
+    plot_autoencoder_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim)
 plot_convergence(loss_path, convergence_path, read_label=True)

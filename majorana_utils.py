@@ -90,7 +90,11 @@ def plot_autoencoder_eigvals(
         param_model = model(**model_params)
 
         H = param_model.get_hamiltonian()
-        H_rec = reconstruct_hamiltonian(H, encoder, decoder)
+
+        if 'device' in kwargs:
+            H_rec = reconstruct_hamiltonian(H, encoder, decoder, kwargs['device'])
+        else:
+            H_rec = reconstruct_hamiltonian(H, encoder, decoder)
 
         print(np.mean(np.abs(H - H_rec)))
 
