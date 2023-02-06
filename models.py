@@ -43,17 +43,28 @@ class Decoder(nn.Module):
         self.dilation1 = kwargs.get('dilation1', self.dilation)
         self.kernel_num = kwargs.get('kernel_num', 32)
         self.kernel_num1 = kwargs.get('kernel_num1', self.kernel_num)
-        self.scale_factor = kwargs.get('scale_factor', 2*self.stride)
+        self.activation = kwargs.get('activation', 'relu')
 
-        self.convs_input_size = self._get_convs_input_size()
+        sf = kwargs.get('scale_factor', 2*self.stride)
+        self.scale_factor = self._get_scale_factor(sf)
+
+        self.convs_input_size = int(self._get_convs_input_size())
 
         if self.conv_num > 1:
-            self.fcs_output_size = (self._get_convs_input_size() ** 2) * self.kernel_num
+            self.fcs_output_size = (self.convs_input_size ** 2) * self.kernel_num
         else:
-            self.fcs_output_size = (self._get_convs_input_size() ** 2) * self.kernel_num1
+            self.fcs_output_size = (self.convs_input_size ** 2) * self.kernel_num1
 
         self.fcs = self._get_fcs()
         self.convs = self._get_convs()
+
+    def _get_activation(self):
+        if self.activation == 'relu':
+            return nn.ReLU()
+        elif self.activation == 'leaky_relu':
+            return nn.LeakyReLU(negative_slope=0.01)
+        else:
+            return ValueError(f'Activation function: {self.activation} not implemented')
 
 
     def _get_convs(self):
@@ -61,29 +72,29 @@ class Decoder(nn.Module):
         if self.upsample_method == 'transpose':
             for _ in range(2, self.conv_num):
                 convs.append(nn.ConvTranspose2d(self.kernel_num, self.kernel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))
-                convs.append(nn.ReLU())
+                convs.append(self._get_activation())
                 convs.append(nn.BatchNorm2d(self.kernel_num))
             if self.conv_num > 1:
                 convs.append(nn.ConvTranspose2d(self.kernel_num, self.kernel_num1, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))
-                convs.append(nn.ReLU())
+                convs.append(self._get_activation())
                 convs.append(nn.BatchNorm2d(self.kernel_num1))
 
             convs.append(nn.ConvTranspose2d(self.kernel_num1, self.channel_num, kernel_size=self.kernel_size1, stride=self.stride1, dilation=self.dilation1))
         else:
-            for _ in range(2, self.conv_num):
+            for i in range(1, self.conv_num - 1):
                 if self.stride > 1:
                     raise ValueError("Upsample not implemented for stride larger than 1")
-                convs.append(nn.Upsample(scale_factor=self.scale_factor, mode=self.upsample_method))
+                convs.append(nn.Upsample(scale_factor=self.scale_factor[-i], mode=self.upsample_method))
                 convs.append(nn.Conv2d(self.kernel_num, self.kernel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation, padding='same'))
-                convs.append(nn.ReLU())
+                convs.append(self._get_activation())
                 convs.append(nn.BatchNorm2d(self.kernel_num))
             if self.conv_num > 1:
-                convs.append(nn.Upsample(scale_factor=self.scale_factor, mode=self.upsample_method))
+                convs.append(nn.Upsample(scale_factor=self.scale_factor[1], mode=self.upsample_method))
                 convs.append(nn.Conv2d(self.kernel_num, self.kernel_num1, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation, padding='same'))
-                convs.append(nn.ReLU())
+                convs.append(self._get_activation())
                 convs.append(nn.BatchNorm2d(self.kernel_num1))
 
-            convs.append(nn.Upsample(scale_factor=self.scale_factor, mode=self.upsample_method))
+            convs.append(nn.Upsample(scale_factor=self.scale_factor[0], mode=self.upsample_method))
             convs.append(nn.Conv2d(self.kernel_num1, self.channel_num, kernel_size=self.kernel_size1, stride=self.stride1, dilation=self.dilation1, padding='same'))
 
         return nn.Sequential(*convs)
@@ -95,23 +106,34 @@ class Decoder(nn.Module):
             for _ in range(1, self.conv_num):
                 input_size = (input_size - self.dilation*(self.kernel_size-1) - 1) // self.stride + 1
         else:
-            input_size = self.N*self.block_size // self.scale_factor
-            for _ in range(1, self.conv_num):
-                input_size = input_size // self.scale_factor
+            input_size = round(self.N*self.block_size / self.scale_factor[0])
+            for i in range(1, self.conv_num):
+                input_size = round(input_size / self.scale_factor[i])
         return input_size
 
     
     def _get_fcs(self):
         fcs = []
         fcs.append(nn.Linear(self.representation_dim, self.hidden_size))
-        fcs.append(nn.ReLU())
+        fcs.append(self._get_activation())
         fcs.append(nn.BatchNorm1d(self.hidden_size))
         for _ in range(1, self.fc_num - 1):
             fcs.append(nn.Linear(self.hidden_size, self.hidden_size))
-            fcs.append(nn.ReLU())
+            fcs.append(self._get_activation())
             fcs.append(nn.BatchNorm1d(self.hidden_size))
         fcs.append(nn.Linear(self.hidden_size, self.fcs_output_size))
         return nn.Sequential(*fcs)
+
+    
+    def _get_scale_factor(self, sf: t.Union[float, t.List[float]]):
+        if type(sf) == float or type(sf) == int:
+            return [sf for _ in range(self.conv_num)]
+        elif type(sf) == list:
+            if len(sf) != self.conv_num:
+                raise ValueError("Wrong number of scale factors")
+            return sf
+        else:
+            raise TypeError("Wrong type of scale factor: must be either int, float or list")
 
     
     def forward(self, x: torch.Tensor):
@@ -153,6 +175,7 @@ class Encoder(nn.Module):
         self.kernel_num = kwargs.get('kernel_num', 32)
         self.kernel_num1 = kwargs.get('kernel_num1', self.kernel_num)
         self.hidden_size = kwargs.get('hidden_size', 128)
+        self.activation = kwargs.get('activation', 'relu')
 
         if self.conv_num > 1:
             self.convs_output_size = (self._get_convs_output_size() ** 2) * self.kernel_num
@@ -163,20 +186,29 @@ class Encoder(nn.Module):
         self.fcs = self._get_fcs()
 
 
+    def _get_activation(self):
+        if self.activation == 'relu':
+            return nn.ReLU()
+        elif self.activation == 'leaky_relu':
+            return nn.LeakyReLU(negative_slope=0.01)
+        else:
+            return ValueError(f'Activation function: {self.activation} not implemented')
+
+
     def _get_convs(self):
         convs = []
         convs.append(nn.Conv2d(self.channel_num, self.kernel_num1, kernel_size= self.kernel_size1, stride=self.stride1, dilation=self.dilation1))
-        convs.append(nn.ReLU())
+        convs.append(self._get_activation())
         convs.append(nn.BatchNorm2d(self.kernel_num1))
 
         if self.conv_num > 1:
             convs.append(nn.Conv2d(self.kernel_num1, self.kernel_num, kernel_size= self.kernel_size, stride=self.stride, dilation=self.dilation))
-            convs.append(nn.ReLU())
+            convs.append(self._get_activation())
             convs.append(nn.BatchNorm2d(self.kernel_num))
 
         for _ in range(2, self.conv_num):
             convs.append(nn.Conv2d(self.kernel_num, self.kernel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))
-            convs.append(nn.ReLU())
+            convs.append(self._get_activation())
             convs.append(nn.BatchNorm2d(self.kernel_num))
         return nn.Sequential(*convs)
 
@@ -191,11 +223,11 @@ class Encoder(nn.Module):
     def _get_fcs(self):
         fcs = []
         fcs.append(nn.Linear(self.convs_output_size, self.hidden_size))
-        fcs.append(nn.ReLU())
+        fcs.append(self._get_activation())
         fcs.append(nn.BatchNorm1d(self.hidden_size))
         for _ in range(1, self.fc_num - 1):
             fcs.append(nn.Linear(self.hidden_size, self.hidden_size))
-            fcs.append(nn.ReLU())
+            fcs.append(self._get_activation())
             fcs.append(nn.BatchNorm1d(self.hidden_size))
         fcs.append(nn.Linear(self.hidden_size, self.representation_dim))
         return nn.Sequential(*fcs)

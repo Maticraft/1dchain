@@ -29,12 +29,12 @@ ylim = (-0.5, 0.5)
 
 
 # Model name
-model_name = 'asymmetric_autoencoder_up_nearest'
+model_name = 'asymmetric_autoencoder_nearest_leaky_sf'
 
 # Params
 params = {
-    'epochs': 20,
-    'batch_size': 64,
+    'epochs': 60,
+    'batch_size': 32,
     'N': 140,
     'in_channels': 2,
     'block_size': 4,
@@ -55,6 +55,7 @@ encoder_params = {
     'kernel_num': 64,
     'kernel_num1': 32,
     'hidden_size': 128,
+    'activation': 'leaky_relu',
 }
 
 decoder_params = {
@@ -63,11 +64,12 @@ decoder_params = {
     'stride': 1,
     'dilation': 1,
     'fc_num': 4,
-    'conv_num': 4,
+    'conv_num': 5,
     'kernel_num': 64,
     'hidden_size': 128,
     'upsample_method': 'nearest',
-    'scale_factor': 2, # does matter only for upsample_method 'nearest' or 'bilinear'
+    'scale_factor': [4, 2, 2, 5/3, 21/16], # does matter only for upsample_method 'nearest' or 'bilinear'
+    'activation': 'leaky_relu',
 }
 
 # Set the root dir
