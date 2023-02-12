@@ -6,6 +6,25 @@ import torch.nn as nn
 from tqdm import tqdm
 
 
+class Classifier(nn.Module):
+    def __init__(self, input_dim: int, output_dim: int = 1, layers: int = 2, hidden_size: int = 128):
+        self.mlp = self._get_mlp(layers, input_dim, hidden_size, output_dim)
+        self.sigmoid = nn.Sigmoid()
+
+    def _get_mlp(self, layers: int, input_dim: int, hidden_size: int, output_dim: int):
+        mlp = []
+        mlp.append(nn.Linear(input_dim, hidden_size))
+        mlp.append(nn.ReLU)
+        for i in range(layers - 1):
+            mlp.append(nn.Linear(hidden_size, hidden_size))
+            mlp.append(nn.ReLU())
+        mlp.append(nn.Linear(hidden_size, output_dim))
+        return nn.Sequential(*mlp)
+
+    def forward(self, x: torch.Tensor):
+        return self.sigmoid(self.mlp(x))
+
+
 class Decoder(nn.Module):
     def __init__(self, representation_dim: int, output_size: t.Tuple[int, int, int],  **kwargs: t.Dict[str, t.Any]):
         '''
@@ -66,7 +85,6 @@ class Decoder(nn.Module):
         else:
             return ValueError(f'Activation function: {self.activation} not implemented')
 
-
     def _get_convs(self):
         convs = []
         if self.upsample_method == 'transpose':
@@ -99,7 +117,6 @@ class Decoder(nn.Module):
 
         return nn.Sequential(*convs)
 
-
     def _get_convs_input_size(self):
         if self.upsample_method == 'transpose':
             input_size = (self.N*self.block_size - self.dilation1*(self.kernel_size1-1) - 1) // self.stride1 + 1
@@ -111,7 +128,6 @@ class Decoder(nn.Module):
                 input_size = round(input_size / self.scale_factor[i])
         return input_size
 
-    
     def _get_fcs(self):
         fcs = []
         fcs.append(nn.Linear(self.representation_dim, self.hidden_size))
@@ -124,7 +140,6 @@ class Decoder(nn.Module):
         fcs.append(nn.Linear(self.hidden_size, self.fcs_output_size))
         return nn.Sequential(*fcs)
 
-    
     def _get_scale_factor(self, sf: t.Union[float, t.List[float]]):
         if type(sf) == float or type(sf) == int:
             return [sf for _ in range(self.conv_num)]
@@ -135,7 +150,6 @@ class Decoder(nn.Module):
         else:
             raise TypeError("Wrong type of scale factor: must be either int, float or list")
 
-    
     def forward(self, x: torch.Tensor):
         x = self.fcs(x)
         x = x.view(-1, self.kernel_num, self.convs_input_size, self.convs_input_size)
@@ -197,7 +211,6 @@ class Encoder(nn.Module):
         self.convs = self._get_convs()
         self.fcs = self._get_fcs()
 
-
     def _get_activation(self):
         if self.activation == 'relu':
             return nn.ReLU()
@@ -205,7 +218,6 @@ class Encoder(nn.Module):
             return nn.LeakyReLU(negative_slope=0.01)
         else:
             return ValueError(f'Activation function: {self.activation} not implemented')
-
 
     def _get_convs(self):
         convs = []
@@ -224,13 +236,11 @@ class Encoder(nn.Module):
             convs.append(nn.BatchNorm2d(self.kernel_num))
         return nn.Sequential(*convs)
 
-
     def _get_convs_output_size(self):
         output_size = (self.N*self.block_size - self.dilation1*(self.kernel_size1-1) - 1) // self.stride1 + 1
         for _ in range(1, self.conv_num):
             output_size = (output_size - self.dilation*(self.kernel_size-1) - 1) // self.stride + 1
         return output_size
-
     
     def _get_fcs(self):
         fcs = []
@@ -243,7 +253,6 @@ class Encoder(nn.Module):
             fcs.append(nn.BatchNorm1d(self.hidden_size))
         fcs.append(nn.Linear(self.hidden_size, self.representation_dim))
         return nn.Sequential(*fcs)
-
     
     def forward(self, x: torch.Tensor):
         x = self.convs(x)
@@ -342,7 +351,7 @@ def test_autoencoder(
     total_loss = 0
     total_edge_loss = 0
 
-    for x, _ in tqdm(test_loader, "Testing model"):
+    for x, _ in tqdm(test_loader, "Testing autoencoder model"):
         x = x.to(device)
         if site_permutation:
             x = site_perm(x, encoder_model.N, encoder_model.block_size)
@@ -364,6 +373,45 @@ def test_autoencoder(
     print()
 
     return total_loss, total_edge_loss
+
+
+def test_classifier(
+    encoder_model: nn.Module,
+    classifier_model: nn.Module,
+    test_loader: torch.utils.data.DataLoader, 
+    device: torch.device, 
+):
+    criterion = nn.BCELoss()
+
+    encoder_model.to(device)
+    classifier_model.to(device)
+
+    encoder_model.eval()
+    classifier_model.eval()
+
+    total_loss = 0
+    conf_matrix = np.zeros((2, 2))
+
+    for x, y in tqdm(test_loader, "Testing classifer model"):
+        x = x.to(device)
+        z = encoder_model(x)
+        output = classifier_model(z)
+        loss = criterion(prediction, y)
+        total_loss += loss.item()
+
+        prediction = torch.round(output)              
+
+        for i, j in zip(y, prediction):
+            conf_matrix[int(i), int(j)] += 1
+
+    total_loss /= len(test_loader)
+    sensitivity = conf_matrix[0, 0] / (conf_matrix[0, 0] + conf_matrix[0, 1])
+    specifity = conf_matrix[1, 1] / (conf_matrix[1, 0] + conf_matrix[1, 1])
+    bal_acc = 100.* (sensitivity + specifity) / 2
+
+    print(f'Loss: {total_loss}, balanced accuracy: {bal_acc}')
+
+    return total_loss, bal_acc, conf_matrix
 
 
 def train_autoencoder(
@@ -423,3 +471,43 @@ def train_autoencoder(
     print()
 
     return total_loss, total_edge_loss
+
+
+def train_classifier(
+    encoder_model: nn.Module,
+    classifier_model: nn.Module,
+    train_loader: torch.utils.data.DataLoader, 
+    epoch: int,
+    device: torch.device, 
+    optimizer: torch.optim.Optimizer,
+):
+
+    criterion = nn.BCELoss()
+
+    encoder_model.to(device)
+    classifier_model.to(device)
+
+    encoder_model.eval()
+    classifier_model.train()
+
+    total_loss = 0
+
+    print(f'Epoch: {epoch}')
+    for x, y in tqdm(train_loader, 'Training model'):
+        x = x.to(device)
+        optimizer.zero_grad()
+
+        z = encoder_model(x).detach()
+
+        prediction = classifier_model(z)
+        loss = criterion(prediction, y)
+        total_loss += loss.item()
+
+        loss.backward()
+        optimizer.step()
+    
+    total_loss /= len(train_loader)
+
+    print(f'Loss: {total_loss}\n')
+
+    return total_loss
