@@ -158,13 +158,34 @@ class Decoder(nn.Module):
 
 
 class DecoderEnsemble(nn.Module):
-    def __init__(self, representation_dim: int, output_size: t.Tuple[int, int, int], decoders_num: int, decoders_params: t.Dict[str, t.Any]):
+    def __init__(self,
+    representation_dim: int,
+    output_size: t.Tuple[int, int, int],
+    decoders_num: int,
+    decoders_params: t.Dict[str, t.Any],
+    edge_decoder_idx: t.Optional[t.Union[int, t.List[int]]]
+):
         super(DecoderEnsemble, self).__init__()
-        self.decoders = nn.ModuleList([Decoder(representation_dim, output_size, **decoders_params[f'decoder_{i}']) for i in range(decoders_num)])
+
+        if not edge_decoder_idx:
+            self.edge_decoder_ids = []
+        if type(edge_decoder_idx) == int:
+            self.edge_decoder_ids = [edge_decoder_idx]
+        else:
+            self.edge_decoder_ids = edge_decoder_idx
+
+        self.decoders = nn.ModuleList([Decoder(representation_dim, output_size, **decoders_params[f'decoder_{i}']) for i in range(decoders_num) if i not in self.edge_decoder_ids])
+        if self.edge_decoder_ids:
+            self.edge_decoders = nn.ModuleList([Encoder(representation_dim, output_size, **decoders_params[f'decoder_{i}']) for i in self.edge_decoder_ids])
+        
         self.ensembler = nn.Conv2d(decoders_num*output_size[0], output_size[0], kernel_size=1)
 
     def forward(self, x: torch.Tensor):
-        zs = [decoder(x) for decoder in self.decoders]
+        if self.edge_decoder_ids:
+            ezs = [get_edges(decoder(x)) for decoder in self.edge_decoders]
+            
+        zs = [decoder(x) for decoder in self.decoders] + ezs
+
         z = torch.cat(zs, dim=1)
         return self.ensembler(z)
 
