@@ -253,18 +253,37 @@ class Encoder(nn.Module):
 
 
 class EncoderEnsemble(nn.Module):
-    def __init__(self, input_size: t.Tuple[int, int, int], representation_dim: int, encoders_num: int, encoders_params: t.Dict[str, t.Any]):
+    def __init__(self,
+        input_size: t.Tuple[int, int, int],
+        representation_dim: int,
+        encoders_num: int,
+        encoders_params: t.Dict[str, t.Any],
+        edge_encoder_idx: t.Optional[t.Union[int, t.List[int]]]
+    ):
         super(EncoderEnsemble, self).__init__()
-        self.encoders = nn.ModuleList([Encoder(input_size, representation_dim, **encoders_params[f'encoder_{i}']) for i in range(encoders_num)])
+
+        if not edge_encoder_idx:
+            self.edge_encoder_ids = []
+        if type(edge_encoder_idx) == int:
+            self.edge_encoder_ids = [edge_encoder_idx]
+        else:
+            self.edge_encoder_ids = edge_encoder_idx
+
+        self.encoders = nn.ModuleList([Encoder(input_size, representation_dim, **encoders_params[f'encoder_{i}']) for i in range(encoders_num) if i not in self.edge_encoder_ids])
+        if self.edge_encoder_ids:
+            self.edge_encoders = nn.ModuleList([Encoder(input_size, representation_dim, **encoders_params[f'encoder_{i}']) for i in self.edge_encoder_ids])
         self.ensembler = nn.Linear(encoders_num*representation_dim, representation_dim)
 
     def forward(self, x: torch.Tensor):
-        zs = [encoder(x) for encoder in self.encoders]
+        if self.edge_encoder_ids:
+            edges = get_edges(x, edge_width=8)
+            ezs = [encoder(edges) for encoder in self.edge_encoders]
+        zs = [encoder(x) for encoder in self.encoders] + ezs
         z = torch.cat(zs, dim=-1)
         return self.ensembler(z)
 
 
-def reconstruct_hamiltonian(H: np.ndarray, encoder: Encoder, decoder: Decoder, device: torch.device = torch.device('cpu')):
+def reconstruct_hamiltonian(H: np.ndarray, encoder: nn.Module, decoder: nn.Module, device: torch.device = torch.device('cpu')):
     encoder.eval()
     decoder.eval()
     with torch.no_grad():
