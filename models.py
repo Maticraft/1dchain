@@ -254,6 +254,22 @@ def reconstruct_hamiltonian(H: np.ndarray, encoder: Encoder, decoder: Decoder, d
     return H_rec
 
 
+def edge_diff(x_hat: torch.Tensor, x: torch.Tensor, criterion: t.Callable, edge_width: int = 4):
+    x_hat_edges = get_edges(x_hat, edge_width)
+    x_edges = get_edges(x, edge_width)
+    diff = criterion(x_hat_edges[x_hat_edges > 0.], x_edges[x_hat_edges > 0.])
+    return diff
+
+
+def get_edges(x: torch.Tensor, edge_width: int):
+    edges = torch.zeros_like(x)
+    edges[:, :, :edge_width, :] = x[:, :, :edge_width, :]
+    edges[:, :, -edge_width:, :] = x[:, :, -edge_width:, :]
+    edges[:, :, :, :edge_width] = x[:, :, :, :edge_width]
+    edges[:, :, :, -edge_width:] = x[:, :, :, -edge_width:]
+    return edges
+
+
 def site_perm(x: torch.Tensor, N: int, block_size: int):
     permutation = torch.randperm(N)
     permuted_indices = torch.cat([torch.arange(i*block_size, (i+1)*block_size) for i in permutation], dim=0)
@@ -267,7 +283,11 @@ def test_autoencoder(
     test_loader: torch.utils.data.DataLoader, 
     device: torch.device, 
     site_permutation: bool = False,
+    edge_loss: bool = False,
 ):
+    if site_permutation and edge_loss:
+        raise NotImplementedError("Combining edge loss with site permutation is not implemented")
+
     criterion = nn.MSELoss()
 
     encoder_model.to(device)
@@ -277,6 +297,7 @@ def test_autoencoder(
     decoder_model.eval()
 
     total_loss = 0
+    total_edge_loss = 0
 
     for x, _ in tqdm(test_loader, "Testing model"):
         x = x.to(device)
@@ -285,13 +306,21 @@ def test_autoencoder(
         z = encoder_model(x)
         x_hat = decoder_model(z)
         loss = criterion(x_hat, x)
-
         total_loss += loss.item()
-    
-    total_loss /= len(test_loader)
-    print(f'Loss: {total_loss}\n')
 
-    return total_loss
+        if edge_loss:
+            e_loss = edge_diff(x_hat, x, criterion, edge_width=8)
+            total_edge_loss += e_loss.item()
+
+    total_loss /= len(test_loader)
+    total_edge_loss /= len(test_loader)
+
+    print(f'Loss: {total_loss}')
+    if edge_loss:
+        print(f'Edge Loss: {total_edge_loss}')
+    print()
+
+    return total_loss, total_edge_loss
 
 
 def train_autoencoder(
@@ -303,7 +332,12 @@ def train_autoencoder(
     encoder_optimizer: torch.optim.Optimizer,
     decoder_optimizer: torch.optim.Optimizer,
     site_permutation: bool = False,
+    edge_loss: bool = False,
+    edge_loss_weight: float = .5,
 ):
+    if site_permutation and edge_loss:
+        raise NotImplementedError("Combining edge loss with site permutation is not implemented")
+
     criterion = nn.MSELoss()
 
     encoder_model.to(device)
@@ -313,6 +347,7 @@ def train_autoencoder(
     decoder_model.train()
 
     total_loss = 0
+    total_edge_loss = 0
 
     print(f'Epoch: {epoch}')
     for x, _ in tqdm(train_loader, 'Training model'):
@@ -324,13 +359,24 @@ def train_autoencoder(
         z = encoder_model(x)
         x_hat = decoder_model(z)
         loss = criterion(x_hat, x)
+        total_loss += loss.item()
+
+        if edge_loss:
+            e_loss = edge_diff(x_hat, x, criterion, edge_width=8)
+            loss += edge_loss_weight * e_loss
+            total_edge_loss += e_loss.item()
+
         loss.backward()
         encoder_optimizer.step()
         decoder_optimizer.step()
 
-        total_loss += loss.item()
     
     total_loss /= len(train_loader)
-    print(f'Loss: {total_loss}\n')
+    total_edge_loss /= len(train_loader)
 
-    return total_loss
+    print(f'Loss: {total_loss}')
+    if edge_loss:
+        print(f'Edge Loss: {total_edge_loss}')
+    print()
+
+    return total_loss, total_edge_loss

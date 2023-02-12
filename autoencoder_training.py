@@ -29,46 +29,52 @@ ylim = (-0.5, 0.5)
 
 
 # Model name
-model_name = 'asymmetric_autoencoder_nearest_leaky_sf'
+model_name = 'symmetric_autoencoder_edge_loss1_plot_3_4_k35d16'
 
 # Params
 params = {
-    'epochs': 60,
-    'batch_size': 32,
+    'epochs': 120,
+    'batch_size': 512,
     'N': 140,
     'in_channels': 2,
     'block_size': 4,
     'representation_dim': 100,
-    'lr': 1.e-4,
+    'lr': 1.e-5,
+    'edge_loss': True,
+    'edge_loss_weight': 1.,
 }
 
 
 # Architecture
 encoder_params = {
-    'kernel_size': 4,
-    'kernel_size1': 4,
+    'kernel_size': 2,
+    'kernel_size1': 35,
     'stride': 2,
-    'stride1': 4,
+    'stride1': 1,
     'dilation': 1,
+    'dilation1': 16,
     'fc_num': 4,
-    'conv_num': 5,
-    'kernel_num': 64,
-    'kernel_num1': 32,
-    'hidden_size': 128,
+    'conv_num': 3,
+    'kernel_num': 128,
+    'kernel_num1': 64,
+    'hidden_size': 256,
     'activation': 'leaky_relu',
 }
 
 decoder_params = {
-    'kernel_size': 3,
-    'kernel_size1': 3,
-    'stride': 1,
+    'kernel_size': 2,
+    'kernel_size1': 35,
+    'stride': 2,
+    'stride1': 1,
     'dilation': 1,
+    'dilation1': 16,
     'fc_num': 4,
-    'conv_num': 5,
-    'kernel_num': 64,
-    'hidden_size': 128,
-    'upsample_method': 'nearest',
-    'scale_factor': [4, 2, 2, 5/3, 21/16], # does matter only for upsample_method 'nearest' or 'bilinear'
+    'conv_num': 3,
+    'kernel_num': 128,
+    'kernel_num1': 64,
+    'hidden_size': 256,
+    'upsample_method': 'transpose',
+    'scale_factor': 2, # does matter only for upsample_method 'nearest' or 'bilinear'
     'activation': 'leaky_relu',
 }
 
@@ -106,13 +112,23 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr=params['lr'])
 decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=params['lr'])
 
-save_data_list(['Epoch', 'Train loss', 'Test loss'], loss_path, mode='w')
+save_data_list(['Epoch', 'Train loss', 'Train edge loss', 'Test loss', 'Test edge loss'], loss_path, mode='w')
 
 for epoch in range(1, params['epochs'] + 1):
-    tr_loss = train_autoencoder(encoder, decoder, train_loader, epoch, device, encoder_optimizer, decoder_optimizer)
-    te_loss = test_autoencoder(encoder, decoder, test_loader, device)
+    tr_loss, tr_edge_loss = train_autoencoder(
+        encoder,
+        decoder,
+        train_loader,
+        epoch,
+        device,
+        encoder_optimizer,
+        decoder_optimizer,
+        edge_loss=params['edge_loss'],
+        edge_loss_weight=params['edge_loss_weight']
+    )
+    te_loss, te_edge_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'])
     save_autoencoder(encoder, decoder, root_dir, epoch)
-    save_data_list([epoch, tr_loss, te_loss], loss_path)
+    save_data_list([epoch, tr_loss, tr_edge_loss, te_loss, te_edge_loss], loss_path)
 
     eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))
     plot_autoencoder_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim)
