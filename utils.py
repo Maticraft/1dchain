@@ -5,8 +5,9 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch.nn as nn
 
-from models import Encoder, Decoder
+from models import Decoder, DecoderEnsemble, Encoder, EncoderEnsemble
 
 GENERAL_PARAMS_NAME = 'general_params.json'
 ENCODER_PARAMS_NAME = 'encoder_params.json'
@@ -87,13 +88,21 @@ def save_autoencoder(encoder: torch.nn.Module, decoder: torch.nn.Module, root_di
 
 
 def load_autoencoder(root_dir: str, epoch: int):
+    return load_ae_model(root_dir, epoch, Encoder, Decoder)
+
+
+def load_autoencoder_ensemble(root_dir: str, epoch: int):
+    return load_ae_model(root_dir, epoch, EncoderEnsemble, DecoderEnsemble)
+
+
+def load_ae_model(root_dir: str, epoch: int, encoder_class: nn.Module, decoder_class: nn.Module):
     params, encoder_params, decoder_params = load_autoencoder_params(root_dir)
 
-    encoder = Encoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
+    encoder = encoder_class((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
     encoder_path = os.path.join(root_dir, ENCODER_DIR, ENCODER_NAME.format(f'_ep{epoch}'))
     encoder.load_state_dict(torch.load(encoder_path))
 
-    decoder = Decoder(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
+    decoder = decoder_class(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
     decoder_path = os.path.join(root_dir, DECODER_DIR, DECODER_NAME.format(f'_ep{epoch}'))
     decoder.load_state_dict(torch.load(decoder_path))
 

@@ -143,6 +143,18 @@ class Decoder(nn.Module):
         return x
 
 
+class DecoderEnsemble(nn.Module):
+    def __init__(self, representation_dim: int, output_size: t.Tuple[int, int, int], decoders_num: int, decoders_params: t.Dict[str, t.Any]):
+        super(DecoderEnsemble, self).__init__()
+        self.decoders = nn.ModuleList([Decoder(representation_dim, output_size, **decoders_params[f'decoder_{i}']) for i in range(decoders_num)])
+        self.ensembler = nn.Conv2d(decoders_num*output_size[0], output_size[0], kernel_size=1)
+
+    def forward(self, x: torch.Tensor):
+        zs = [decoder(x) for decoder in self.decoders]
+        z = torch.cat(zs, dim=1)
+        return self.ensembler(z)
+
+
 class Encoder(nn.Module):
     def __init__(self, input_size: t.Tuple[int, int, int], representation_dim: int, **kwargs: t.Dict[str, t.Any]):
         '''
@@ -238,6 +250,18 @@ class Encoder(nn.Module):
         x = x.view(-1, self.convs_output_size)
         x = self.fcs(x)
         return x
+
+
+class EncoderEnsemble(nn.Module):
+    def __init__(self, input_size: t.Tuple[int, int, int], representation_dim: int, encoders_num: int, encoders_params: t.Dict[str, t.Any]):
+        super(EncoderEnsemble, self).__init__()
+        self.encoders = nn.ModuleList([Encoder(input_size, representation_dim, **encoders_params[f'encoder_{i}']) for i in range(encoders_num)])
+        self.ensembler = nn.Linear(encoders_num*representation_dim, representation_dim)
+
+    def forward(self, x: torch.Tensor):
+        zs = [encoder(x) for encoder in self.encoders]
+        z = torch.cat(zs, dim=-1)
+        return self.ensembler(z)
 
 
 def reconstruct_hamiltonian(H: np.ndarray, encoder: Encoder, decoder: Decoder, device: torch.device = torch.device('cpu')):
