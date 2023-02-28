@@ -8,14 +8,14 @@ from data_utils import Hamiltonian
 from models import Encoder, Decoder, reconstruct_hamiltonian
 
 
-def count_mzm_states(H: np.ndarray, threshold = 1e-5):
+def count_mzm_states(H: np.ndarray, threshold = 1.e-5):
     eigvals = np.linalg.eigvalsh(H)
     return np.sum(np.abs(eigvals) < threshold)
 
 
 def majorana_polarization(
     H: np.ndarray,
-    threshold: float = 1e-5,
+    threshold: float = 1.e-5,
     axis: str = 'total',
     site: t.Optional[t.Union[int, str]] = 'avg'
 ):
@@ -38,6 +38,8 @@ def majorana_polarization(
         
     if site == 'avg':
         return np.mean(list(P_m.values()))
+    if site == 'sum':
+        return np.sum(list(P_m.values()))
     elif site == 'all':
         return P_m
     else:
