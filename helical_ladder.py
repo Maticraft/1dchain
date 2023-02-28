@@ -3,13 +3,13 @@ import pandas as pd
 from tqdm import tqdm
 
 from data_utils import Hamiltonian, generate_data
-from majorana_utils import count_mzm_states, majorana_polarization, plot_eigvals, plot_eigvec
+from majorana_utils import count_mzm_states, majorana_polarization, plot_eigvals, plot_eigvec, plot_majorana_polarization
 
 DEFAULT_PARAMS = {'N': 70, 'M': 2, 'delta': 0.3, 'mu': 0.9, 'J': 1., 'delta_q': np.pi}
 
 
 class SpinLadder(Hamiltonian):
-    def __init__(self, N, M, mu = 0.9, delta = 0.3, J = 1, q = np.pi/2, delta_q = np.pi, t = 1, S = 1, theta = np.pi/2):
+    def __init__(self, N, M, mu = 0.9, delta = 0.3, J = 1, q = np.pi/2, delta_q = np.pi, t = 1, S = 1, theta = np.pi/2, B = 0.):
         self.block_size = 4
         self.M = M
         self.N = N
@@ -21,6 +21,7 @@ class SpinLadder(Hamiltonian):
         self.J = J
         self.S = S
         self.theta = theta
+        self.B = B
         self.H = self._construct_open_boundary_hamiltonian(self.N, self.M)
 
     def _construct_open_boundary_hamiltonian(self, N, M):
@@ -30,7 +31,7 @@ class SpinLadder(Hamiltonian):
         for i in range(N):
             for j in range(M):
 
-                H[self._idx(i, j) : self._idx(i, j) + self.block_size, self._idx(i, j) : self._idx(i, j) + self.block_size] = self.J*self._spin_block_i_cdagger_c(self.mu, i, j, self.theta, self.delta_q, self.q, self.S)
+                H[self._idx(i, j) : self._idx(i, j) + self.block_size, self._idx(i, j) : self._idx(i, j) + self.block_size] = self.J*self._spin_block_i_cdagger_c(self.mu, i, j, self.theta, self.delta_q, self.q, self.S, self.B)
 
                 k = self.block_size // 2
                 H[self._idx(i, j) : self._idx(i, j) + k, self._idx(i, j) + k : self._idx(i, j) + self.block_size] += self._delta_block_i_cdagger_cdagger(self.delta)
@@ -49,14 +50,14 @@ class SpinLadder(Hamiltonian):
     def _idx(self, i, j):
         return (i*self.M + j)*self.block_size
 
-    def _spin_block_i_cdagger_c(self, mu, i, j, theta, delta_q, q, S):
+    def _spin_block_i_cdagger_c(self, mu, i, j, theta, delta_q, q, S, B):
         sigma_z = np.array([[1, 0], [0, -1]], dtype=np.complex128)
         mu_block = -mu*np.eye(2, dtype=np.complex128)
         
         block = np.kron(sigma_z, mu_block)
         
         phi = i*q + j*delta_q
-        spin_block = self._get_spin_matrix(theta, phi, S)
+        spin_block = self._get_spin_matrix(theta, phi, S, B)
 
         block[0:2, 0:2] += spin_block
         block[2:4, 2:4] += -spin_block.T
@@ -75,12 +76,16 @@ class SpinLadder(Hamiltonian):
         return interaction_block
 
 
-    def _get_spin_matrix(self, theta, phi, S):
+    def _get_spin_matrix(self, theta, phi, S, B=1.e-7):
         pauli_x = np.array([[0, 1], [1, 0]], dtype=np.complex128)
         pauli_y = np.array([[0, -1j], [1j, 0]], dtype=np.complex128)
         pauli_z = np.array([[1, 0], [0, -1]], dtype=np.complex128)
 
         spin_matrix = S*(np.sin(theta)*np.cos(phi)*pauli_x + np.sin(theta)*np.sin(phi)*pauli_y + np.cos(theta)*pauli_z)/2
+
+        # Add magnetic field
+        spin_matrix += B*pauli_z
+
         return spin_matrix
 
 
@@ -145,7 +150,12 @@ if __name__ == '__main__':
     N = 70
     M = 2
 
-    N_samples = 100000
+    # N_samples = 100000
+    
+    # params = generate_params(N, M, N_samples)
+    # generate_data(SpinLadder, params, './data/spin_ladder/70_2')
 
-    params = generate_params(N, M, N_samples)
-    generate_data(SpinLadder, params, './data/spin_ladder/70_2')
+    ladder = SpinLadder(**DEFAULT_PARAMS)
+    plot_majorana_polarization(ladder, './plots/spin_ladder/polarization_x', polaxis='x')
+    for c in range(4):
+        plot_eigvec(ladder.get_hamiltonian(), c, f'./plots/spin_ladder/eigvec_{c}', threshold=1.e-5)
