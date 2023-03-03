@@ -159,6 +159,23 @@ def plot_majorana_polarization(
     zm_eigvals = eigvals[np.abs(eigvals) < threshold]
     zm = eigvecs[:, np.abs(eigvals) < threshold] / vec_normed
 
+    #breakpoint()
+    zm_nambu = zm[:,0].reshape(70,2,4)
+    P_vec = zm_nambu[:,:,1]*np.conjugate(zm_nambu[:,:,2])+zm_nambu[:,:,0]*np.conjugate(zm_nambu[:,:,3])
+    P_M = 2*np.abs(P_vec)
+    P_Mx = 2*np.real(P_vec)
+    P_My = 2*np.imag(P_vec)
+    x_axis = np.linspace(0,1, num=70, endpoint=True)
+    plt.plot(x_axis, P_M[:,0], '--', label='P_tot upper line')
+    plt.plot(x_axis, P_M[:,1], '-.', label='P_tot lower line')
+    plt.plot(x_axis, P_Mx[:,0]+0.001, '--', label='P_x upper line')
+    plt.plot(x_axis, P_Mx[:,1]+0.001, '-.', label='P_x lower line')
+    plt.plot(x_axis, P_My[:,0]-0.001, '--', label='P_y upper line')
+    plt.plot(x_axis, P_My[:,1]-0.001, '-.', label='P_y lower line')
+    plt.legend()
+    plt.savefig('./plots/spin_ladder/P_M.png')
+    print(np.sum(P_M[:35,0]+P_M[:35,1]))
+
     P_m_summed = np.zeros(H.shape[0] // 4)
     for i in range(zm.shape[1]):
         P_m = [

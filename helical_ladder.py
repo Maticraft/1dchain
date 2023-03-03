@@ -149,7 +149,7 @@ def generate_params(N, M, N_samples):
 
 
 if __name__ == '__main__':
-    N = 70
+    N = 170
     M = 2
 
     # N_samples = 100000
