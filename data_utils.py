@@ -14,7 +14,7 @@ class Hamiltonian(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def get_label(self) -> int:
+    def get_label(self) -> str:
         pass
 
 
@@ -86,7 +86,7 @@ def generate_data(hamiltionian: Hamiltonian, param_list: t.List[t.Dict[str, t.An
         save_data(matrix, label, directory, filename)
 
 
-def save_data(matrix: np.ndarray, label: int, root_dir: str, filename: str):
+def save_data(matrix: np.ndarray, label: str, root_dir: str, filename: str):
     if not os.path.isdir(root_dir):
         os.makedirs(root_dir)
     matrix_dir = os.path.join(root_dir, 'matrices')
@@ -97,4 +97,4 @@ def save_data(matrix: np.ndarray, label: int, root_dir: str, filename: str):
     np.save(matrix_name, matrix)
 
     with open(os.path.join(root_dir, 'dictionary.txt'), 'a') as dictionary:
-        dictionary.write(filename + ', ' + str(label) + '\n')
+        dictionary.write(f'{filename}, {label}\n')

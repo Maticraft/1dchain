@@ -158,7 +158,7 @@ if __name__ == '__main__':
     N_samples = 100000
     
     params = generate_params(N, M, N_samples)
-    generate_data(SpinLadder, params, './data/spin_ladder/70_2')
+    generate_data(SpinLadder, params, './data/spin_ladder/70_2_polarization')
 
     # ladder = SpinLadder(**DEFAULT_PARAMS)
     # plot_majorana_polarization(ladder, './plots/spin_ladder/polarization_total', polaxis='total', string_num=2)
