@@ -332,7 +332,7 @@ def reconstruct_hamiltonian(H: np.ndarray, encoder: nn.Module, decoder: nn.Modul
 def edge_diff(x_hat: torch.Tensor, x: torch.Tensor, criterion: t.Callable, edge_width: int = 4):
     x_hat_edges = get_edges(x_hat, edge_width)
     x_edges = get_edges(x, edge_width)
-    diff = criterion(x_hat_edges[x_hat_edges > 0.], x_edges[x_hat_edges > 0.])
+    diff = criterion(x_hat_edges[x_hat_edges != 0.], x_edges[x_hat_edges != 0.])
     return diff
 
 
