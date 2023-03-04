@@ -48,11 +48,11 @@ def majorana_polarization(
 
 def majorana_polarization_site(zero_mode: np.ndarray, axis: str = 'total'):
     if axis == 'total':
-        return 2*np.sum(np.abs(zero_mode[1, :] * zero_mode[3, :].conj() - zero_mode[0, :] * zero_mode[2, :].conj()))
+        return 2*np.mean(np.abs(zero_mode[1, :] * zero_mode[2, :].conj() + zero_mode[0, :] * zero_mode[3, :].conj()))
     if axis == 'x':
-        return 2*np.sum(np.real(zero_mode[1, :] * zero_mode[3, :].conj() - zero_mode[0, :] * zero_mode[2, :].conj()))
+        return 2*np.mean(np.real(zero_mode[1, :] * zero_mode[2, :].conj() + zero_mode[0, :] * zero_mode[3, :].conj()))
     if axis == 'y':
-        return 2*np.sum(np.imag(zero_mode[1, :] * zero_mode[3, :].conj() - zero_mode[0, :] * zero_mode[2, :].conj()))
+        return 2*np.mean(np.imag(zero_mode[1, :] * zero_mode[2, :].conj() + zero_mode[0, :] * zero_mode[3, :].conj()))
 
 
 def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: t.List[t.Any], params: t.Dict[str, t.Any], filename: str, **kwargs: t.Dict[str, t.Any]):
@@ -128,12 +128,23 @@ def plot_eigvec(H: np.ndarray, component: int, dirpath: str, **kwargs: t.Dict[st
         eigvecs = eigvecs[:, np.abs(eigvals) < threshold]
         eigvals = eigvals[np.abs(eigvals) < threshold]
 
-    for i in range(eigvecs.shape[1]):
-        real = [np.real(eigvecs[4*site + component, i]) for site in range(eigvecs.shape[0] // 4)]
-        imag = [np.imag(eigvecs[4*site + component, i]) for site in range(eigvecs.shape[0] // 4)]
+    string_num = kwargs.get('string_num', 1)
 
-        site_plot(real, dirpath + f'/real_{i}.png', 'Eigenvalue: ' + str(eigvals[i]), 'Real part')
-        site_plot(imag, dirpath + f'/imag_{i}.png', 'Eigenvalue: ' + str(eigvals[i]), 'Imaginary part')
+    for i in range(eigvecs.shape[1]):
+        real = np.array([np.real(eigvecs[4*site + component, i]) for site in range(eigvecs.shape[0] // 4)])
+        imag = np.array([np.imag(eigvecs[4*site + component, i]) for site in range(eigvecs.shape[0] // 4)])
+
+        if string_num > 1:
+            real = real.reshape((-1, string_num))
+            imag = imag.reshape((-1, string_num))
+
+            for j in range(string_num):
+                site_plot(real[:, j], dirpath + f'/real_{i}_string_{j}.png', 'Eigenvalue: ' + str(eigvals[i]), 'Real part')
+                site_plot(imag[:, j], dirpath + f'/imag_{i}_string_{j}.png', 'Eigenvalue: ' + str(eigvals[i]), 'Imaginary part')
+
+        else:
+            site_plot(real, dirpath + f'/real_{i}.png', 'Eigenvalue: ' + str(eigvals[i]), 'Real part')
+            site_plot(imag, dirpath + f'/imag_{i}.png', 'Eigenvalue: ' + str(eigvals[i]), 'Imaginary part')
 
 
 def plot_majorana_polarization(
@@ -150,46 +161,32 @@ def plot_majorana_polarization(
     else:
         polaxis = 'total'
 
+    string_num = kwargs.get('string_num', 1)
+
     H = model.get_hamiltonian()
     eigvals, eigvecs = np.linalg.eigh(H)
-    
-    norm_indx = 100
-    vec_normed = eigvecs.flatten()[norm_indx] / np.abs(eigvecs.flatten()[norm_indx])
 
     zm_eigvals = eigvals[np.abs(eigvals) < threshold]
-    zm = eigvecs[:, np.abs(eigvals) < threshold] / vec_normed
+    zm = eigvecs[:, np.abs(eigvals) < threshold]
 
-    #breakpoint()
-    zm_nambu = zm[:,0].reshape(70,2,4)
-    P_vec = zm_nambu[:,:,1]*np.conjugate(zm_nambu[:,:,2])+zm_nambu[:,:,0]*np.conjugate(zm_nambu[:,:,3])
-    P_M = 2*np.abs(P_vec)
-    P_Mx = 2*np.real(P_vec)
-    P_My = 2*np.imag(P_vec)
-    x_axis = np.linspace(0,1, num=70, endpoint=True)
-    plt.plot(x_axis, P_M[:,0], '--', label='P_tot upper line')
-    plt.plot(x_axis, P_M[:,1], '-.', label='P_tot lower line')
-    plt.plot(x_axis, P_Mx[:,0]+0.001, '--', label='P_x upper line')
-    plt.plot(x_axis, P_Mx[:,1]+0.001, '-.', label='P_x lower line')
-    plt.plot(x_axis, P_My[:,0]-0.001, '--', label='P_y upper line')
-    plt.plot(x_axis, P_My[:,1]-0.001, '-.', label='P_y lower line')
-    plt.legend()
-    plt.savefig('./plots/spin_ladder/P_M.png')
-    print(np.sum(P_M[:35,0]+P_M[:35,1]))
-
-    P_m_summed = np.zeros(H.shape[0] // 4)
+    P_m_summed = np.zeros((H.shape[0] // (4 * string_num), string_num))
     for i in range(zm.shape[1]):
+        zm_nambu = zm[:,i].reshape(-1,4)
         P_m = [
             majorana_polarization_site(
-                np.expand_dims(zm[4*site:4*(site+1), i], axis=1),
+                np.expand_dims(zm_nambu[site], axis=1),
                 axis=polaxis,
             ) 
             for site in range(H.shape[0] // 4)
         ]
+        P_m = np.array(P_m).reshape((-1, string_num))
         P_m_summed += np.array(P_m)
 
-        site_plot(P_m, dirpath + '/polarization_' + str(i) + '.png', 'Eigenvalue: ' + str(zm_eigvals[i]), 'Majorana polarization', **kwargs)
+        for j in range(string_num):
+            site_plot(P_m[:, j], f'{dirpath}/polarization_{i}_string_{j}.png', f'Eigenvalue: {zm_eigvals[i]}', 'Majorana polarization', **kwargs)
 
-    site_plot(P_m_summed, dirpath + '/polarization_summed.png', 'Summed over eigenvalues', 'Majorana polarization', **kwargs)
+    for j in range(string_num):
+        site_plot(P_m_summed[:, j], f'{dirpath}/polarization_summed_string_{j}.png', 'Summed over eigenvalues', 'Majorana polarization', **kwargs)
 
 
 def site_plot(values: np.ndarray, filename: str, title: str, ylabel: str, **kwargs: t.Dict[str, t.Any]):
