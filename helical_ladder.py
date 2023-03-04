@@ -99,7 +99,7 @@ class SpinLadder(Hamiltonian):
         mp_sum_left = sum(values[:len(values)//2])
         mp_sum_right = sum(values[len(values)//2:])
         mp_tot = majorana_polarization(self.H, threshold=1.e-5, axis='total', site='all')
-        values_tot = list(mp.values())
+        values_tot = list(mp_tot.values())
         mp_tot_sum_left = sum(values_tot[:len(values_tot)//2])
         mp_tot_sum_right = sum(values_tot[len(values_tot)//2:])
         return f"{mp_tot_sum_left}, {mp_tot_sum_right}, {mp_sum_left}, {mp_sum_right}, {count_mzm_states(self.H, threshold=1.e-5)}"
@@ -155,12 +155,12 @@ if __name__ == '__main__':
     N = 70
     M = 2
 
-    # N_samples = 100000
+    N_samples = 100000
     
-    # params = generate_params(N, M, N_samples)
-    # generate_data(SpinLadder, params, './data/spin_ladder/70_2')
+    params = generate_params(N, M, N_samples)
+    generate_data(SpinLadder, params, './data/spin_ladder/70_2')
 
-    ladder = SpinLadder(**DEFAULT_PARAMS)
-    plot_majorana_polarization(ladder, './plots/spin_ladder/polarization_total', polaxis='total', string_num=2)
-    for c in range(4):
-        plot_eigvec(ladder.get_hamiltonian(), c, f'./plots/spin_ladder/eigvec_{c}', threshold=1.e-5, string_num=2)
+    # ladder = SpinLadder(**DEFAULT_PARAMS)
+    # plot_majorana_polarization(ladder, './plots/spin_ladder/polarization_total', polaxis='total', string_num=2)
+    # for c in range(4):
+    #     plot_eigvec(ladder.get_hamiltonian(), c, f'./plots/spin_ladder/eigvec_{c}', threshold=1.e-5, string_num=2)
