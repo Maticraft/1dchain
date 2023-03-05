@@ -112,10 +112,10 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr=params['lr'])
 decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=params['lr'])
 
-save_data_list(['Epoch', 'Train loss', 'Train edge loss', 'Test loss', 'Test edge loss'], loss_path, mode='w')
+save_data_list(['Epoch', 'Train loss', 'Train edge loss', 'Train eigenstates loss', 'Test loss', 'Test edge loss', 'Test eigenstates loss'], loss_path, mode='w')
 
 for epoch in range(1, params['epochs'] + 1):
-    tr_loss, tr_edge_loss = train_autoencoder(
+    tr_loss, tr_edge_loss, tr_eig_loss = train_autoencoder(
         encoder,
         decoder,
         train_loader,
@@ -126,9 +126,9 @@ for epoch in range(1, params['epochs'] + 1):
         edge_loss=params['edge_loss'],
         edge_loss_weight=params['edge_loss_weight']
     )
-    te_loss, te_edge_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'])
+    te_loss, te_edge_loss, te_eig_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'])
     save_autoencoder(encoder, decoder, root_dir, epoch)
-    save_data_list([epoch, tr_loss, tr_edge_loss, te_loss, te_edge_loss], loss_path)
+    save_data_list([epoch, tr_loss, tr_edge_loss, tr_eig_loss, te_loss, te_edge_loss, te_eig_loss], loss_path)
 
     eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))
     plot_autoencoder_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim)
