@@ -170,7 +170,7 @@ class DecoderEnsemble(nn.Module):
 
         if not edge_decoder_idx:
             self.edge_decoder_ids = []
-        if type(edge_decoder_idx) == int:
+        elif type(edge_decoder_idx) == int:
             self.edge_decoder_ids = [edge_decoder_idx]
         else:
             self.edge_decoder_ids = edge_decoder_idx
@@ -184,6 +184,8 @@ class DecoderEnsemble(nn.Module):
     def forward(self, x: torch.Tensor):
         if self.edge_decoder_ids:
             ezs = [get_edges(decoder(x), edge_width=8) for decoder in self.edge_decoders]
+        else:
+            ezs = []
             
         zs = [decoder(x) for decoder in self.decoders] + ezs
 
@@ -296,7 +298,7 @@ class EncoderEnsemble(nn.Module):
 
         if not edge_encoder_idx:
             self.edge_encoder_ids = []
-        if type(edge_encoder_idx) == int:
+        elif type(edge_encoder_idx) == int:
             self.edge_encoder_ids = [edge_encoder_idx]
         else:
             self.edge_encoder_ids = edge_encoder_idx
@@ -310,6 +312,8 @@ class EncoderEnsemble(nn.Module):
         if self.edge_encoder_ids:
             edges = get_edges(x, edge_width=8)
             ezs = [encoder(edges) for encoder in self.edge_encoders]
+        else:
+            ezs = []
         zs = [encoder(x) for encoder in self.encoders] + ezs
         z = torch.cat(zs, dim=-1)
         return self.ensembler(z)

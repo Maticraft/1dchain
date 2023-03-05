@@ -29,12 +29,12 @@ ylim = (-0.5, 0.5)
 
 
 # Model name
-model_name = 'same_ensemble_symmetric_autoencoder_edge_loss1_3_4_k35d16'
+model_name = 'hybrid_ensemble_symmetric_autoencoder_edge_loss1'
 
 # Params
 params = {
     'epochs': 120,
-    'batch_size': 512,
+    'batch_size': 64,
     'N': 140,
     'in_channels': 2,
     'block_size': 4,
@@ -62,23 +62,22 @@ encoder0_params = {
 }
 
 encoder1_params = {
-    'kernel_size': 2,
-    'kernel_size1': 35,
-    'stride': 2,
-    'stride1': 1,
-    'dilation': 1,
-    'dilation1': 16,
-    'fc_num': 4,
-    'conv_num': 3,
-    'kernel_num': 128,
-    'kernel_num1': 64,
-    'hidden_size': 256,
-    'activation': 'leaky_relu',
+    "kernel_size": 4,
+    "kernel_size1": 4,
+    "stride": 2,
+    "stride1": 4,
+    "dilation": 1,
+    "fc_num": 4,
+    "conv_num": 5,
+    "kernel_num": 64,
+    "kernel_num1": 32,
+    "hidden_size": 128,
+    "activation": "leaky_relu"
 }
 
 encoders_params = {
     'encoders_num': 2,
-    'edge_encoder_idx': 0,
+    'edge_encoder_idx': None,
     'encoder_0': encoder0_params,
     'encoder_1': encoder1_params,
 }
@@ -101,25 +100,28 @@ decoder0_params = {
 }
 
 decoder1_params = {
-    'kernel_size': 2,
-    'kernel_size1': 35,
-    'stride': 2,
-    'stride1': 1,
-    'dilation': 1,
-    'dilation1': 16,
-    'fc_num': 4,
-    'conv_num': 3,
-    'kernel_num': 128,
-    'kernel_num1': 64,
-    'hidden_size': 256,
-    'upsample_method': 'transpose',
-    'scale_factor': 2, # does matter only for upsample_method 'nearest' or 'bilinear'
-    'activation': 'leaky_relu',
+    "kernel_size": 3,
+    "kernel_size1": 3,
+    "stride": 1,
+    "dilation": 1,
+    "fc_num": 4,
+    "conv_num": 5,
+    "kernel_num": 64,
+    "hidden_size": 128,
+    "upsample_method": "nearest",
+    "scale_factor": [
+        4,
+        2,
+        2,
+        1.6666666666666667,
+        1.3125
+    ],
+    "activation": "leaky_relu"
 }
 
 decoders_params = {
     'decoders_num': 2,
-    'edge_decoder_idx': 0,
+    'edge_decoder_idx': None,
     'decoder_0': decoder0_params,
     'decoder_1': decoder1_params
 }
