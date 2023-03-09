@@ -360,8 +360,8 @@ def eigenvectors_loss(x_hat: torch.Tensor, x: torch.Tensor, criterion: t.Callabl
     assert x_hat.shape[1] == 2 and x.shape[1] == 2, 'Wrong dimension of complex tensors'
     x_complex = torch.complex(x[:, 0, :, :], x[:, 1, :, :])
     x_hat_complex = torch.complex(x_hat[:, 0, :, :], x_hat[:, 1, :, :])
-    eigvals, eigvec = torch.linalg.eigh(x_complex)
-    eigvals_hat, eigvec_hat = torch.linalg.eigh(x_hat_complex)
+    eigvals, eigvec = torch.linalg.eig(x_complex)
+    eigvals_hat, eigvec_hat = torch.linalg.eig(x_hat_complex)
     eigvec = torch.stack((torch.real(eigvec), torch.imag(eigvec)), dim=1)
     eigvec_hat = torch.stack((torch.real(eigvec_hat), torch.imag(eigvec_hat)), dim=1)
     return criterion(eigvec_hat, eigvec)

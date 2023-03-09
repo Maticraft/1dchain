@@ -29,7 +29,7 @@ ylim = (-0.5, 0.5)
 
 
 # Model name
-model_name = 'symmetric_autoencoder_edge_loss1_plot_3_4_k35d16'
+model_name = 'symmetric_autoencoder_eigen_loss1_plot_3_4_k35d16'
 
 # Params
 params = {
@@ -40,8 +40,10 @@ params = {
     'block_size': 4,
     'representation_dim': 100,
     'lr': 1.e-5,
-    'edge_loss': True,
+    'edge_loss': False,
     'edge_loss_weight': 1.,
+    'eigenstates_loss': True,
+    'eigenstates_loss_weight': 1.
 }
 
 
@@ -124,9 +126,11 @@ for epoch in range(1, params['epochs'] + 1):
         encoder_optimizer,
         decoder_optimizer,
         edge_loss=params['edge_loss'],
-        edge_loss_weight=params['edge_loss_weight']
+        edge_loss_weight=params['edge_loss_weight'],
+        eigenstates_loss=params['eigenstates_loss'],
+        eigenstates_loss_weight=params['eigenstates_loss_weight'],
     )
-    te_loss, te_edge_loss, te_eig_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'])
+    te_loss, te_edge_loss, te_eig_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'], eigenstates_loss=params['eigenstates_loss'])
     save_autoencoder(encoder, decoder, root_dir, epoch)
     save_data_list([epoch, tr_loss, tr_edge_loss, tr_eig_loss, te_loss, te_edge_loss, te_eig_loss], loss_path)
 
