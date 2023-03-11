@@ -96,18 +96,18 @@ class SpinLadder(Hamiltonian):
     def get_label(self):
         mp = majorana_polarization(self.H, threshold=1.e-5, axis='y', site='all')
         values = list(mp.values())
-        mp_sum_left = sum(values[:len(values)//2])
-        mp_sum_right = sum(values[len(values)//2:])
+        mp_y_sum_left = sum(values[:len(values)//2])
+        mp_y_sum_right = sum(values[len(values)//2:])
         mp_tot = majorana_polarization(self.H, threshold=1.e-5, axis='total', site='all')
         values_tot = list(mp_tot.values())
         mp_tot_sum_left = sum(values_tot[:len(values_tot)//2])
         mp_tot_sum_right = sum(values_tot[len(values_tot)//2:])
-        return f"{mp_tot_sum_left}, {mp_tot_sum_right}, {mp_sum_left}, {mp_sum_right}, {count_mzm_states(self.H, threshold=1.e-5)}"
+        return f"{mp_tot_sum_left}, {mp_tot_sum_right}, {mp_y_sum_left}, {mp_y_sum_right}, {count_mzm_states(self.H, threshold=1.e-5)}"
 
 
 
 def generate_param_data(N, M, N_samples, flename):
-    data = pd.DataFrame(columns=['N', 'M', 'delta', 'q', 'mu', 'J', 'delta_q', 't', 'theta', 'mzm_states'])
+    data = pd.DataFrame(columns=['N', 'M', 'delta', 'q', 'mu', 'J', 'delta_q', 't', 'theta', 'mp_tot_l', 'mp_tor_r', 'mp_y_l', 'mp_y_r', 'num_zm'])
 
     deltas = np.random.choice(np.linspace(0, 3, 100), N_samples)
     qs = np.random.choice(np.linspace(0, 2*np.pi, 100), N_samples)
@@ -119,8 +119,8 @@ def generate_param_data(N, M, N_samples, flename):
 
     for i in tqdm(range(N_samples), desc='Generating data'): 
         ladder = SpinLadder(N, M, mus[i], deltas[i], Js[i], qs[i], delta_qs[i], ts[i], thetas[i])
-        num_mzm_states = count_mzm_states(ladder.H)
-        data.loc[i] = [N, M, deltas[i], qs[i], mus[i], Js[i], delta_qs[i], ts[i], thetas[i], num_mzm_states]
+        mp_tot_l, mp_tor_r, mp_y_l, mp_y_r, num_zm = ladder.get_label().split(', ')
+        data.loc[i] = [N, M, deltas[i], qs[i], mus[i], Js[i], delta_qs[i], ts[i], thetas[i], mp_tot_l, mp_tor_r, mp_y_l, mp_y_r, num_zm]
 
     data.to_csv(flename, index=False)
 
