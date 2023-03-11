@@ -7,6 +7,11 @@ from torch.utils.data import Dataset
 import torch
 from tqdm import tqdm
 
+DICTIONARY_NAME = 'dictionary.txt'
+MATRICES_DIR_NAME = 'matrices'
+EIGVALS_DIR_NAME = 'eigvals'
+EIGVEC_DIR_NAME = 'eigvec'
+
 
 class Hamiltonian(abc.ABC):
     @abc.abstractmethod
@@ -22,17 +27,19 @@ class HamiltionianDataset(Dataset):
 
     def __init__(
         self,
-        dictionary: str,
-        root_dir: str,
+        data_dir: str,
         data_limit: t.Optional[int] = None,
         label_idx: t.Union[int, t.Tuple[int, int]] = 1,
         threshold: float = 1.e-5,
+        eig_decomposition: bool = False,
     ):
-        self.dictionary = self.load_dict(dictionary)
-        self.root_dir = root_dir
+        dic_path = os.path.join(data_dir, DICTIONARY_NAME)
+        self.dictionary = self.load_dict(dic_path)
+        self.data_dir = data_dir
         self.data_limit = data_limit
         self.label_idx = label_idx
         self.threshold = threshold
+        self.eig_dec = eig_decomposition
 
       
     def __len__(self) -> int:
@@ -42,16 +49,19 @@ class HamiltionianDataset(Dataset):
             return len(self.dictionary)
 
 
-    def __getitem__(self, idx: t.Union[int, torch.Tensor]) -> t.Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, idx: t.Union[int, torch.Tensor]) -> t.Tuple[t.Tuple[torch.Tensor, torch.Tensor], t.Optional[t.Tuple[torch.Tensor, torch.Tensor]]]:
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        matrix_name = os.path.join(self.root_dir, self.dictionary[idx][0] + '.npy')
-        matrix = np.load(matrix_name)
-        matrix_r = np.real(matrix)
-        matrix_im = np.imag(matrix)
+        tensor = self.load_data(MATRICES_DIR_NAME, idx)
+        tensor = torch.stack((tensor.real, tensor.imag), dim=0)
 
-        tensor = torch.from_numpy(np.stack((matrix_r, matrix_im), axis=0)).float()
+        if self.eig_dec:
+            eigvals = self.load_data(EIGVALS_DIR_NAME, idx)
+            eigvec = self.load_data(EIGVEC_DIR_NAME, idx)
+            eig_dec = eigvals, eigvec
+        else:
+            eig_dec = torch.zeros((1, tensor.shape[1])), torch.zeros((tensor.shape[0], tensor.shape[1]))
 
         if type(self.label_idx) == int:
             label = abs(float(self.dictionary[idx][self.label_idx]))
@@ -64,7 +74,7 @@ class HamiltionianDataset(Dataset):
         label = torch.tensor(label)
         label = label.unsqueeze(0)
 
-        return (tensor, label)
+        return (tensor, label), eig_dec
 
 
     def load_dict(self, filepath: str) -> t.List[t.List[str]]:
@@ -75,26 +85,59 @@ class HamiltionianDataset(Dataset):
         parsed_data = [row.rstrip("\n").split(', ') for row in data]
 
         return parsed_data
+    
+
+    def load_data(self, dir: str, idx: int):
+        data_path = os.path.join(self.data_dir, dir, self.dictionary[idx][0] + '.npy')
+        data = np.load(data_path)
+        return torch.from_numpy(data).type(torch.complex64)
 
   
-def generate_data(hamiltionian: Hamiltonian, param_list: t.List[t.Dict[str, t.Any]], directory: str):
+def generate_data(
+    hamiltionian: Hamiltonian,
+    param_list: t.List[t.Dict[str, t.Any]],
+    directory: str,
+    eig_decomposition: bool = False,
+):
     for i, params in tqdm(enumerate(param_list), 'Generating data'):
+        filename = 'data_' + str(i)
         model = hamiltionian(**params)
         matrix = model.get_hamiltonian()
         label = model.get_label()
-        filename = 'data_' + str(i)
-        save_data(matrix, label, directory, filename)
+
+        if eig_decomposition:
+            eigvals, eigvec = np.linalg.eigh(matrix)
+        else:
+            eigvals, eigvec = None, None
+
+        save_data(matrix, label, directory, filename, eigvals, eigvec)
 
 
-def save_data(matrix: np.ndarray, label: str, root_dir: str, filename: str):
+def save_data(
+    matrix: np.ndarray,
+    label: str,
+    root_dir: str,
+    filename: str,
+    eigvals: t.Optional[np.ndarray] = None,
+    eigvec: t.Optional[np.ndarray] = None,
+):
     if not os.path.isdir(root_dir):
         os.makedirs(root_dir)
-    matrix_dir = os.path.join(root_dir, 'matrices')
+
+    save_matrix(matrix, root_dir, MATRICES_DIR_NAME, filename)
+
+    if eigvals is not None:
+        save_matrix(eigvals, root_dir, EIGVALS_DIR_NAME, filename)
+    if eigvec is not None:
+        save_matrix(eigvec, root_dir, EIGVEC_DIR_NAME, filename)
+
+    with open(os.path.join(root_dir, DICTIONARY_NAME), 'a') as dictionary:
+        dictionary.write(f'{filename}, {label}\n')
+
+
+def save_matrix(matrix: np.ndarray, root_dir: str, folder_name: str, file_name: str):
+    matrix_dir = os.path.join(root_dir, folder_name)
     if not os.path.isdir(matrix_dir):
         os.makedirs(matrix_dir)
-    matrix_name = os.path.join(matrix_dir, filename + '.npy')
-
+    matrix_name = os.path.join(matrix_dir, file_name + '.npy')
     np.save(matrix_name, matrix)
-
-    with open(os.path.join(root_dir, 'dictionary.txt'), 'a') as dictionary:
-        dictionary.write(f'{filename}, {label}\n')

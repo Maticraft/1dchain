@@ -12,8 +12,7 @@ from utils import save_autoencoder_params, save_autoencoder, save_data_list, plo
 
 
 # Paths
-dictionary_path = './data/spin_ladder/70_2/dictionary.txt'
-matrices_path = './data/spin_ladder/70_2/matrices'
+data_path = './data/spin_ladder/70_2_eig'
 save_dir = './autoencoder/spin_ladder/70_2'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
@@ -29,7 +28,7 @@ ylim = (-0.5, 0.5)
 
 
 # Model name
-model_name = 'symmetric_autoencoder_eigen_loss1_plot_3_4_k35d16'
+model_name = 'symmetric_autoencoder_new_eigen_loss1_plot_3_4_k35d16'
 
 # Params
 params = {
@@ -94,7 +93,7 @@ if not os.path.isdir(eigvals_sub_path):
 
 save_autoencoder_params(params, encoder_params, decoder_params, root_dir)
 
-data = HamiltionianDataset(dictionary_path, matrices_path, label_idx=(1, 2))
+data = HamiltionianDataset(data_path, label_idx=(3, 4), eig_decomposition=params['eigenstates_loss'])
 
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size
