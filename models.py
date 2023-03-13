@@ -356,11 +356,12 @@ def site_perm(x: torch.Tensor, N: int, block_size: int):
     return x_permuted
 
 
-def eigenvectors_loss(x_hat: torch.Tensor, eig_dec: t.Tuple[torch.Tensor, torch.Tensor], criterion: t.Callable):
+def eigenvectors_loss(x_hat: torch.Tensor, eig_dec: t.Tuple[torch.Tensor, torch.Tensor], criterion: t.Callable, zmt: float = 1e5):
     assert x_hat.shape[1] == 2, 'Wrong dimension of complex tensors'
     x_hat_complex = torch.complex(x_hat[:, 0, :, :], x_hat[:, 1, :, :])
     eigvals, eigvec = eig_dec
-    eigvals = eigvals.unsqueeze(dim=1)
+    eigvals = eigvals.unsqueeze(dim=1).expand(-1, eigvec.shape[1], -1)
+    eigvec[torch.abs(eigvals) < (1 / zmt)] *= 1000
     ev = torch.mul(eigvals, eigvec)
     xv = torch.matmul(x_hat_complex, eigvec)
     return criterion(torch.view_as_real(xv), torch.view_as_real(ev))

@@ -28,7 +28,7 @@ ylim = (-0.5, 0.5)
 
 
 # Model name
-model_name = 'symmetric_autoencoder_new_eigen_loss1_plot_3_4_k35d16'
+model_name = 'symmetric_autoencoder_inc_eigen_loss1_plot_3_4_k35d16'
 
 # Params
 params = {
