@@ -1,7 +1,11 @@
+import os
+import pickle
+
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from simpleML_training import MODEL_NAME, MODEL_SAVE_DIR
 from data_utils import Hamiltonian, generate_data
 from majorana_utils import count_mzm_states, majorana_polarization, plot_eigvals, plot_eigvec, plot_majorana_polarization
 
@@ -109,16 +113,16 @@ class SpinLadder(Hamiltonian):
 def generate_param_data(N, M, N_samples, flename):
     data = pd.DataFrame(columns=['N', 'M', 'delta', 'q', 'mu', 'J', 'delta_q', 't', 'theta', 'mp_tot_l', 'mp_tor_r', 'mp_y_l', 'mp_y_r', 'num_zm'])
 
-    deltas = np.random.choice(np.linspace(0, 3, 100), N_samples)
-    qs = np.random.choice(np.linspace(0, 2*np.pi, 100), N_samples)
-    mus = np.random.choice(np.linspace(0, 3, 100), N_samples)
-    Js = np.random.choice(np.linspace(0, 3, 100), N_samples)
-    delta_qs = np.random.choice(np.linspace(0, 2*np.pi, 100), N_samples)
-    ts = np.random.choice(np.linspace(0, 2, 100), N_samples)
-    thetas = np.random.choice(np.linspace(0, 2*np.pi, 100), N_samples)
+    deltas = np.random.normal(1.8, 1, size= N_samples)
+    qs = np.concatenate((np.random.normal(1.8, 0.5, size= N_samples // 2), np.random.normal(4.3, 0.5, size= N_samples // 2)))
+    mus = np.random.normal(1.8, 1, size= N_samples)
+    Js = np.random.normal(1.8, 1, size= N_samples)
+    delta_qs = np.concatenate((np.random.normal(0.2, 0.5, size= N_samples // 2), np.random.normal(5.9, 0.5, size= N_samples // 2)))
+    ts = np.random.normal(1, 0.5, size= N_samples)
+    thetas = np.random.normal(5, 1.5, size= N_samples)
 
     for i in tqdm(range(N_samples), desc='Generating data'): 
-        ladder = SpinLadder(N, M, mus[i], deltas[i], Js[i], qs[i], delta_qs[i], ts[i], thetas[i])
+        ladder = SpinLadder(N, M, mus[i], deltas[i], Js[i], qs[i], delta_qs[i], ts[i], theta = thetas[i])
         mp_tot_l, mp_tor_r, mp_y_l, mp_y_r, num_zm = ladder.get_label().split(', ')
         data.loc[i] = [N, M, deltas[i], qs[i], mus[i], Js[i], delta_qs[i], ts[i], thetas[i], mp_tot_l, mp_tor_r, mp_y_l, mp_y_r, num_zm]
 
@@ -127,10 +131,10 @@ def generate_param_data(N, M, N_samples, flename):
 
 def generate_params(N, M, N_samples):
     deltas = np.random.normal(1.8, 1, size= N_samples)
-    qs = np.concatenate(np.random.normal(1.8, 0.5, size= N_samples // 2), np.random.normal(4.3, 0.5, size= N_samples // 2))
+    qs = np.concatenate((np.random.normal(1.8, 0.5, size= N_samples // 2), np.random.normal(4.3, 0.5, size= N_samples // 2)))
     mus = np.random.normal(1.8, 1, size= N_samples)
     Js = np.random.normal(1.8, 1, size= N_samples)
-    delta_qs = np.concatenate(np.random.normal(0.2, 0.5, size= N_samples // 2), np.random.normal(5.9, 0.5, size= N_samples // 2))
+    delta_qs = np.concatenate((np.random.normal(0.2, 0.5, size= N_samples // 2), np.random.normal(5.9, 0.5, size= N_samples // 2)))
     ts = np.random.normal(1, 0.5, size= N_samples)
     thetas = np.random.normal(5, 1.5, size= N_samples)
 
@@ -150,17 +154,55 @@ def generate_params(N, M, N_samples):
 
     return params
 
+def generate_zm_params(N, M, N_samples, MLpredictor = None):
+    params = []
+    i = 0
+    while(len(params) < N_samples):
+        delta = np.random.normal(1.8, 1)
+        q = np.random.choice(np.array([np.random.normal(1.8, 0.5), np.random.normal(4.3, 0.5)]))
+        mu = np.random.normal(1.8, 1)
+        J = np.random.normal(1.8, 1)
+        delta_q = np.random.choice(np.array([np.random.normal(0.2, 0.5), np.random.normal(5.9, 0.5)]))
+        t = np.random.normal(1, 0.5)
+        theta = np.random.normal(5, 1.5)
+        if MLpredictor is not None:
+            X = [{'N':N, 'M':M, 'delta':delta, 'q':q, 'mu':mu, 'J':J, 'delta_q':delta_q, 't':t,  'theta':theta}]
+            X = pd.DataFrame(X)
+            Y = MLpredictor.predict(X)[0]
+        else:
+            ladder = SpinLadder(N, M, mu, delta, J, q, delta_q, t, theta=theta)
+            num_zm = count_mzm_states(ladder.H, threshold=1.e-5)
+            Y = num_zm > 0
+        if Y:
+            i += 1
+            if i % 1000 == 0:
+                print(f'{i} zero modes generated')
+            params.append(
+                {
+                    'N': N,
+                    'M': M,
+                    'delta': delta,
+                    'q': q,
+                    'mu': mu,
+                    'J': J,
+                    'delta_q': delta_q,
+                    't': t,
+                    'theta': theta
+                }
+            )
+    return params
 
 if __name__ == '__main__':
     N = 70
     M = 2
 
-    N_samples = 1000000
+    N_samples = 100000
 
-    generate_param_data(N, M, N_samples, './data/spin_ladder/spin_ladder_70_2.csv')
+    #generate_param_data(N, M, N_samples, './data/spin_ladder/spin_ladder_70_2.csv')
     
-    # params = generate_params(N, M, N_samples)
-    # generate_data(SpinLadder, params, './data/spin_ladder/70_2_eig', eig_decomposition=True)
+    # ML_predictor = pickle.load(open(os.path.join(MODEL_SAVE_DIR, MODEL_NAME + '.pkl'), 'rb'))
+    params = generate_zm_params(N, M, N_samples // 2) + generate_params(N, M, N_samples // 2)
+    generate_data(SpinLadder, params, './data/spin_ladder/70_2_ZM', eig_decomposition=True)
 
     # ladder = SpinLadder(**DEFAULT_PARAMS)
     # plot_majorana_polarization(ladder, './plots/spin_ladder/polarization_total', polaxis='total', string_num=2)
