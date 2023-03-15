@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from models import Decoder, DecoderEnsemble, Encoder, EncoderEnsemble
+from models import Decoder, DecoderEnsemble, Encoder, EncoderEnsemble, reconstruct_hamiltonian
 
 GENERAL_PARAMS_NAME = 'general_params.json'
 ENCODER_PARAMS_NAME = 'encoder_params.json'
@@ -140,3 +140,26 @@ def plot_convergence(results_path: str, save_path: str, read_label: bool = False
     plt.legend()
     plt.savefig(save_path)
     plt.close()
+
+
+def plot_matrix(matrix: np.ndarray, filepath: str):        
+    fig = plt.figure()
+    im = plt.imshow(matrix, cmap='PuOr', vmin = -0.5, vmax = 0.5)
+    cbar = fig.colorbar(im, shrink=0.9)
+    cbar.ax.tick_params(labelsize=35)
+    plt.savefig(filepath)
+    plt.close()
+
+
+def plot_test_matrices(
+    matrix: np.ndarray,
+    encoder: Encoder,
+    decoder: Decoder,
+    save_path_rec: str,
+    save_path_diff: str,
+    device: torch.device = torch.device('cpu')
+):
+    rec_matrix = reconstruct_hamiltonian(matrix, encoder, decoder, device)
+    plot_matrix(np.real(rec_matrix), save_path_rec.format('_real'))
+    plot_matrix(np.imag(rec_matrix), save_path_rec.format('_imag'))
+    plot_matrix(np.abs(rec_matrix - matrix), save_path_diff)

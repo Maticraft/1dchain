@@ -8,7 +8,7 @@ from data_utils import HamiltionianDataset
 from helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from majorana_utils import plot_autoencoder_eigvals
 from models import Encoder, Decoder, train_autoencoder, test_autoencoder
-from utils import save_autoencoder_params, save_autoencoder, save_data_list, plot_convergence
+from utils import save_autoencoder_params, save_autoencoder, save_data_list, plot_convergence, plot_test_matrices
 
 
 # Paths
@@ -25,6 +25,11 @@ x_axis = 'q'
 x_values = np.arange(0., np.pi, 0.1)
 xnorm = np.pi
 ylim = (-0.5, 0.5)
+
+# Reference hamiltonian params
+hamiltonian_sub_dir = 'hamiltonian'
+hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
+hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
@@ -91,6 +96,10 @@ eigvals_sub_path = os.path.join(root_dir, eigvals_sub_dir)
 if not os.path.isdir(eigvals_sub_path):
     os.makedirs(eigvals_sub_path)
 
+ham_sub_path = os.path.join(root_dir, hamiltonian_sub_dir)     
+if not os.path.isdir(ham_sub_path):
+    os.makedirs(ham_sub_path)
+
 save_autoencoder_params(params, encoder_params, decoder_params, root_dir)
 
 data = HamiltionianDataset(data_path, label_idx=(3, 4), eig_decomposition=params['eigenstates_loss'])
@@ -135,4 +144,8 @@ for epoch in range(1, params['epochs'] + 1):
 
     eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))
     plot_autoencoder_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim)
+    ham_auto_path = os.path.join(eigvals_sub_path, hamiltonian_plot_name.format(f'_ep{epoch}') + '{}')
+    ham_diff_path = os.path.join(eigvals_sub_path, hamiltonain_diff_plot_name.format(f'_ep{epoch}'))
+    plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, decoder, ham_sub_path)
+   
 plot_convergence(loss_path, convergence_path, read_label=True)
