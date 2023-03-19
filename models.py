@@ -40,6 +40,8 @@ class Decoder(nn.Module):
             - dilation: dilation of convolutional layer
             - kernel_num: number of kernels
             - hidden_size: number of hidden units
+            - use_strips: flag of using either full matrix or non-zero diagonal strips only
+
         '''
 
         super(Decoder, self).__init__()
@@ -54,29 +56,45 @@ class Decoder(nn.Module):
         self.upsample_method = kwargs.get('upsample_method', 'transpose')
         
         self.conv_num = kwargs.get('conv_num', 1)
-        self.kernel_size = kwargs.get('kernel_size', self.block_size)
-        self.kernel_size1 = kwargs.get('kernel_size1', self.kernel_size)
-        self.stride = kwargs.get('stride', self.block_size)
-        self.stride1 = kwargs.get('stride1', self.stride)
-        self.dilation = kwargs.get('dilation', 1)
-        self.dilation1 = kwargs.get('dilation1', self.dilation)
+        self.kernel_size = self._format_2d_size(kwargs.get('kernel_size', self.block_size))
+        self.kernel_size1 = self._format_2d_size(kwargs.get('kernel_size1', self.kernel_size))
+        self.stride = self._format_2d_size(kwargs.get('stride', self.block_size))
+        self.stride1 = self._format_2d_size(kwargs.get('stride1', self.stride))
+        self.dilation = self._format_2d_size(kwargs.get('dilation', 1))
+        self.dilation1 = self._format_2d_size(kwargs.get('dilation1', self.dilation))
         self.kernel_num = kwargs.get('kernel_num', 32)
         self.kernel_num1 = kwargs.get('kernel_num1', self.kernel_num)
         self.activation = kwargs.get('activation', 'relu')
+        self.use_strips = kwargs.get('use_strips', False)
+
+        if self.use_strips:
+            self.site_size = (1, self.N)
+        else:
+            self.site_size = (self.N, self.N)
 
         sf = kwargs.get('scale_factor', 2*self.stride)
-        self.scale_factor = self._get_scale_factor(sf)
+        self.scale_factor = [self._format_2d_size(x) for x in self._get_scale_factor(sf)]
 
-        self.convs_input_size = int(self._get_convs_input_size())
+        self.convs_input_size = int(self._get_convs_input_size(0)), int(self._get_convs_input_size(1))
 
         if self.conv_num > 1:
-            self.fcs_output_size = (self.convs_input_size ** 2) * self.kernel_num
+            self.fcs_output_size = (self.convs_input_size[0] * self.convs_input_size[1]) * self.kernel_num
         else:
-            self.fcs_output_size = (self.convs_input_size ** 2) * self.kernel_num1
+            self.fcs_output_size = (self.convs_input_size[0] * self.convs_input_size[1]) * self.kernel_num1
 
         self.fcs = self._get_fcs()
         self.convs = self._get_convs()
 
+    def _format_2d_size(self, x: t.Any):
+        if type(x) == tuple:
+            return x
+        elif type(x) == list:
+            return tuple(x)
+        elif type(x) == int:
+            return (x, x)
+        else:
+            raise TypeError("Wrong type of kernel size")
+        
     def _get_activation(self):
         if self.activation == 'relu':
             return nn.ReLU()
@@ -117,15 +135,15 @@ class Decoder(nn.Module):
 
         return nn.Sequential(*convs)
 
-    def _get_convs_input_size(self):
+    def _get_convs_input_size(self, dim):
         if self.upsample_method == 'transpose':
-            input_size = (self.N*self.block_size - self.dilation1*(self.kernel_size1-1) - 1) // self.stride1 + 1
+            input_size = (self.site_size[dim]*self.block_size - self.dilation1[dim]*(self.kernel_size1[dim]-1) - 1) // self.stride1[dim] + 1
             for _ in range(1, self.conv_num):
-                input_size = (input_size - self.dilation*(self.kernel_size-1) - 1) // self.stride + 1
+                input_size = (input_size - self.dilation[dim]*(self.kernel_size[dim]-1) - 1) // self.stride[dim] + 1
         else:
-            input_size = round(self.N*self.block_size / self.scale_factor[0])
+            input_size = round(self.site_size[dim]*self.block_size / self.scale_factor[0][dim])
             for i in range(1, self.conv_num):
-                input_size = round(input_size / self.scale_factor[i])
+                input_size = round(input_size / self.scale_factor[i][dim])
         return input_size
 
     def _get_fcs(self):
@@ -140,8 +158,8 @@ class Decoder(nn.Module):
         fcs.append(nn.Linear(self.hidden_size, self.fcs_output_size))
         return nn.Sequential(*fcs)
 
-    def _get_scale_factor(self, sf: t.Union[float, t.List[float]]):
-        if type(sf) == float or type(sf) == int:
+    def _get_scale_factor(self, sf: t.Any):
+        if type(sf) == float or type(sf) == int or type(sf) == tuple:
             return [sf for _ in range(self.conv_num)]
         elif type(sf) == list:
             if len(sf) != self.conv_num:
@@ -149,11 +167,29 @@ class Decoder(nn.Module):
             return sf
         else:
             raise TypeError("Wrong type of scale factor: must be either int, float or list")
+        
+    def _get_matrix_from_strips(self, strips: torch.Tensor):
+        matrix = torch.zeros((strips.shape[0], 2, self.N*self.block_size, self.N*self.block_size)).to(strips.device)
+        strips_split = torch.tensor_split(strips, self.channel_num // 2, dim=1)
+        for i, strip in enumerate(strips_split):
+            offset = i - (len(strips_split) // 2)
+            strip_off = max(0, -offset)
+            matrix_off = abs(offset)*self.block_size
+            for j in range(self.N - abs(offset)):
+                idx0 =  j*self.block_size
+                idx1 = (j+1)*self.block_size
+                if offset >= 0:
+                    matrix[:, :, idx0: idx1, idx0 + matrix_off: idx1 + matrix_off] = strip[:, :, :, idx0 + strip_off: idx1 + strip_off]
+                else:
+                    matrix[:, :, idx0 + matrix_off: idx1 + matrix_off, idx0: idx1] = strip[:, :, :, idx0 + strip_off: idx1 + strip_off]
+        return matrix
 
     def forward(self, x: torch.Tensor):
         x = self.fcs(x)
-        x = x.view(-1, self.kernel_num, self.convs_input_size, self.convs_input_size)
+        x = x.view(-1, self.kernel_num, self.convs_input_size[0], self.convs_input_size[1])
         x = self.convs(x)
+        if self.use_strips:
+            x = self._get_matrix_from_strips(x)  
         return x
 
 
@@ -207,6 +243,7 @@ class Encoder(nn.Module):
             - dilation: dilation of convolutional layer
             - kernel_num: number of kernels
             - hidden_size: number of hidden units
+            - use_strips: flag of using either full matrix or non-zero diagonal strips only
         '''
         super(Encoder, self).__init__()
         self.channel_num = input_size[0]
@@ -214,26 +251,42 @@ class Encoder(nn.Module):
         self.block_size = input_size[2]
         self.representation_dim = representation_dim
 
-        self.kernel_size = kwargs.get('kernel_size', self.block_size)
-        self.kernel_size1 = kwargs.get('kernel_size1', self.kernel_size)
-        self.stride = kwargs.get('stride', self.block_size)
-        self.stride1 = kwargs.get('stride1', self.stride)
-        self.dilation = kwargs.get('dilation', 1)
-        self.dilation1 = kwargs.get('dilation1', self.dilation)
+        self.kernel_size = self._format_2d_size(kwargs.get('kernel_size', self.block_size))
+        self.kernel_size1 = self._format_2d_size(kwargs.get('kernel_size1', self.kernel_size))
+        self.stride = self._format_2d_size(kwargs.get('stride', self.block_size))
+        self.stride1 = self._format_2d_size(kwargs.get('stride1', self.stride))
+        self.dilation = self._format_2d_size(kwargs.get('dilation', 1))
+        self.dilation1 = self._format_2d_size(kwargs.get('dilation1', self.dilation))
         self.fc_num = kwargs.get('fc_num', 2)
         self.conv_num = kwargs.get('conv_num', 1)
         self.kernel_num = kwargs.get('kernel_num', 32)
         self.kernel_num1 = kwargs.get('kernel_num1', self.kernel_num)
         self.hidden_size = kwargs.get('hidden_size', 128)
         self.activation = kwargs.get('activation', 'relu')
+        self.use_strips = kwargs.get('use_strips', False)
+
+        if self.use_strips:
+            self.site_size = (1, self.N)
+        else:
+            self.site_size = (self.N, self.N)
 
         if self.conv_num > 1:
-            self.convs_output_size = (self._get_convs_output_size() ** 2) * self.kernel_num
+            self.convs_output_size = (self._get_convs_output_size(0) * self._get_convs_output_size(1)) * self.kernel_num
         else:
-            self.convs_output_size = (self._get_convs_output_size() ** 2) * self.kernel_num1
+            self.convs_output_size = (self._get_convs_output_size(0) * self._get_convs_output_size(1)) * self.kernel_num1
 
         self.convs = self._get_convs()
         self.fcs = self._get_fcs()
+
+    def _format_2d_size(self, x: t.Any):
+        if type(x) == tuple:
+            return x
+        elif type(x) == list:
+            return tuple(x)
+        elif type(x) == int:
+            return (x, x)
+        else:
+            raise TypeError("Wrong type of kernel size")
 
     def _get_activation(self):
         if self.activation == 'relu':
@@ -260,10 +313,10 @@ class Encoder(nn.Module):
             convs.append(nn.BatchNorm2d(self.kernel_num))
         return nn.Sequential(*convs)
 
-    def _get_convs_output_size(self):
-        output_size = (self.N*self.block_size - self.dilation1*(self.kernel_size1-1) - 1) // self.stride1 + 1
+    def _get_convs_output_size(self, dim):
+        output_size = (self.site_size[dim]*self.block_size - self.dilation1[dim]*(self.kernel_size1[dim]-1) - 1) // self.stride1[dim] + 1
         for _ in range(1, self.conv_num):
-            output_size = (output_size - self.dilation*(self.kernel_size-1) - 1) // self.stride + 1
+            output_size = (output_size - self.dilation[dim]*(self.kernel_size[dim]-1) - 1) // self.stride[dim] + 1
         return output_size
     
     def _get_fcs(self):
@@ -277,8 +330,24 @@ class Encoder(nn.Module):
             fcs.append(nn.BatchNorm1d(self.hidden_size))
         fcs.append(nn.Linear(self.hidden_size, self.representation_dim))
         return nn.Sequential(*fcs)
+
+    def _get_strip(self, x: torch.Tensor, offset: int):
+        strip = torch.zeros((x.shape[0], x.shape[1], self.block_size, self.N*self.block_size)).to(x.device)
+        strip_off = max(0, -offset)
+        idx_off = abs(offset)*self.block_size
+        for i in range(self.N - abs(offset)):
+            idx0 =  i*self.block_size
+            idx1 = (i+1)*self.block_size
+            if offset >= 0:
+                strip[:, :, :, idx0 + strip_off: idx1 + strip_off] = x[:, :, idx0: idx1, idx0 + idx_off: idx1 + idx_off]
+            else:
+                strip[:, :, :, idx0 + strip_off: idx1 + strip_off] = x[:, :, idx0 + idx_off: idx1 + idx_off, idx0: idx1]
+        return strip
     
     def forward(self, x: torch.Tensor):
+        if self.use_strips:
+            strip_bound = ((self.channel_num // 2) - 1) // 2
+            x = torch.cat([self._get_strip(x, i) for i in range(-strip_bound, strip_bound + 1)], dim=1)
         x = self.convs(x)
         x = x.view(-1, self.convs_output_size)
         x = self.fcs(x)
