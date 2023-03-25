@@ -8,9 +8,9 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 
-DATA_FRAME_PATH = './data/spin_ladder/spin_ladder_70_2.csv'
+DATA_FRAME_PATH = './data/spin_ladder/spin_ladder_70_2_red_dist.csv'
 MODEL_SAVE_DIR = './simpleML/spin_ladder/70_2'
-MODEL_NAME = 'rf_classifier'
+MODEL_NAME = 'rf_classifier_red_dist'
 
 if __name__ == '__main__':
 
@@ -20,7 +20,7 @@ if __name__ == '__main__':
     df = pd.read_csv(DATA_FRAME_PATH)
 
     # Take 10% of the data with zero MZM states and all the data with non-zero MZM states
-    df = df[df['num_zm'] == 0].sample(frac=0.1).append(df[df['num_zm'] > 0])
+    df = df[df['num_zm'] == 0].sample(frac=0.02).append(df[df['num_zm'] > 0])
     df['zm_exists'] = df['num_zm'] > 0
     print(df.groupby('num_zm').count())
 

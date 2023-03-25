@@ -12,8 +12,8 @@ from utils import save_autoencoder_params, save_autoencoder, save_data_list, plo
 
 
 # Paths
-data_path = './data/spin_ladder/70_2_eig'
-save_dir = './autoencoder/spin_ladder/70_2'
+data_path = './data/spin_ladder/70_2_RedDist'
+save_dir = './autoencoder/spin_ladder/70_2_RedDist'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -33,14 +33,14 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'symmetric_autoencoder_inc_eigen_loss1_plot_3_4_k35d16'
+model_name = 'symmetric_autoencoder_strips_v3'
 
 # Params
 params = {
     'epochs': 120,
     'batch_size': 512,
     'N': 140,
-    'in_channels': 2,
+    'in_channels': 10,
     'block_size': 4,
     'representation_dim': 100,
     'lr': 1.e-5,
@@ -53,35 +53,37 @@ params = {
 
 # Architecture
 encoder_params = {
-    'kernel_size': 2,
-    'kernel_size1': 35,
-    'stride': 2,
-    'stride1': 1,
+    'kernel_size': (1, 2),
+    'kernel_size1': (4, 8),
+    'stride': (1, 1),
+    'stride1': 4,
     'dilation': 1,
-    'dilation1': 16,
+    'dilation1': 1,
     'fc_num': 4,
     'conv_num': 3,
-    'kernel_num': 128,
+    'kernel_num': 64,
     'kernel_num1': 64,
     'hidden_size': 256,
     'activation': 'leaky_relu',
+    'use_strips': True,
 }
 
 decoder_params = {
-    'kernel_size': 2,
-    'kernel_size1': 35,
-    'stride': 2,
-    'stride1': 1,
+    'kernel_size': (1, 2),
+    'kernel_size1': (4, 8),
+    'stride': (1, 1),
+    'stride1': 4,
     'dilation': 1,
-    'dilation1': 16,
+    'dilation1': 1,
     'fc_num': 4,
     'conv_num': 3,
-    'kernel_num': 128,
+    'kernel_num': 64,
     'kernel_num1': 64,
     'hidden_size': 256,
     'upsample_method': 'transpose',
     'scale_factor': 2, # does matter only for upsample_method 'nearest' or 'bilinear'
     'activation': 'leaky_relu',
+    'use_strips': True,
 }
 
 # Set the root dir
@@ -144,8 +146,8 @@ for epoch in range(1, params['epochs'] + 1):
 
     eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))
     plot_autoencoder_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim)
-    ham_auto_path = os.path.join(eigvals_sub_path, hamiltonian_plot_name.format(f'_ep{epoch}') + '{}')
-    ham_diff_path = os.path.join(eigvals_sub_path, hamiltonain_diff_plot_name.format(f'_ep{epoch}'))
-    plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, decoder, ham_sub_path)
+    ham_auto_path = os.path.join(ham_sub_path, hamiltonian_plot_name.format(f'_ep{epoch}' + '{}'))
+    ham_diff_path = os.path.join(ham_sub_path, hamiltonain_diff_plot_name.format(f'_ep{epoch}'))
+    plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, decoder, ham_auto_path, ham_diff_path, device)
    
 plot_convergence(loss_path, convergence_path, read_label=True)
