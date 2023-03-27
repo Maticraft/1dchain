@@ -35,7 +35,7 @@ class SpinLadder(Hamiltonian):
         for i in range(N):
             for j in range(M):
 
-                H[self._idx(i, j) : self._idx(i, j) + self.block_size, self._idx(i, j) : self._idx(i, j) + self.block_size] = self.J*self._spin_block_i_cdagger_c(self.mu, i, j, self.theta, self.delta_q, self.q, self.S, self.B)
+                H[self._idx(i, j) : self._idx(i, j) + self.block_size, self._idx(i, j) : self._idx(i, j) + self.block_size] = self._spin_block_i_cdagger_c(self.mu, i, j, self.theta, self.delta_q, self.q, self.J*self.S, self.B)
 
                 k = self.block_size // 2
                 H[self._idx(i, j) : self._idx(i, j) + k, self._idx(i, j) + k : self._idx(i, j) + self.block_size] += self._delta_block_i_cdagger_cdagger(self.delta)
@@ -131,10 +131,12 @@ def generate_param_data(N, M, N_samples, flename):
 
 def generate_params(N, M, N_samples):
     deltas = np.random.normal(1.8, 1, size= N_samples)
-    qs = np.concatenate((np.random.normal(1.8, 0.5, size= N_samples // 2), np.random.normal(4.3, 0.5, size= N_samples // 2)))
+    #qs = np.concatenate((np.random.normal(1.8, 0.5, size= N_samples // 2), np.random.normal(4.3, 0.5, size= N_samples // 2)))
+    q = np.pi / 2
     mus = np.random.normal(1.8, 1, size= N_samples)
     Js = np.random.normal(1.8, 1, size= N_samples)
-    delta_qs = np.concatenate((np.random.normal(0.2, 0.5, size= N_samples // 2), np.random.normal(5.9, 0.5, size= N_samples // 2)))
+    delta_q = np.pi
+    #delta_qs = np.concatenate((np.random.normal(0.2, 0.5, size= N_samples // 2), np.random.normal(5.9, 0.5, size= N_samples // 2)))
     ts = np.random.normal(1, 0.5, size= N_samples)
     theta = np.pi / 2
 
@@ -143,10 +145,10 @@ def generate_params(N, M, N_samples):
             'N': N,
             'M': M,
             'delta': deltas[i],
-            'q': qs[i],
+            'q': q,
             'mu': mus[i],
             'J': Js[i],
-            'delta_q': delta_qs[i],
+            'delta_q': delta_q,
             't': ts[i],
             'theta': theta
         } for i in range(N_samples)
@@ -196,14 +198,14 @@ if __name__ == '__main__':
     N = 70
     M = 2
 
-    N_samples = 10000
+    N_samples = 100000
 
     # generate_param_data(N, M, N_samples, './data/spin_ladder/spin_ladder_70_2_red_dist.csv')
     
-    ML_predictor = pickle.load(open(os.path.join(MODEL_SAVE_DIR, MODEL_NAME + '.pkl'), 'rb'))
-    params = generate_zm_params(N, M, N_samples // 2, ML_predictor) + generate_params(N, M, N_samples // 2)
-    #params = generate_params(N, M, N_samples)
-    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistBal', eig_decomposition=True)
+    # ML_predictor = pickle.load(open(os.path.join(MODEL_SAVE_DIR, MODEL_NAME + '.pkl'), 'rb'))
+    # params = generate_zm_params(N, M, N_samples // 2, ML_predictor) + generate_params(N, M, N_samples // 2)
+    params = generate_params(N, M, N_samples)
+    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistFixed', eig_decomposition=True)
 
     # ladder = SpinLadder(**DEFAULT_PARAMS)
     # plot_majorana_polarization(ladder, './plots/spin_ladder/polarization_total', polaxis='total', string_num=2)
