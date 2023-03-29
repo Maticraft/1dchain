@@ -34,7 +34,7 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'symmetric_autoencoder_strips_v3'
+model_name = 'symmetric_autoencoder_strips_v4'
 
 # Params
 params = {
@@ -56,14 +56,14 @@ params = {
 
 # Architecture
 encoder_params = {
-    'kernel_size': (1, 2),
-    'kernel_size1': (4, 8),
+    'kernel_size': (1, 140),
+    'kernel_size1': (1, 140),
     'stride': (1, 1),
-    'stride1': 4,
-    'dilation': 1,
-    'dilation1': 1,
+    'stride1': 1,
+    'dilation': 4,
+    'dilation1': 4,
     'fc_num': 4,
-    'conv_num': 3,
+    'conv_num': 1,
     'kernel_num': 64,
     'kernel_num1': 64,
     'hidden_size': 256,
@@ -72,14 +72,14 @@ encoder_params = {
 }
 
 decoder_params = {
-    'kernel_size': (1, 2),
-    'kernel_size1': (4, 8),
+    'kernel_size': (1, 140),
+    'kernel_size1': (1, 140),
     'stride': (1, 1),
-    'stride1': 4,
-    'dilation': 1,
-    'dilation1': 1,
+    'stride1': 1,
+    'dilation': 4,
+    'dilation1': 4,
     'fc_num': 4,
-    'conv_num': 3,
+    'conv_num': 1,
     'kernel_num': 64,
     'kernel_num1': 64,
     'hidden_size': 256,
