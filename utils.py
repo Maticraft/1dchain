@@ -142,9 +142,12 @@ def plot_convergence(results_path: str, save_path: str, read_label: bool = False
     plt.close()
 
 
-def plot_matrix(matrix: np.ndarray, filepath: str):        
+def plot_matrix(matrix: np.ndarray, filepath: str, **kwargs: t.Dict[str, t.Any]):
+    vmin = kwargs.get('vmin', -0.5)        
+    vmax = kwargs.get('vmax', 0.5)
+    norm = kwargs.get('norm', None)
     fig = plt.figure()
-    im = plt.imshow(matrix, cmap='PuOr', vmin = -0.5, vmax = 0.5)
+    im = plt.imshow(matrix, cmap='PuOr', vmin = vmin, vmax = vmax, norm=norm)
     cbar = fig.colorbar(im, shrink=0.9)
     cbar.ax.tick_params(labelsize=35)
     plt.savefig(filepath)
@@ -162,4 +165,4 @@ def plot_test_matrices(
     rec_matrix = reconstruct_hamiltonian(matrix, encoder, decoder, device)
     plot_matrix(np.real(rec_matrix), save_path_rec.format('_real'))
     plot_matrix(np.imag(rec_matrix), save_path_rec.format('_imag'))
-    plot_matrix(np.abs(rec_matrix - matrix), save_path_diff)
+    plot_matrix(np.abs(rec_matrix - matrix), save_path_diff, vmin = 1.e-7, vmax = 1, norm = 'log')
