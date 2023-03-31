@@ -38,13 +38,17 @@ def get_eigvals(
     encoder: nn.Module,
     decoder: nn.Module,
     device: t.Optional[torch.device] = None,
+    return_ref_eigvals: bool = False,
 ):
 
-    energies = np.linalg.eigvalsh(matrix)
     H_rec = reconstruct_hamiltonian(matrix, encoder, decoder, device)
     auto_energies = np.linalg.eigvalsh(H_rec)
 
-    return energies, auto_energies
+    if return_ref_eigvals:
+        energies = np.linalg.eigvalsh(matrix)
+        return auto_energies, energies
+    else:
+        return auto_energies
 
 
 def reconstruct_hamiltonian(H: np.ndarray, encoder: nn.Module, decoder: nn.Module, device: torch.device = torch.device('cpu')):

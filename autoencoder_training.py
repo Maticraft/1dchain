@@ -9,7 +9,7 @@ from helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from models import Encoder, Decoder
 from models_utils import train_autoencoder, test_autoencoder
 from models_files import save_autoencoder_params, save_autoencoder, save_data_list
-from models_plots import plot_convergence, plot_test_matrices, plot_autoencoder_eigvals
+from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 
 # Paths
@@ -146,7 +146,7 @@ for epoch in range(1, params['epochs'] + 1):
     save_data_list([epoch, tr_loss, tr_edge_loss, tr_eig_loss, te_loss, te_edge_loss, te_eig_loss], loss_path)
 
     eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))
-    plot_autoencoder_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim)
+    plot_test_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim)
     ham_auto_path = os.path.join(ham_sub_path, hamiltonian_plot_name.format(f'_ep{epoch}' + '{}'))
     ham_diff_path = os.path.join(ham_sub_path, hamiltonain_diff_plot_name.format(f'_ep{epoch}'))
     plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, decoder, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device)
