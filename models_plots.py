@@ -118,7 +118,7 @@ def simple_plot(
         plt.ylim(kwargs['ylim'])
     if 'xlim' in kwargs:
         plt.xlim(kwargs['xlim'])
-    if 'xnorm' in kwargs:
+    if 'xnorm' in kwargs and kwargs['xnorm']:
         xvalues = xvalues / kwargs['xnorm']
         if kwargs['xnorm'] == np.pi:
             xnorm = 'π'

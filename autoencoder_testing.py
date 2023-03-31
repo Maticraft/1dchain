@@ -2,14 +2,14 @@ import os
 
 import numpy as np
 
-from helical_ladder import DEFAULT_PARAMS, SpinLadder
+from helical_ladder import SpinLadder
 from majorana_utils import plot_eigvals
 from models_files import load_autoencoder
 from models_plots import plot_test_matrices, plot_test_eigvals
 
 
 # Paths
-autoencoder_dir = './autoencoder/spin_ladder/70_2_RedDistSimple/100/symmetric_autoencoder_strips_v3'
+autoencoder_dir = './autoencoder/spin_ladder/70_2_RedDistFixed/100/symmetric_autoencoder_strips_v4'
 test_dir_name = 'tests_ep{}'
 
 eigvals_auto_plot_name = 'eigvals_spectre_autoencoder_{}.png'
@@ -17,19 +17,19 @@ eigvals_diff_plot_name = 'eigvals_spectre_diff_{}.png'
 eigvals_ref_plot_name = 'eigvals_spectre_ref_{}.png'
 
 hamiltonian_auto_plot_name = 'hamiltonian_autoencoder{}.png'
-hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
+hamiltonain_diff_plot_name = 'hamiltonian_diff.png'
 hamiltonian_ref_plot_name = 'hamiltonian{}.png'
 
-epoch = 150
+epoch = 120
 
 # Data params
-params = DEFAULT_PARAMS.copy()
+params = {'N': 70, 'M': 2, 'delta': 1.8, 'mu': 1.8, 'q': np.pi/2, 'J': 1.8, 'delta_q': np.pi, 't': 1}
 
 # Eigvals plot params
-x_axis = 'q'
-x_values = np.arange(0., np.pi, 0.1)
+x_axis = 'delta_q'
+x_values = np.concatenate((np.arange(0., np.pi, 0.1), np.arange(np.pi, 2*np.pi, 0.1)))
 xnorm = np.pi
-ylim = (-0.5, 0.5) 
+ylim = (-2, 2) 
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------------------
