@@ -13,8 +13,8 @@ from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDist'
-save_dir = './autoencoder/spin_ladder/70_2_RedDist'
+data_path = './data/spin_ladder/70_2_RedDist100q'
+save_dir = './autoencoder/spin_ladder/70_2_RedDist100q'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -47,7 +47,7 @@ params = {
     'lr': 1.e-5,
     'edge_loss': False,
     'edge_loss_weight': 1.,
-    'eigenstates_loss': True,
+    'eigenstates_loss': False,
     'eigenstates_loss_weight': 1.
 }
 
@@ -105,7 +105,7 @@ if not os.path.isdir(ham_sub_path):
 
 save_autoencoder_params(params, encoder_params, decoder_params, root_dir)
 
-data = HamiltionianDataset(data_path, label_idx=(3, 4), eig_decomposition=params['eigenstates_loss'])
+data = HamiltionianDataset(data_path, label_idx=(3, 4), eig_decomposition=params['eigenstates_loss'], format='csr')
 
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size

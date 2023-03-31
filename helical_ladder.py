@@ -129,14 +129,13 @@ def generate_param_data(N, M, N_samples, flename):
     data.to_csv(flename, index=False)
 
 
-def generate_params(N, M, N_samples):
+def generate_params(N, M, N_samples, N_qs):
     deltas = np.random.normal(1.8, 1, size= N_samples)
-    #qs = np.concatenate((np.random.normal(1.8, 0.5, size= N_samples // 2), np.random.normal(4.3, 0.5, size= N_samples // 2)))
-    q = np.pi / 2
+    qs = np.arange(0, 2*np.pi, 2*np.pi / N_qs)
+    delta_qs = np.arange(0, 2*np.pi, 2*np.pi / N_qs)
+    q_ids = np.random.choice(N_qs, size= N_samples)
     mus = np.random.normal(1.8, 1, size= N_samples)
     Js = np.random.normal(1.8, 1, size= N_samples)
-    delta_q = np.pi
-    #delta_qs = np.concatenate((np.random.normal(0.2, 0.5, size= N_samples // 2), np.random.normal(5.9, 0.5, size= N_samples // 2)))
     ts = np.random.normal(1, 0.5, size= N_samples)
     theta = np.pi / 2
 
@@ -145,10 +144,10 @@ def generate_params(N, M, N_samples):
             'N': N,
             'M': M,
             'delta': deltas[i],
-            'q': q,
+            'q': qs[q_ids[i]],
             'mu': mus[i],
             'J': Js[i],
-            'delta_q': delta_q,
+            'delta_q': delta_qs[q_ids[i]],
             't': ts[i],
             'theta': theta
         } for i in range(N_samples)
@@ -198,14 +197,17 @@ if __name__ == '__main__':
     N = 70
     M = 2
 
-    N_samples = 100000
+    N_samples = 1000000
+    N_qs = 100
 
     # generate_param_data(N, M, N_samples, './data/spin_ladder/spin_ladder_70_2_red_dist.csv')
     
     # ML_predictor = pickle.load(open(os.path.join(MODEL_SAVE_DIR, MODEL_NAME + '.pkl'), 'rb'))
     # params = generate_zm_params(N, M, N_samples // 2, ML_predictor) + generate_params(N, M, N_samples // 2)
-    params = generate_params(N, M, N_samples)
-    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistFixed', eig_decomposition=True)
+    params = generate_params(N, M, N_samples, N_qs)
+    #generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistFixedStd', eig_decomposition=True)
+    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDist100q', eig_decomposition=False, format='csr')
+
 
     # ladder = SpinLadder(**DEFAULT_PARAMS)
     # plot_majorana_polarization(ladder, './plots/spin_ladder/polarization_total', polaxis='total', string_num=2)
