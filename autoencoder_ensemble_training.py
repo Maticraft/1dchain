@@ -6,9 +6,10 @@ import torch
 
 from data_utils import HamiltionianDataset
 from helical_ladder import  DEFAULT_PARAMS, SpinLadder
-from majorana_utils import plot_autoencoder_eigvals
-from models import EncoderEnsemble, DecoderEnsemble, train_autoencoder, test_autoencoder
-from utils import save_autoencoder_params, save_autoencoder, save_data_list, plot_convergence
+from models import EncoderEnsemble, DecoderEnsemble
+from models_utils import train_autoencoder, test_autoencoder
+from models_files import save_autoencoder_params, save_autoencoder, save_data_list
+from models_plots import plot_convergence, plot_autoencoder_eigvals
 
 
 # Paths

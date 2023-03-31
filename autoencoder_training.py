@@ -6,9 +6,10 @@ import torch
 
 from data_utils import HamiltionianDataset
 from helical_ladder import  DEFAULT_PARAMS, SpinLadder
-from majorana_utils import plot_autoencoder_eigvals
-from models import Encoder, Decoder, train_autoencoder, test_autoencoder
-from utils import save_autoencoder_params, save_autoencoder, save_data_list, plot_convergence, plot_test_matrices
+from models import Encoder, Decoder
+from models_utils import train_autoencoder, test_autoencoder
+from models_files import save_autoencoder_params, save_autoencoder, save_data_list
+from models_plots import plot_convergence, plot_test_matrices, plot_autoencoder_eigvals
 
 
 # Paths
@@ -148,6 +149,6 @@ for epoch in range(1, params['epochs'] + 1):
     plot_autoencoder_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim)
     ham_auto_path = os.path.join(ham_sub_path, hamiltonian_plot_name.format(f'_ep{epoch}' + '{}'))
     ham_diff_path = os.path.join(ham_sub_path, hamiltonain_diff_plot_name.format(f'_ep{epoch}'))
-    plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, decoder, ham_auto_path, ham_diff_path, device)
+    plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, decoder, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device)
    
 plot_convergence(loss_path, convergence_path, read_label=True)

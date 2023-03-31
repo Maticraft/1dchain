@@ -5,7 +5,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from data_utils import Hamiltonian
-from models import Encoder, Decoder, reconstruct_hamiltonian
 
 
 def count_mzm_states(H: np.ndarray, threshold = 1.e-5):
@@ -63,54 +62,23 @@ def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: t.List[t.Any], params:
         ladder = model(**model_params)
         energies.append(np.linalg.eigvalsh(ladder.get_hamiltonian()))
 
+    xnorm = None
     if 'ylim' in kwargs:
         plt.ylim(kwargs['ylim'])
     if 'xlim' in kwargs:
         plt.xlim(kwargs['xlim'])
     if 'xnorm' in kwargs:
         xparams = xparams / kwargs['xnorm']
-
-    plt.plot(xparams, energies)
-    plt.xlabel('q/π')
-    plt.ylabel('Energy')
-    plt.savefig(filename)
-    plt.close()
-
-
-def plot_autoencoder_eigvals(
-    model: Hamiltonian,
-    encoder: Encoder,
-    decoder: Decoder,
-    xaxis: str,
-    xparams: t.List[t.Any],
-    params: t.Dict[str, t.Any],
-    filename: str,
-    **kwargs: t.Dict[str, t.Any]
-):
-    energies = []
-    for x in xparams:
-        model_params = params.copy()
-        model_params[xaxis] = x
-        param_model = model(**model_params)
-
-        H = param_model.get_hamiltonian()
-
-        if 'device' in kwargs:
-            H_rec = reconstruct_hamiltonian(H, encoder, decoder, kwargs['device'])
+        if kwargs['xnorm'] == np.pi:
+            xnorm = 'π'
         else:
-            H_rec = reconstruct_hamiltonian(H, encoder, decoder)
-
-        energies.append(np.linalg.eigvalsh(H_rec))
-
-    if 'ylim' in kwargs:
-        plt.ylim(kwargs['ylim'])
-    if 'xlim' in kwargs:
-        plt.xlim(kwargs['xlim'])
-    if 'xnorm' in kwargs:
-        xparams = xparams / kwargs['xnorm']
+            xnorm = kwargs['xnorm']
 
     plt.plot(xparams, energies)
-    plt.xlabel('q/π')
+    if xnorm:
+        plt.xlabel(f'{xaxis}/{xnorm}')
+    else:
+        plt.xlabel(f'{xaxis}')
     plt.ylabel('Energy')
     plt.savefig(filename)
     plt.close()
