@@ -385,3 +385,201 @@ class EncoderEnsemble(nn.Module):
         zs = [encoder(x) for encoder in self.encoders] + ezs
         z = torch.cat(zs, dim=-1)
         return self.ensembler(z)
+
+
+class PositionalDecoder(nn.Module):
+    def __init__(self, representation_dim: t.Tuple[int, int], output_size: t.Tuple[int, int, int], **kwargs: t.Dict[str, t.Any]):
+        super(PositionalDecoder, self).__init__()
+        self.channel_num = output_size[0]
+        self.N = output_size[1]
+        self.block_size = output_size[2]
+        self.freq_dim = representation_dim[0]
+        self.block_dim = representation_dim[1]
+
+        self.kernel_size = self.block_size
+        self.stride = self.block_size
+        self.dilation = 1
+        self.site_size = (1, self.N)
+
+        self.kernel_num = kwargs.get('kernel_num', 32)
+        
+        self.pos_enc_depth = kwargs.get('pos_enc_depth', 4)
+        self.pos_enc_hidden_size = kwargs.get('pos_enc_hidden_size', 128)
+
+        self.freq_dec_depth = kwargs.get('freq_dec_depth', 2)
+        self.freq_dec_hidden_size = kwargs.get('freq_dec_hidden_size', 32)
+
+        self.block_dec_depth = kwargs.get('block_dec_depth', 4)
+        self.block_dec_hidden_size = kwargs.get('block_enc_hidden_size', 128)
+
+        self.activation = kwargs.get('activation', 'relu')
+
+        self.strip_len = self._get_convs_input_size(1)
+
+        self.conv = self._get_conv_block()
+        self.positional_encoder = self._get_mlp(self.pos_enc_depth, 2, self.pos_enc_hidden_size, 1)
+        self.freq_decoder = self._get_mlp(self.freq_dec_depth, self.freq_dim, self.freq_dec_hidden_size, self.kernel_num // 2)
+        self.block_decoder = self._get_mlp(self.block_dec_depth, self.block_dim, self.block_dec_hidden_size, self.kernel_num)
+
+
+    def _get_activation(self):
+        if self.activation == 'relu':
+            return nn.ReLU()
+        elif self.activation == 'leaky_relu':
+            return nn.LeakyReLU(negative_slope=0.01)
+        else:
+            return ValueError(f'Activation function: {self.activation} not implemented')
+        
+
+    def _get_conv_block(self):
+        return nn.Sequential(
+            nn.ConvTranspose2d(self.kernel_num, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation),
+        )
+
+
+    def _get_convs_input_size(self, dim):
+        return (self.site_size[dim]*self.block_size - self.dilation*(self.kernel_size-1) - 1) // self.stride + 1
+
+
+    def _get_matrix_from_strips(self, strips: torch.Tensor):
+        matrix = torch.zeros((strips.shape[0], 2, self.N*self.block_size, self.N*self.block_size)).to(strips.device)
+        strips_split = torch.tensor_split(strips, self.channel_num // 2, dim=1)
+        for i, strip in enumerate(strips_split):
+            offset = i - (len(strips_split) // 2)
+            strip_off = max(0, -offset)
+            matrix_off = abs(offset)*self.block_size
+            for j in range(self.N - abs(offset)):
+                idx0 =  j*self.block_size
+                idx1 = (j+1)*self.block_size
+                if offset >= 0:
+                    matrix[:, :, idx0: idx1, idx0 + matrix_off: idx1 + matrix_off] = strip[:, :, :, idx0 + strip_off: idx1 + strip_off]
+                else:
+                    matrix[:, :, idx0 + matrix_off: idx1 + matrix_off, idx0: idx1] = strip[:, :, :, idx0 + strip_off: idx1 + strip_off]
+        return matrix
+    
+
+    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int):
+        layers = []
+        for i in range(layers_num):
+            if i == 0:
+                layers.append(nn.Linear(input_size, hidden_size))
+            elif i == layers_num - 1:
+                layers.append(nn.Linear(hidden_size, output_size))
+            else:
+                layers.append(nn.Linear(hidden_size, hidden_size))
+            layers.append(self._get_activation())
+        return nn.Sequential(*layers)
+    
+
+    def forward(self, x: torch.Tensor):
+        freq = self.freq_decoder(x[:, :self.freq_dim])
+        freq_expand = freq.unsqueeze(-1).expand(-1, -1, self.strip_len)
+        block = self.block_decoder(x[:, self.freq_dim:])
+        block_expand = block.unsqueeze(-1).expand(-1, -1, self.strip_len)
+
+        seq = block_expand[:, :self.kernel_num // 2, :] * torch.arange(self.strip_len).to(block.device) / self.strip_len
+        freq_seq = torch.stack([freq_expand, seq], dim=-1)
+        freq_seq = self.positional_encoder(freq_seq).squeeze(-1)
+
+        strips = torch.cat([freq_seq, block_expand[:, self.kernel_num // 2:, :]], dim=1).unsqueeze(2)
+        strips = self.conv(strips)
+        matrix = self._get_matrix_from_strips(strips)
+        return matrix
+
+
+class PositionalEncoder(nn.Module):
+    def __init__(self, input_size: t.Tuple[int, int, int], representation_dim: t.Tuple[int, int], **kwargs: t.Dict[str, t.Any]):
+        super(PositionalEncoder, self).__init__()
+        self.channel_num = input_size[0]
+        self.N = input_size[1]
+        self.block_size = input_size[2]
+        self.freq_dim = representation_dim[0]
+        self.block_dim = representation_dim[1]
+
+        self.kernel_size = self.block_size
+        self.stride = self.block_size
+        self.dilation = 1
+        self.site_size = (1, self.N)
+
+        self.kernel_num = kwargs.get('kernel_num', 32)
+        
+        self.seq_mlp_depth = kwargs.get('seq_mlp_depth', 4)
+        self.seq_mlp_hidden_size = kwargs.get('seq_mlp_hidden_size', 128)
+
+        self.freq_enc_depth = kwargs.get('freq_enc_depth', 2)
+        self.freq_enc_hidden_size = kwargs.get('freq_enc_hidden_size', 32)
+
+        self.block_enc_depth = kwargs.get('block_enc_depth', 4)
+        self.block_enc_hidden_size = kwargs.get('block_enc_hidden_size', 128)
+
+        self.activation = kwargs.get('activation', 'relu')
+
+        self.strip_len = self._get_convs_output_size(1)
+
+        self.conv = self._get_conv_block()
+        self.seq_mlp = self._get_mlp(self.seq_mlp_depth, self.strip_len, self.seq_mlp_hidden_size, 2)
+        self.freq_encoder = self._get_mlp(self.freq_enc_depth, self.kernel_num // 2, self.freq_enc_hidden_size, self.freq_dim)
+        self.block_encoder = self._get_mlp(self.block_enc_depth, self.kernel_num, self.block_enc_hidden_size, self.block_dim)
+
+
+    def _get_activation(self):
+        if self.activation == 'relu':
+            return nn.ReLU()
+        elif self.activation == 'leaky_relu':
+            return nn.LeakyReLU(negative_slope=0.01)
+        else:
+            return ValueError(f'Activation function: {self.activation} not implemented')
+        
+    
+    def _get_conv_block(self):
+        return nn.Sequential(
+            nn.Conv2d(self.channel_num, self.kernel_num, kernel_size= self.kernel_size, stride=self.stride, dilation=self.dilation),
+            self._get_activation(),
+            nn.BatchNorm2d(self.kernel_num),
+        )
+    
+
+    def _get_convs_output_size(self, dim):
+        return (self.site_size[dim]*self.block_size - self.dilation*(self.kernel_size-1) - 1) // self.stride + 1
+
+
+    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int):
+        layers = []
+        for i in range(layers_num):
+            if i == 0:
+                layers.append(nn.Linear(input_size, hidden_size))
+            elif i == layers_num - 1:
+                layers.append(nn.Linear(hidden_size, output_size))
+            else:
+                layers.append(nn.Linear(hidden_size, hidden_size))
+            layers.append(self._get_activation())
+        return nn.Sequential(*layers)
+
+
+    def _get_strip(self, x: torch.Tensor, offset: int):
+        strip = torch.zeros((x.shape[0], x.shape[1], self.block_size, self.N*self.block_size)).to(x.device)
+        strip_off = max(0, -offset)
+        idx_off = abs(offset)*self.block_size
+        for i in range(self.N - abs(offset)):
+            idx0 =  i*self.block_size
+            idx1 = (i+1)*self.block_size
+            if offset >= 0:
+                strip[:, :, :, idx0 + strip_off: idx1 + strip_off] = x[:, :, idx0: idx1, idx0 + idx_off: idx1 + idx_off]
+            else:
+                strip[:, :, :, idx0 + strip_off: idx1 + strip_off] = x[:, :, idx0 + idx_off: idx1 + idx_off, idx0: idx1]
+        return strip
+    
+
+    def forward(self, x: torch.Tensor):
+        strip_bound = ((self.channel_num // 2) - 1) // 2
+        x = torch.cat([self._get_strip(x, i) for i in range(-strip_bound, strip_bound + 1)], dim=1)
+        x = self.conv(x)
+        seq_strips = x[:, :self.kernel_num // 2, :, :].view(-1, self.kernel_num // 2, self.strip_len)
+        seq_strips = self.seq_mlp(seq_strips)
+        freq_out = self.freq_encoder(seq_strips[:, :, 0])
+
+        block_strips = x[:, self.kernel_num // 2:, :, :].view(-1, self.kernel_num // 2, self.strip_len)
+        block_strips = torch.mean(block_strips, dim=-1)
+        block_in = torch.cat([seq_strips[:, :, 1], block_strips], dim=-1)
+        block_out = self.block_encoder(block_in)
+        return torch.cat([freq_out, block_out], dim=-1)

@@ -198,7 +198,7 @@ if __name__ == '__main__':
     M = 2
 
     N_samples = 1000000
-    N_qs = 100
+    N_qs = 1000
 
     # generate_param_data(N, M, N_samples, './data/spin_ladder/spin_ladder_70_2_red_dist.csv')
     
@@ -206,7 +206,7 @@ if __name__ == '__main__':
     # params = generate_zm_params(N, M, N_samples // 2, ML_predictor) + generate_params(N, M, N_samples // 2)
     params = generate_params(N, M, N_samples, N_qs)
     #generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistFixedStd', eig_decomposition=True)
-    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDist100q', eig_decomposition=False, format='csr')
+    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDist1000q', eig_decomposition=False, format='csr')
 
 
     # ladder = SpinLadder(**DEFAULT_PARAMS)
