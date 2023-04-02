@@ -517,9 +517,9 @@ class PositionalEncoder(nn.Module):
         self.strip_len = self._get_convs_output_size(1)
 
         self.conv = self._get_conv_block()
-        self.seq_mlp = self._get_mlp(self.seq_mlp_depth, self.strip_len, self.seq_mlp_hidden_size, 2)
-        self.freq_encoder = self._get_mlp(self.freq_enc_depth, self.kernel_num // 2, self.freq_enc_hidden_size, self.freq_dim)
-        self.block_encoder = self._get_mlp(self.block_enc_depth, self.kernel_num, self.block_enc_hidden_size, self.block_dim)
+        self.seq_mlp = nn.ModuleList([self._get_mlp(self.seq_mlp_depth, self.strip_len, self.seq_mlp_hidden_size, 2) for _ in range(self.kernel_num)])
+        self.freq_encoder = self._get_mlp(self.freq_enc_depth, self.kernel_num, self.freq_enc_hidden_size, self.freq_dim)
+        self.block_encoder = self._get_mlp(self.block_enc_depth, 2*self.kernel_num, self.block_enc_hidden_size, self.block_dim)
 
 
     def _get_activation(self):
@@ -574,11 +574,12 @@ class PositionalEncoder(nn.Module):
         strip_bound = ((self.channel_num // 2) - 1) // 2
         x = torch.cat([self._get_strip(x, i) for i in range(-strip_bound, strip_bound + 1)], dim=1)
         x = self.conv(x)
-        seq_strips = x[:, :self.kernel_num // 2, :, :].view(-1, self.kernel_num // 2, self.strip_len)
-        seq_strips = self.seq_mlp(seq_strips)
+        seq_strips = x.view(-1, self.kernel_num, self.strip_len)
+        seq_strips = [self.seq_mlp[i](seq_strips[:, i, :]) for i in range(self.kernel_num)]
+        seq_strips = torch.stack(seq_strips, dim=1)
         freq_out = self.freq_encoder(seq_strips[:, :, 0])
 
-        block_strips = x[:, self.kernel_num // 2:, :, :].view(-1, self.kernel_num // 2, self.strip_len)
+        block_strips = x.view(-1, self.kernel_num, self.strip_len)
         block_strips = torch.mean(block_strips, dim=-1)
         block_in = torch.cat([seq_strips[:, :, 1], block_strips], dim=-1)
         block_out = self.block_encoder(block_in)

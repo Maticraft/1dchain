@@ -34,12 +34,12 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'positional_autoencoder_v1'
+model_name = 'positional_autoencoder_v2'
 
 # Params
 params = {
     'epochs': 120,
-    'batch_size': 512,
+    'batch_size': 128,
     'N': 140,
     'in_channels': 10,
     'block_size': 4,
@@ -56,7 +56,7 @@ encoder_params = {
     'kernel_num': 64,
     'activation': 'leaky_relu',
     'seq_mlp_depth': 4,
-    'seq_mlp_hidden_size': 128,
+    'seq_mlp_hidden_size': 32,
     'freq_enc_depth': 2,
     'freq_enc_hidden_size': 32,
     'block_enc_depth': 4,
