@@ -393,8 +393,12 @@ class PositionalDecoder(nn.Module):
         self.channel_num = output_size[0]
         self.N = output_size[1]
         self.block_size = output_size[2]
-        self.freq_dim = representation_dim[0]
-        self.block_dim = representation_dim[1]
+        if type(representation_dim) == int: 
+            self.freq_dim = representation_dim // 2
+            self.block_dim = representation_dim // 2
+        else:
+            self.freq_dim = representation_dim[0]
+            self.block_dim = representation_dim[1]
 
         self.kernel_size = self.block_size
         self.stride = self.block_size
@@ -403,9 +407,6 @@ class PositionalDecoder(nn.Module):
 
         self.kernel_num = kwargs.get('kernel_num', 32)
         
-        self.pos_enc_depth = kwargs.get('pos_enc_depth', 4)
-        self.pos_enc_hidden_size = kwargs.get('pos_enc_hidden_size', 128)
-
         self.freq_dec_depth = kwargs.get('freq_dec_depth', 2)
         self.freq_dec_hidden_size = kwargs.get('freq_dec_hidden_size', 32)
 
@@ -417,8 +418,7 @@ class PositionalDecoder(nn.Module):
         self.strip_len = self._get_convs_input_size(1)
 
         self.conv = self._get_conv_block()
-        self.positional_encoder = self._get_mlp(self.pos_enc_depth, 2, self.pos_enc_hidden_size, 1)
-        self.freq_decoder = self._get_mlp(self.freq_dec_depth, self.freq_dim, self.freq_dec_hidden_size, self.kernel_num // 2)
+        self.freq_decoder = self._get_mlp(self.freq_dec_depth, self.freq_dim, self.freq_dec_hidden_size, self.kernel_num)
         self.block_decoder = self._get_mlp(self.block_dec_depth, self.block_dim, self.block_dec_hidden_size, self.kernel_num)
 
 
@@ -433,6 +433,10 @@ class PositionalDecoder(nn.Module):
 
     def _get_conv_block(self):
         return nn.Sequential(
+            nn.ConvTranspose2d(2*self.kernel_num, self.kernel_num, kernel_size=1, stride=1, dilation=1),
+            self._get_activation(),
+            nn.ConvTranspose2d(self.kernel_num, self.kernel_num, kernel_size=1, stride=1, dilation=1),
+            self._get_activation(),
             nn.ConvTranspose2d(self.kernel_num, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation),
         )
 
@@ -464,8 +468,10 @@ class PositionalDecoder(nn.Module):
             if i == 0:
                 layers.append(nn.Linear(input_size, hidden_size))
             elif i == layers_num - 1:
+                layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, output_size))
             else:
+                layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, hidden_size))
             layers.append(self._get_activation())
         return nn.Sequential(*layers)
@@ -477,11 +483,11 @@ class PositionalDecoder(nn.Module):
         block = self.block_decoder(x[:, self.freq_dim:])
         block_expand = block.unsqueeze(-1).expand(-1, -1, self.strip_len)
 
-        seq = block_expand[:, :self.kernel_num // 2, :] * torch.arange(self.strip_len).to(block.device) / self.strip_len
-        freq_seq = torch.stack([freq_expand, seq], dim=-1)
-        freq_seq = self.positional_encoder(freq_seq).squeeze(-1)
+        seq = block_expand * torch.arange(self.strip_len).to(block.device) / self.strip_len
+        freq_seq = torch.cos(freq_expand * seq)
 
-        strips = torch.cat([freq_seq, block_expand[:, self.kernel_num // 2:, :]], dim=1).unsqueeze(2)
+        strips = torch.cat([freq_seq, block_expand], dim=1).unsqueeze(2)
+        
         strips = self.conv(strips)
         matrix = self._get_matrix_from_strips(strips)
         return matrix
@@ -493,8 +499,12 @@ class PositionalEncoder(nn.Module):
         self.channel_num = input_size[0]
         self.N = input_size[1]
         self.block_size = input_size[2]
-        self.freq_dim = representation_dim[0]
-        self.block_dim = representation_dim[1]
+        if type(representation_dim) == int: 
+            self.freq_dim = representation_dim // 2
+            self.block_dim = representation_dim // 2
+        else:
+            self.freq_dim = representation_dim[0]
+            self.block_dim = representation_dim[1]
 
         self.kernel_size = self.block_size
         self.stride = self.block_size
@@ -520,6 +530,7 @@ class PositionalEncoder(nn.Module):
         self.seq_mlp = nn.ModuleList([self._get_mlp(self.seq_mlp_depth, self.strip_len, self.seq_mlp_hidden_size, 2) for _ in range(self.kernel_num)])
         self.freq_encoder = self._get_mlp(self.freq_enc_depth, self.kernel_num, self.freq_enc_hidden_size, self.freq_dim)
         self.block_encoder = self._get_mlp(self.block_enc_depth, 2*self.kernel_num, self.block_enc_hidden_size, self.block_dim)
+        self.lin_encoder = nn.Linear(self.freq_dim + self.block_dim, self.freq_dim + self.block_dim)
 
 
     def _get_activation(self):
@@ -549,8 +560,10 @@ class PositionalEncoder(nn.Module):
             if i == 0:
                 layers.append(nn.Linear(input_size, hidden_size))
             elif i == layers_num - 1:
+                layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, output_size))
             else:
+                layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, hidden_size))
             layers.append(self._get_activation())
         return nn.Sequential(*layers)
@@ -583,4 +596,4 @@ class PositionalEncoder(nn.Module):
         block_strips = torch.mean(block_strips, dim=-1)
         block_in = torch.cat([seq_strips[:, :, 1], block_strips], dim=-1)
         block_out = self.block_encoder(block_in)
-        return torch.cat([freq_out, block_out], dim=-1)
+        return self.lin_encoder(torch.cat([freq_out, block_out], dim=-1))
