@@ -6,15 +6,15 @@ import torch
 
 from data_utils import HamiltionianDataset
 from helical_ladder import  DEFAULT_PARAMS, SpinLadder
-from models import PositionalDecoder, PositionalEncoder
+from models import Encoder, Decoder, PositionalDecoder, PositionalEncoder
 from models_utils import train_autoencoder, test_autoencoder
 from models_files import save_autoencoder_params, save_autoencoder, save_data_list
 from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDist'
-save_dir = './autoencoder/spin_ladder/70_2_RedDist'
+data_path = './data/spin_ladder/70_2_RedDistFixed'
+save_dir = './autoencoder/spin_ladder/70_2_RedDistFixed'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -34,7 +34,7 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'positional_autoencoder_v4'
+model_name = 'positional_encoder_v2'
 
 # Params
 params = {
@@ -43,7 +43,7 @@ params = {
     'N': 140,
     'in_channels': 10,
     'block_size': 4,
-    'representation_dim': (50, 50),
+    'representation_dim': 100,
     'lr': 1.e-5,
     'edge_loss': False,
     'edge_loss_weight': 1.,
@@ -65,13 +65,33 @@ encoder_params = {
     'block_enc_hidden_size': 128,
 }
 
+# decoder_params = {
+#     'kernel_num': 64,
+#     'activation': 'leaky_relu',
+#     'pos_enc_depth': 4,
+#     'pos_enc_hidden_size': 128,
+#     'freq_dec_depth': 2,
+#     'freq_dec_hidden_size': 32,
+#     'block_dec_depth': 4,
+#     'block_dec_hidden_size': 128,
+# }
+
 decoder_params = {
+    'kernel_size': (1, 140),
+    'kernel_size1': (1, 140),
+    'stride': (1, 1),
+    'stride1': 1,
+    'dilation': 4,
+    'dilation1': 4,
+    'fc_num': 4,
+    'conv_num': 1,
     'kernel_num': 64,
+    'kernel_num1': 64,
+    'hidden_size': 256,
+    'upsample_method': 'transpose',
+    'scale_factor': 2, # does matter only for upsample_method 'nearest' or 'bilinear'
     'activation': 'leaky_relu',
-    'freq_dec_depth': 4,
-    'freq_dec_hidden_size': 128,
-    'block_dec_depth': 4,
-    'block_dec_hidden_size': 128,
+    'use_strips': True,
 }
 
 # Set the root dir
@@ -102,7 +122,7 @@ train_loader = DataLoader(train_data, params['batch_size'])
 test_loader = DataLoader(test_data, params['batch_size'])
 
 encoder = PositionalEncoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
-decoder = PositionalDecoder(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
+decoder = Decoder(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
 
 print(encoder)
 print(decoder)
