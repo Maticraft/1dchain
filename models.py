@@ -483,8 +483,7 @@ class PositionalDecoder(nn.Module):
         block = self.block_decoder(x[:, self.freq_dim:])
         block_expand = block.unsqueeze(-1).expand(-1, -1, self.strip_len)
 
-        seq = block_expand * torch.arange(self.strip_len).to(block.device) / self.strip_len
-        freq_seq = torch.cos(freq_expand * seq)
+        freq_seq = block_expand * torch.cos(freq_expand * torch.arange(self.strip_len).to(block.device) / self.strip_len)
 
         strips = torch.cat([freq_seq, block_expand], dim=1).unsqueeze(2)
         
