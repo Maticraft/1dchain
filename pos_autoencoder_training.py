@@ -34,7 +34,7 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'positional_encoder_v2'
+model_name = 'positional_decoder_v3'
 
 # Params
 params = {
@@ -54,29 +54,19 @@ params = {
 }
 
 # Architecture
-encoder_params = {
-    'kernel_num': 64,
-    'activation': 'leaky_relu',
-    'seq_mlp_depth': 4,
-    'seq_mlp_hidden_size': 32,
-    'freq_enc_depth': 2,
-    'freq_enc_hidden_size': 32,
-    'block_enc_depth': 4,
-    'block_enc_hidden_size': 128,
-}
-
-# decoder_params = {
+# encoder_params = {
 #     'kernel_num': 64,
 #     'activation': 'leaky_relu',
-#     'pos_enc_depth': 4,
-#     'pos_enc_hidden_size': 128,
-#     'freq_dec_depth': 2,
-#     'freq_dec_hidden_size': 32,
-#     'block_dec_depth': 4,
-#     'block_dec_hidden_size': 128,
+#     'seq_mlp_depth': 4,
+#     'seq_mlp_hidden_size': 32,
+#     'freq_enc_depth': 2,
+#     'freq_enc_hidden_size': 32,
+#     'block_enc_depth': 4,
+#     'block_enc_hidden_size': 128,
 # }
 
-decoder_params = {
+# Architecture
+encoder_params = {
     'kernel_size': (1, 140),
     'kernel_size1': (1, 140),
     'stride': (1, 1),
@@ -88,11 +78,36 @@ decoder_params = {
     'kernel_num': 64,
     'kernel_num1': 64,
     'hidden_size': 256,
-    'upsample_method': 'transpose',
-    'scale_factor': 2, # does matter only for upsample_method 'nearest' or 'bilinear'
     'activation': 'leaky_relu',
     'use_strips': True,
 }
+
+decoder_params = {
+    'kernel_num': 64,
+    'activation': 'leaky_relu',
+    'freq_dec_depth': 2,
+    'freq_dec_hidden_size': 32,
+    'block_dec_depth': 4,
+    'block_dec_hidden_size': 128,
+}
+
+# decoder_params = {
+#     'kernel_size': (1, 140),
+#     'kernel_size1': (1, 140),
+#     'stride': (1, 1),
+#     'stride1': 1,
+#     'dilation': 4,
+#     'dilation1': 4,
+#     'fc_num': 4,
+#     'conv_num': 1,
+#     'kernel_num': 64,
+#     'kernel_num1': 64,
+#     'hidden_size': 256,
+#     'upsample_method': 'transpose',
+#     'scale_factor': 2, # does matter only for upsample_method 'nearest' or 'bilinear'
+#     'activation': 'leaky_relu',
+#     'use_strips': True,
+# }
 
 # Set the root dir
 root_dir = os.path.join(save_dir, f'{params["representation_dim"]}', model_name)
@@ -121,8 +136,8 @@ train_data, test_data = random_split(data, [train_size, test_size])
 train_loader = DataLoader(train_data, params['batch_size'])
 test_loader = DataLoader(test_data, params['batch_size'])
 
-encoder = PositionalEncoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
-decoder = Decoder(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
+encoder = Encoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
+decoder = PositionalDecoder(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
 
 print(encoder)
 print(decoder)
