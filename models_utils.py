@@ -6,6 +6,23 @@ import torch
 import torch.nn as nn
 
 
+def diagonal_loss(x_hat: torch.Tensor, x: torch.Tensor, criterion: t.Callable, block_size: int = 4):
+    x_hat_strip = get_diagonal_strip(x_hat, block_size)
+    x_strip = get_diagonal_strip(x, block_size)
+    diff = criterion(x_hat_strip, x_strip)
+    return diff
+
+
+def get_diagonal_strip(x: torch.Tensor, block_size: int):
+    strip = torch.zeros((x.shape[0], x.shape[1], block_size, x.shape[3])).to(x.device)
+    N = x.shape[2] // block_size
+    for i in range(N):
+        idx0 =  i*block_size
+        idx1 = (i+1)*block_size
+        strip[:, :, :, idx0: idx1] = x[:, :, idx0: idx1, idx0: idx1]
+    return strip
+
+
 def edge_diff(x_hat: torch.Tensor, x: torch.Tensor, criterion: t.Callable, edge_width: int = 4):
     x_hat_edges = get_edges(x_hat, edge_width)
     x_edges = get_edges(x, edge_width)
@@ -80,6 +97,7 @@ def test_autoencoder(
     site_permutation: bool = False,
     edge_loss: bool = False,
     eigenstates_loss: bool = False,
+    diag_loss: bool = False,
 ):
     if site_permutation and edge_loss:
         raise NotImplementedError("Combining edge loss with site permutation is not implemented")
@@ -95,6 +113,7 @@ def test_autoencoder(
     total_loss = 0
     total_edge_loss = 0
     total_eigenstates_loss = 0
+    total_diag_loss = 0
 
     for (x, _), eig_dec in tqdm(test_loader, "Testing autoencoder model"):
         x = x.to(device)
@@ -115,9 +134,14 @@ def test_autoencoder(
             eig_loss = eigenvectors_loss(x_hat, eig_dec, criterion)
             total_eigenstates_loss += eig_loss.item()
 
+        if diag_loss:
+            diag_loss = diagonal_loss(x_hat, x, criterion, block_size=4)
+            total_diag_loss += diag_loss.item()
+
     total_loss /= len(test_loader)
     total_edge_loss /= len(test_loader)
     total_eigenstates_loss /= len(test_loader)
+    total_diag_loss /= len(test_loader)
 
     print(f'Loss: {total_loss}')
     if edge_loss:
@@ -126,7 +150,7 @@ def test_autoencoder(
         print(f'Eigenstates Loss: {total_eigenstates_loss}')
     print()
 
-    return total_loss, total_edge_loss, total_eigenstates_loss
+    return total_loss, total_edge_loss, total_eigenstates_loss, total_diag_loss
 
 
 def test_classifier(
@@ -180,7 +204,9 @@ def train_autoencoder(
     edge_loss: bool = False,
     edge_loss_weight: float = .5,
     eigenstates_loss: bool = False,
-    eigenstates_loss_weight: float = .5
+    eigenstates_loss_weight: float = .5,
+    diag_loss: bool = False,
+    diag_loss_weight: float = .5
 ):
     if site_permutation and edge_loss:
         raise NotImplementedError("Combining edge loss with site permutation is not implemented")
@@ -196,6 +222,7 @@ def train_autoencoder(
     total_loss = 0
     total_edge_loss = 0
     total_eigenstates_loss = 0
+    total_diag_loss = 0
 
     print(f'Epoch: {epoch}')
     for (x, _), eig_dec in tqdm(train_loader, 'Training model'):
@@ -221,6 +248,11 @@ def train_autoencoder(
             loss += eigenstates_loss_weight * eig_loss
             total_eigenstates_loss += eig_loss.item()
 
+        if diag_loss:
+            diag_loss = diagonal_loss(x_hat, x, criterion, block_size=4)
+            loss += diag_loss_weight * diag_loss
+            total_diag_loss += diag_loss.item()
+
         loss.backward()
         encoder_optimizer.step()
         decoder_optimizer.step()
@@ -229,6 +261,7 @@ def train_autoencoder(
     total_loss /= len(train_loader)
     total_edge_loss /= len(train_loader)
     total_eigenstates_loss /= len(train_loader)
+    total_diag_loss /= len(train_loader)
 
     print(f'Loss: {total_loss}')
     if edge_loss:
@@ -237,7 +270,7 @@ def train_autoencoder(
         print(f'Eigenstates Loss: {total_eigenstates_loss}')
     print()
 
-    return total_loss, total_edge_loss, total_eigenstates_loss
+    return total_loss, total_edge_loss, total_eigenstates_loss, total_diag_loss
 
 
 def train_classifier(
