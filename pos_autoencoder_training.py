@@ -34,7 +34,7 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'positional_decoder_v3'
+model_name = 'positional_decoder_v4'
 
 # Params
 params = {
@@ -85,8 +85,8 @@ encoder_params = {
 decoder_params = {
     'kernel_num': 64,
     'activation': 'leaky_relu',
-    'freq_dec_depth': 2,
-    'freq_dec_hidden_size': 32,
+    'freq_dec_depth': 4,
+    'freq_dec_hidden_size': 128,
     'block_dec_depth': 4,
     'block_dec_hidden_size': 128,
 }
