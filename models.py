@@ -407,8 +407,8 @@ class PositionalDecoder(nn.Module):
 
         self.kernel_num = kwargs.get('kernel_num', 32)
         
-        self.freq_dec_depth = kwargs.get('freq_dec_depth', 2)
-        self.freq_dec_hidden_size = kwargs.get('freq_dec_hidden_size', 32)
+        self.freq_dec_depth = kwargs.get('freq_dec_depth', 4)
+        self.freq_dec_hidden_size = kwargs.get('freq_dec_hidden_size', 128)
 
         self.block_dec_depth = kwargs.get('block_dec_depth', 4)
         self.block_dec_hidden_size = kwargs.get('block_enc_hidden_size', 128)
@@ -418,7 +418,11 @@ class PositionalDecoder(nn.Module):
         self.strip_len = self._get_convs_input_size(1)
 
         self.conv = self._get_conv_block()
-        self.freq_decoder = self._get_mlp(self.freq_dec_depth, self.freq_dim, self.freq_dec_hidden_size, self.kernel_num)
+        self.freq_decoder = nn.Sequential(
+            self._get_mlp(self.freq_dec_depth, self.freq_dim, self.freq_dec_hidden_size, 2*self.strip_len),
+            self._get_mlp(2, 2*self.strip_len, self.strip_len, self.kernel_num*self.strip_len),
+        )
+
         self.block_decoder = self._get_mlp(self.block_dec_depth, self.block_dim, self.block_dec_hidden_size, self.kernel_num)
 
 
@@ -478,12 +482,11 @@ class PositionalDecoder(nn.Module):
     
 
     def forward(self, x: torch.Tensor):
-        freq = self.freq_decoder(x[:, :self.freq_dim])
-        freq_expand = freq.unsqueeze(-1).expand(-1, -1, self.strip_len)
+        freq = self.freq_decoder(x[:, :self.freq_dim]).view(-1, self.kernel_num, self.strip_len)
         block = self.block_decoder(x[:, self.freq_dim:])
         block_expand = block.unsqueeze(-1).expand(-1, -1, self.strip_len)
 
-        freq_seq = block_expand * torch.cos(freq_expand * torch.arange(self.strip_len).to(block.device) / self.strip_len)
+        freq_seq = block_expand * torch.cos(freq)
 
         strips = torch.cat([freq_seq, block_expand], dim=1).unsqueeze(2)
         
