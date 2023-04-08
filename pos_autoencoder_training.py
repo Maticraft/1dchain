@@ -13,8 +13,8 @@ from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDistFixed'
-save_dir = './autoencoder/spin_ladder/70_2_RedDistFixed'
+data_path = './data/spin_ladder/70_2_RedDist'
+save_dir = './autoencoder/spin_ladder/70_2_RedDist'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -34,7 +34,7 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'positional_decoder_v5'
+model_name = 'positional_decoder_lstm'
 
 # Params
 params = {
@@ -50,22 +50,19 @@ params = {
     'eigenstates_loss': False,
     'eigenstates_loss_weight': 1.,
     'diag_loss': True,
-    'diag_loss_weight': 0.0001
+    'diag_loss_weight': 0.01
 }
 
 # Architecture
 # encoder_params = {
 #     'kernel_num': 64,
 #     'activation': 'leaky_relu',
-#     'seq_mlp_depth': 4,
-#     'seq_mlp_hidden_size': 32,
-#     'freq_enc_depth': 2,
-#     'freq_enc_hidden_size': 32,
+#     'freq_enc_depth': 4,
+#     'freq_enc_hidden_size': 128,
 #     'block_enc_depth': 4,
 #     'block_enc_hidden_size': 128,
 # }
 
-# Architecture
 encoder_params = {
     'kernel_size': (1, 140),
     'kernel_size1': (1, 140),

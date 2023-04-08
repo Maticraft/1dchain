@@ -1,4 +1,5 @@
 import abc
+import json
 import os
 import typing as t
 
@@ -9,6 +10,7 @@ import torch
 from tqdm import tqdm
 
 DICTIONARY_NAME = 'dictionary.txt'
+PARAMS_DICTIONARY_NAME = 'params_dictionary.txt'
 MATRICES_DIR_NAME = 'matrices'
 EIGVALS_DIR_NAME = 'eigvals'
 EIGVEC_DIR_NAME = 'eigvec'
@@ -121,7 +123,7 @@ def generate_data(
         else:
             eigvals, eigvec = None, None
 
-        save_data(matrix, label, directory, filename, eigvals, eigvec, format)
+        save_data(matrix, label, directory, filename, eigvals, eigvec, format, params)
 
 
 def save_data(
@@ -132,6 +134,7 @@ def save_data(
     eigvals: t.Optional[np.ndarray] = None,
     eigvec: t.Optional[np.ndarray] = None,
     format: str = 'numpy',
+    params: t.Optional[t.Dict[str, t.Any]] = None,
 ):
     if not os.path.isdir(root_dir):
         os.makedirs(root_dir)
@@ -145,6 +148,11 @@ def save_data(
 
     with open(os.path.join(root_dir, DICTIONARY_NAME), 'a') as dictionary:
         dictionary.write(f'{filename}, {label}\n')
+
+    if params is not None:
+        with open(os.path.join(root_dir, PARAMS_DICTIONARY_NAME), 'a') as params_file:
+            params_str = json.dumps(params)
+            params_file.write(f'{filename}, {params_str}\n')
 
 
 def save_matrix(matrix: np.ndarray, root_dir: str, folder_name: str, file_name: str, format: str = 'numpy'):
