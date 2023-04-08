@@ -206,7 +206,7 @@ def train_autoencoder(
     eigenstates_loss: bool = False,
     eigenstates_loss_weight: float = .5,
     diag_loss: bool = False,
-    diag_loss_weight: float = .5
+    diag_loss_weight: float = .01,
 ):
     if site_permutation and edge_loss:
         raise NotImplementedError("Combining edge loss with site permutation is not implemented")

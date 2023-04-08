@@ -13,8 +13,8 @@ from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDist1000q'
-save_dir = './autoencoder/spin_ladder/70_2_RedDist1000q'
+data_path = './data/spin_ladder/70_2_RedDist'
+save_dir = './autoencoder/spin_ladder/70_2_RedDist'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -50,7 +50,7 @@ params = {
     'eigenstates_loss': False,
     'eigenstates_loss_weight': 1.,
     'diag_loss': True,
-    'diag_loss_weight': 1.
+    'diag_loss_weight': 0.01,
 }
 
 # Architecture
@@ -92,7 +92,7 @@ if not os.path.isdir(ham_sub_path):
 
 save_autoencoder_params(params, encoder_params, decoder_params, root_dir)
 
-data = HamiltionianDataset(data_path, label_idx=(3, 4), eig_decomposition=params['eigenstates_loss'], format='csr')
+data = HamiltionianDataset(data_path, label_idx=(3, 4), eig_decomposition=params['eigenstates_loss'], format='numpy')
 
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size
@@ -130,7 +130,7 @@ for epoch in range(1, params['epochs'] + 1):
         diag_loss=params['diag_loss'],
         diag_loss_weight=params['diag_loss_weight']
     )
-    te_loss, te_edge_loss, te_eig_loss, te_diag_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'], eigenstates_loss=params['eigenstates_loss'])
+    te_loss, te_edge_loss, te_eig_loss, te_diag_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'], eigenstates_loss=params['eigenstates_loss'], diag_loss=params['diag_loss'])
     save_autoencoder(encoder, decoder, root_dir, epoch)
     save_data_list([epoch, tr_loss, tr_edge_loss, tr_eig_loss, tr_diag_loss, te_loss, te_edge_loss, te_eig_loss, te_diag_loss], loss_path)
 
