@@ -77,12 +77,12 @@ class Decoder(nn.Module):
         self.convs_input_size = int(self._get_convs_input_size(0)), int(self._get_convs_input_size(1))
 
         if self.conv_num > 1:
-            self.fcs_output_size = (self.convs_input_size[0] * self.convs_input_size[1]) * self.kernel_num
+            self.fcs_output_size = (self.convs_input_size[0] * self.convs_input_size[1]) * self.kernel_num * (self.channel_num // 2)
         else:
-            self.fcs_output_size = (self.convs_input_size[0] * self.convs_input_size[1]) * self.kernel_num1
+            self.fcs_output_size = (self.convs_input_size[0] * self.convs_input_size[1]) * self.kernel_num1 * (self.channel_num // 2)
 
         self.fcs = self._get_fcs()
-        self.convs = self._get_convs()
+        self.convs = nn.ModuleList([self._get_convs() for _ in range(self.channel_num // 2)])
 
     def _format_2d_size(self, x: t.Any):
         if type(x) == tuple:
@@ -114,7 +114,7 @@ class Decoder(nn.Module):
                 convs.append(self._get_activation())
                 convs.append(nn.BatchNorm2d(self.kernel_num1))
 
-            convs.append(nn.ConvTranspose2d(self.kernel_num1, self.channel_num, kernel_size=self.kernel_size1, stride=self.stride1, dilation=self.dilation1))
+            convs.append(nn.ConvTranspose2d(self.kernel_num1, 2, kernel_size=self.kernel_size1, stride=self.stride1, dilation=self.dilation1))
         else:
             for i in range(1, self.conv_num - 1):
                 if self.stride > 1:
@@ -130,7 +130,7 @@ class Decoder(nn.Module):
                 convs.append(nn.BatchNorm2d(self.kernel_num1))
 
             convs.append(nn.Upsample(scale_factor=self.scale_factor[0], mode=self.upsample_method))
-            convs.append(nn.Conv2d(self.kernel_num1, self.channel_num, kernel_size=self.kernel_size1, stride=self.stride1, dilation=self.dilation1, padding='same'))
+            convs.append(nn.Conv2d(self.kernel_num1, 2, kernel_size=self.kernel_size1, stride=self.stride1, dilation=self.dilation1, padding='same'))
 
         return nn.Sequential(*convs)
 
@@ -185,8 +185,8 @@ class Decoder(nn.Module):
 
     def forward(self, x: torch.Tensor):
         x = self.fcs(x)
-        x = x.view(-1, self.kernel_num, self.convs_input_size[0], self.convs_input_size[1])
-        x = self.convs(x)
+        x = x.view(-1, self.channel_num // 2, self.kernel_num, self.convs_input_size[0], self.convs_input_size[1])
+        x = torch.cat([self.convs[i](x[:, i]) for i in range(self.channel_num // 2)], dim=1)
         if self.use_strips:
             x = self._get_matrix_from_strips(x)  
         return x
@@ -270,11 +270,11 @@ class Encoder(nn.Module):
             self.site_size = (self.N, self.N)
 
         if self.conv_num > 1:
-            self.convs_output_size = (self._get_convs_output_size(0) * self._get_convs_output_size(1)) * self.kernel_num
+            self.convs_output_size = (self._get_convs_output_size(0) * self._get_convs_output_size(1)) * self.kernel_num * (self.channel_num // 2)
         else:
-            self.convs_output_size = (self._get_convs_output_size(0) * self._get_convs_output_size(1)) * self.kernel_num1
+            self.convs_output_size = (self._get_convs_output_size(0) * self._get_convs_output_size(1)) * self.kernel_num1 * (self.channel_num // 2)
 
-        self.convs = self._get_convs()
+        self.convs = nn.ModuleList([self._get_convs() for _ in range(self.channels_num // 2)])
         self.fcs = self._get_fcs()
 
     def _format_2d_size(self, x: t.Any):
@@ -297,7 +297,7 @@ class Encoder(nn.Module):
 
     def _get_convs(self):
         convs = []
-        convs.append(nn.Conv2d(self.channel_num, self.kernel_num1, kernel_size= self.kernel_size1, stride=self.stride1, dilation=self.dilation1))
+        convs.append(nn.Conv2d(2, self.kernel_num1, kernel_size= self.kernel_size1, stride=self.stride1, dilation=self.dilation1))
         convs.append(self._get_activation())
         convs.append(nn.BatchNorm2d(self.kernel_num1))
 
@@ -346,8 +346,8 @@ class Encoder(nn.Module):
     def forward(self, x: torch.Tensor):
         if self.use_strips:
             strip_bound = ((self.channel_num // 2) - 1) // 2
-            x = torch.cat([self._get_strip(x, i) for i in range(-strip_bound, strip_bound + 1)], dim=1)
-        x = self.convs(x)
+            x = torch.stack([self._get_strip(x, i) for i in range(-strip_bound, strip_bound + 1)], dim=0)
+        x = torch.cat([self.convs[i](x[i]) for i in range(self.channels_num) // 2], dim=1)
         x = x.view(-1, self.convs_output_size)
         x = self.fcs(x)
         return x

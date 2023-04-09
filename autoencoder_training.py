@@ -29,15 +29,15 @@ ylim = (-0.5, 0.5)
 
 # Reference hamiltonian params
 hamiltonian_params = DEFAULT_PARAMS.copy()
-hamiltonian_params['q'] = 0
-hamiltonian_params['delta_q'] = 0
+hamiltonian_params['q'] = np.pi / 2
+hamiltonian_params['delta_q'] = np.pi / 2
 hamiltonian_sub_dir = 'hamiltonian'
 hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'symmetric_autoencoder_strips_v4'
+model_name = 'symmetric_autoencoder_sep_strips'
 
 # Params
 params = {
@@ -53,7 +53,7 @@ params = {
     'eigenstates_loss': False,
     'eigenstates_loss_weight': 1.,
     'diag_loss': True,
-    'diag_loss_weight': 1.
+    'diag_loss_weight': 0.01,
 }
 
 
