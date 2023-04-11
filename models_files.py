@@ -5,7 +5,7 @@ import os
 import torch
 import torch.nn as nn
 
-from models import Decoder, DecoderEnsemble, Encoder, EncoderEnsemble
+from models import Decoder, DecoderEnsemble, Encoder, EncoderEnsemble, PositionalDecoder, PositionalEncoder
 
 GENERAL_PARAMS_NAME = 'general_params.json'
 ENCODER_PARAMS_NAME = 'encoder_params.json'
@@ -61,6 +61,10 @@ def load_params(file_path: str):
     with open(file_path) as f:
         data = json.load(f)
     return data
+
+
+def load_positional_autoencoder(root_dir: str, epoch: int):
+    return load_ae_model(root_dir, epoch, PositionalEncoder, PositionalDecoder)
 
 
 def save_autoencoder(encoder: torch.nn.Module, decoder: torch.nn.Module, root_dir: str, epoch: int):
