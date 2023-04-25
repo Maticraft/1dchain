@@ -34,7 +34,7 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'positional_autoencoder_fft_lstm_v2'
+model_name = 'positional_autoencoder_fft_lstm_v4'
 
 # Params
 params = {
@@ -56,28 +56,15 @@ params = {
 # Architecture
 encoder_params = {
     'kernel_num': 64,
+    'kernel_size': 12,
     'activation': 'leaky_relu',
     'freq_enc_depth': 4,
     'freq_enc_hidden_size': 128,
     'block_enc_depth': 4,
     'block_enc_hidden_size': 128,
+    'padding_mode': 'circular',
 }
 
-# encoder_params = {
-#     'kernel_size': (1, 140),
-#     'kernel_size1': (1, 140),
-#     'stride': (1, 1),
-#     'stride1': 1,
-#     'dilation': 4,
-#     'dilation1': 4,
-#     'fc_num': 4,
-#     'conv_num': 1,
-#     'kernel_num': 64,
-#     'kernel_num1': 64,
-#     'hidden_size': 256,
-#     'activation': 'leaky_relu',
-#     'use_strips': True,
-# }
 
 decoder_params = {
     'kernel_num': 64,
@@ -88,23 +75,6 @@ decoder_params = {
     'block_dec_hidden_size': 128,
 }
 
-# decoder_params = {
-#     'kernel_size': (1, 140),
-#     'kernel_size1': (1, 140),
-#     'stride': (1, 1),
-#     'stride1': 1,
-#     'dilation': 4,
-#     'dilation1': 4,
-#     'fc_num': 4,
-#     'conv_num': 1,
-#     'kernel_num': 64,
-#     'kernel_num1': 64,
-#     'hidden_size': 256,
-#     'upsample_method': 'transpose',
-#     'scale_factor': 2, # does matter only for upsample_method 'nearest' or 'bilinear'
-#     'activation': 'leaky_relu',
-#     'use_strips': True,
-# }
 
 # Set the root dir
 root_dir = os.path.join(save_dir, f'{params["representation_dim"]}', model_name)

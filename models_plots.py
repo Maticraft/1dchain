@@ -46,7 +46,7 @@ def plot_matrix(matrix: np.ndarray, filepath: str, **kwargs: t.Dict[str, t.Any])
     im = plt.imshow(matrix, cmap=cmap, vmin = vmin, vmax = vmax, norm=norm)
     cbar = fig.colorbar(im, shrink=0.9)
     cbar.ax.tick_params(labelsize=35)
-    plt.savefig(filepath)
+    plt.savefig(filepath, dpi=560)
     plt.close()
 
 
@@ -67,7 +67,11 @@ def plot_test_eigvals(
     energies_diff = []
     for x in xparams:
         model_params = params.copy()
-        model_params[xaxis] = x
+        if xaxis == 'q_delta_q':
+            model_params['q'] = x
+            model_params['delta_q'] = x
+        else:
+            model_params[xaxis] = x
         param_model = model(**model_params)
         H = param_model.get_hamiltonian()
 

@@ -13,8 +13,8 @@ from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDist100q'
-save_dir = './autoencoder/spin_ladder/70_2_RedDist100q'
+data_path = './data/spin_ladder/70_2_RedDistFixed'
+save_dir = './autoencoder/spin_ladder/70_2_RedDistFixed'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -34,7 +34,7 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'symmetric_autoencoder_strips_v4'
+model_name = 'positional_autencoder_fft_lstm_v3'
 
 # Params
 params = {

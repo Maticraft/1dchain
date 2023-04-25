@@ -106,7 +106,7 @@ class SpinLadder(Hamiltonian):
         values_tot = list(mp_tot.values())
         mp_tot_sum_left = sum(values_tot[:len(values_tot)//2])
         mp_tot_sum_right = sum(values_tot[len(values_tot)//2:])
-        return f"{mp_tot_sum_left}, {mp_tot_sum_right}, {mp_y_sum_left}, {mp_y_sum_right}, {count_mzm_states(self.H, threshold=1.e-5)}, {self.N}, {self.M}, {self.delta}, {self.q}, {self.mu}, {self.J}, {self.delta_q}, {self.t}, {self.theta}"
+        return f"{mp_tot_sum_left}, {mp_tot_sum_right}, {mp_y_sum_left}, {mp_y_sum_right}, {count_mzm_states(self.H, threshold=1.e-5)}"
 
 
 
@@ -134,6 +134,8 @@ def generate_params(N, M, N_samples, N_qs):
     qs = np.arange(0, 2*np.pi, 2*np.pi / N_qs)
     delta_qs = np.arange(0, 2*np.pi, 2*np.pi / N_qs)
     q_ids = np.random.choice(N_qs, size= N_samples)
+    # delta_q_ids = np.random.choice(N_qs, size= N_samples)
+    delta_q = np.pi
     mus = np.random.normal(1.8, 1, size= N_samples)
     Js = np.random.normal(1.8, 1, size= N_samples)
     ts = np.random.normal(1, 0.5, size= N_samples)
@@ -147,7 +149,7 @@ def generate_params(N, M, N_samples, N_qs):
             'q': qs[q_ids[i]],
             'mu': mus[i],
             'J': Js[i],
-            'delta_q': delta_qs[q_ids[i]],
+            'delta_q': delta_q,
             't': ts[i],
             'theta': theta
         } for i in range(N_samples)
