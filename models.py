@@ -517,6 +517,7 @@ class PositionalEncoder(nn.Module):
         self.site_size = (1, self.N)
 
         self.kernel_num = kwargs.get('kernel_num', 32)
+        self.kernel_size = kwargs.get('kernel_size', self.block_size)
    
         self.freq_enc_depth = kwargs.get('freq_enc_depth', 2)
         self.freq_enc_hidden_size = kwargs.get('freq_enc_hidden_size', 64)
@@ -525,6 +526,7 @@ class PositionalEncoder(nn.Module):
         self.block_enc_hidden_size = kwargs.get('block_enc_hidden_size', 64)
 
         self.activation = kwargs.get('activation', 'relu')
+        self.padding_mode = kwargs.get('padding_mode', 'zeros')
 
         self.strip_len = self._get_convs_output_size(1)
 
@@ -582,16 +584,16 @@ class PositionalEncoder(nn.Module):
         
     
     def _get_conv_block(self):
+        padding = (self.kernel_size - self.block_size) // 2
         return nn.Sequential(
-            nn.Conv2d(self.channel_num, self.kernel_num, kernel_size= self.kernel_size, stride=self.stride, dilation=self.dilation),
+            nn.Conv2d(self.channel_num, self.kernel_num, kernel_size=(self.block_size, self.kernel_size), stride=self.stride, dilation=self.dilation, padding=(0, padding), padding_mode=self.padding_mode),
             self._get_activation(),
             nn.BatchNorm2d(self.kernel_num),
         )
     
 
     def _get_convs_output_size(self, dim):
-        return (self.site_size[dim]*self.block_size - self.dilation*(self.kernel_size-1) - 1) // self.stride + 1
-
+        return (self.site_size[dim]*self.block_size - self.dilation*(self.block_size-1) - 1) // self.stride + 1
 
     def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int):
         layers = []
@@ -608,23 +610,32 @@ class PositionalEncoder(nn.Module):
         return nn.Sequential(*layers)
 
 
-    def _get_strip(self, x: torch.Tensor, offset: int):
+    def _get_strip(self, x: torch.Tensor, offset: int, fill_mode: str = 'zeros'):
         strip = torch.zeros((x.shape[0], x.shape[1], self.block_size, self.N*self.block_size)).to(x.device)
         strip_off = max(0, -offset)
-        idx_off = abs(offset)*self.block_size
+        x_off = abs(offset)*self.block_size
         for i in range(self.N - abs(offset)):
             idx0 =  i*self.block_size
             idx1 = (i+1)*self.block_size
             if offset >= 0:
-                strip[:, :, :, idx0 + strip_off: idx1 + strip_off] = x[:, :, idx0: idx1, idx0 + idx_off: idx1 + idx_off]
+                strip[:, :, :, idx0 + strip_off: idx1 + strip_off] = x[:, :, idx0: idx1, idx0 + x_off: idx1 + x_off]
             else:
-                strip[:, :, :, idx0 + strip_off: idx1 + strip_off] = x[:, :, idx0 + idx_off: idx1 + idx_off, idx0: idx1]
-        return strip
+                strip[:, :, :, idx0 + strip_off: idx1 + strip_off] = x[:, :, idx0 + x_off: idx1 + x_off, idx0: idx1]
+        if fill_mode == 'zeros':
+            return strip
+        elif fill_mode == 'circular':
+            if offset > 0:
+                strip[:, :, :, -x_off:] = strip[:, :, :, :x_off]
+            elif offset < 0:
+                strip[:, :, :, :x_off] = strip[:, :, :, -x_off:]
+            return strip
+        else:
+            raise ValueError(f'Fill mode: {fill_mode} not implemented')
     
 
     def forward(self, x: torch.Tensor):
         strip_bound = ((self.channel_num // 2) - 1) // 2
-        x = torch.cat([self._get_strip(x, i) for i in range(-strip_bound, strip_bound + 1)], dim=1)
+        x = torch.cat([self._get_strip(x, i, self.padding_mode) for i in range(-strip_bound, strip_bound + 1)], dim=1)
         x = self.conv(x)
         seq_strips = x.view(-1, self.kernel_num, self.strip_len)
 

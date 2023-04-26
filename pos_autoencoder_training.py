@@ -34,12 +34,12 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'positional_autoencoder_fft_lstm_v4'
+model_name = 'positional_autoencoder_fft_lstm_v3'
 
 # Params
 params = {
     'epochs': 120,
-    'batch_size': 128,
+    'batch_size': 512,
     'N': 140,
     'in_channels': 10,
     'block_size': 4,
