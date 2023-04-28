@@ -417,9 +417,9 @@ class PositionalDecoder(nn.Module):
 
         self.strip_len = self._get_convs_input_size(1)
         
-        self.freq_decoder = self._get_mlp(self.freq_dec_depth, self.freq_dim, self.freq_dec_hidden_size, self.kernel_num)
+        self.freq_decoder = self._get_mlp(self.freq_dec_depth, self.freq_dim, self.freq_dec_hidden_size, self.freq_dec_hidden_size)
         self.freq_seq_constructor = nn.ModuleList([
-            self._get_mlp(self.freq_dec_depth, 1, self.freq_dec_hidden_size, self.strip_len)
+            self._get_mlp(self.freq_dec_depth, self.freq_dec_hidden_size, self.freq_dec_hidden_size, self.strip_len)
             for _ in range(self.kernel_num)
         ])
 
@@ -485,8 +485,7 @@ class PositionalDecoder(nn.Module):
         block_expand = block.expand(self.strip_len, -1, -1).permute((1, 2, 0)).unsqueeze(2)
 
         freq = self.freq_decoder(x[:, :self.freq_dim])
-        freq_seq = torch.stack([self.freq_seq_constructor[i](freq[:, i].unsqueeze(-1)) for i in range(self.kernel_num)], dim=1)
-        freq_seq = torch.cos(freq_seq).transpose(1, 2)
+        freq_seq = torch.stack([self.freq_seq_constructor[i](freq) for i in range(self.kernel_num)], dim=-1)
         
         seq = self.seq_decoder(freq_seq, (block, torch.zeros_like(block)))[0]
         seq = seq.transpose(1, 2).unsqueeze(2)
