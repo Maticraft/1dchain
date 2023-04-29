@@ -440,7 +440,11 @@ class PositionalDecoder(nn.Module):
 
     def _get_conv_block(self):
         return nn.Sequential(
-            nn.ConvTranspose2d(2*self.kernel_num, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation),
+            nn.Conv2d(2*self.kernel_num, self.kernel_num, kernel_size=1, stride=1, dilation=1),
+            self._get_activation(),
+            nn.Conv2d(self.kernel_num, self.kernel_num, kernel_size=1, stride=1, dilation=1),
+            self._get_activation(),
+            nn.ConvTranspose2d(self.kernel_num, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation),
         )
 
 
@@ -486,7 +490,8 @@ class PositionalDecoder(nn.Module):
 
         freq = self.freq_decoder(x[:, :self.freq_dim])
         freq_seq = torch.stack([self.freq_seq_constructor[i](freq) for i in range(self.kernel_num)], dim=-1)
-        
+        freq_seq = torch.cos(freq_seq)
+
         seq = self.seq_decoder(freq_seq, (block, torch.zeros_like(block)))[0]
         seq = seq.transpose(1, 2).unsqueeze(2)
 
