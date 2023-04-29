@@ -6,7 +6,7 @@ import torch
 
 from data_utils import HamiltionianDataset
 from helical_ladder import  DEFAULT_PARAMS, SpinLadder
-from models import Encoder, Decoder, PositionalDecoder, PositionalEncoder
+from models import Encoder, Decoder, PositionalDecoder, PositionalEncoder, HamiltonianGenerator
 from models_utils import train_autoencoder, test_autoencoder
 from models_files import save_autoencoder_params, save_autoencoder, save_data_list
 from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
@@ -67,7 +67,7 @@ encoder_params = {
 
 
 decoder_params = {
-    'kernel_num': 64,
+    'hidden_size': 128,
     'activation': 'leaky_relu',
     'freq_dec_depth': 4,
     'freq_dec_hidden_size': 128,
@@ -106,7 +106,7 @@ train_loader = DataLoader(train_data, params['batch_size'])
 test_loader = DataLoader(test_data, params['batch_size'])
 
 encoder = PositionalEncoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
-decoder = PositionalDecoder(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
+decoder = HamiltonianGenerator(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
 
 print(encoder)
 print(decoder)

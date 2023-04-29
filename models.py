@@ -1,4 +1,5 @@
 import typing as t
+from itertools import product
 
 import torch
 import torch.nn as nn
@@ -704,3 +705,141 @@ class PositionalEncoder(nn.Module):
         freq_enc = self.freq_lin_encoder(torch.cat([fft_out, freq_out], dim=-1))
 
         return torch.cat([freq_enc, block_enc], dim=-1)
+    
+
+
+class HamiltonianGenerator(nn.Module):
+    def __init__(self, representation_dim: int, output_size: t.Tuple[int, int, int], **kwargs: t.Dict[str, t.Any]):
+        super(HamiltonianGenerator, self).__init__()
+        self.channel_num = output_size[0]
+        assert self.channel_num % 2 == 0, 'Channel number must be even'
+        self.N = output_size[1]
+        self.block_size = output_size[2]
+        self.representation_dim = representation_dim
+        
+        self.hidden_size = kwargs.get('hidden_size', 128)
+        self.activation = kwargs.get('activation', 'relu')
+
+        self.blocks, self.block_pairs = self._initialize_block_pairs()
+        self.block_pair_idx_map = self._initialize_block_pair_idx_map()
+
+        self.on_site_seq_generator = nn.ModuleList([self._get_mlp(4, self.representation_dim, self.hidden_size, self.N) for _ in range(2*len(self.block_pairs))])
+        self.interaction_seq_generator = nn.ModuleList([self._get_mlp(4, self.representation_dim, self.hidden_size, self.N) for _ in range(self.channel_num - 2)])
+
+
+    def _initialize_block_pairs(self):
+        eye = torch.eye(2)
+        sigma_x = torch.tensor([[0, 1], [1, 0]])
+        sigma_iy = torch.tensor([[0, 1], [-1, 0]])
+        sigma_z = torch.tensor([[1, 0], [0, -1]])
+        blocks = torch.stack([eye, sigma_x, sigma_iy, sigma_z], dim=0)
+        blocks_ids = list(range(len(blocks)))
+        block_pairs = list(product(blocks_ids, blocks_ids))
+        return blocks, block_pairs
+
+
+    def _initialize_block_pair_idx_map(self):
+        return {
+            '11': 0,
+            '1x': 1,
+            '1y': 2,
+            '1z': 3,
+            'x1': 4,
+            'xx': 5,
+            'xy': 6,
+            'xz': 7,
+            'y1': 8,
+            'yx': 9,
+            'yy': 10,
+            'yz': 11,
+            'z1': 12,
+            'zx': 13,
+            'zy': 14,
+            'zz': 15,
+        }
+    
+
+    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int):
+        layers = []
+        for i in range(layers_num):
+            if i == 0:
+                layers.append(nn.Linear(input_size, hidden_size))
+            elif i == layers_num - 1:
+                layers.append(nn.BatchNorm1d(hidden_size))
+                layers.append(nn.Linear(hidden_size, output_size))
+            else:
+                layers.append(nn.BatchNorm1d(hidden_size))
+                layers.append(nn.Linear(hidden_size, hidden_size))
+            layers.append(self._get_activation())
+        return nn.Sequential(*layers) 
+    
+
+    def _get_activation(self):
+        if self.activation == 'relu':
+            return nn.ReLU()
+        elif self.activation == 'leaky_relu':
+            return nn.LeakyReLU(negative_slope=0.01)
+        else:
+            return ValueError(f'Activation function: {self.activation} not implemented')
+     
+
+    def forward(self, x: torch.Tensor):
+        '''
+        assumes:
+          x.shape = (batch_size, representation_dim)
+        '''
+        on_site_seqs = torch.stack([seq_gen(x) for seq_gen in self.on_site_seq_generator], dim=1)
+        interaction_seqs = torch.stack([seq_gen(x) for seq_gen in self.interaction_seq_generator], dim=1)
+        H_interaction = torch.stack([self._interaction_block_generator(interaction_seqs[:, i]) for i in range(self.channel_num - 2)], dim=1)
+        H_on_site = torch.stack([self._on_site_block_generator(on_site_seqs[:, :16]), self._on_site_block_generator(on_site_seqs[:, 16:])], dim=1)
+        strips = torch.cat([H_interaction[:, :(self.channel_num // 2 - 1)], H_on_site, H_interaction[:, (self.channel_num // 2 - 1):]], dim=1)
+        matrix = self._get_matrix_from_strips(strips)
+        return matrix 
+
+
+    def _interaction_block_generator(self, t: torch.Tensor):
+        '''
+        assumes t.shape = (batch_size, seq_size)
+        '''
+        zz_pair = self.block_pairs[self.block_pair_idx_map['zz']]
+        return self._block_generator(t, self.blocks[zz_pair[0]], self.blocks[zz_pair[1]])
+
+
+    def _on_site_block_generator(self, param_vec: torch.Tensor):
+        '''
+        assumes param_vec.shape = (batch_size, 16, seq_size)
+        '''
+        assert param_vec.shape[1] == 16
+        all_blocks = torch.stack([self._block_generator(param_vec[:, i, :], self.blocks[pair[0]], self.blocks[pair[1]]) for i, pair in enumerate(self.block_pairs)], dim=1)
+        return torch.sum(all_blocks, dim=1)
+
+
+    def _block_generator(self, x: torch.Tensor, block_a: torch.Tensor, block_b: torch.Tensor):
+        '''
+        assumes:
+          x.shape = (batch_size, seq_size)
+          block_a.shape = (2, 2)
+          block_b.shape = (2, 2)
+        '''
+        x_broadcast = x.unsqueeze(-1).unsqueeze(-1)
+        block = torch.kron(block_a.to(x.device), block_b.to(x.device))
+        block_expanded = block.unsqueeze(0).unsqueeze(0).expand(x.shape[0], x.shape[1], -1, -1)
+        full_block = x_broadcast*block_expanded
+        return torch.cat([full_block[:, i, :, :] for i in range(full_block.shape[1])], dim=-1)  
+    
+
+    def _get_matrix_from_strips(self, strips: torch.Tensor):
+        matrix = torch.zeros((strips.shape[0], 2, self.N*self.block_size, self.N*self.block_size)).to(strips.device)
+        strips_split = torch.tensor_split(strips, self.channel_num // 2, dim=1)
+        for i, strip in enumerate(strips_split):
+            offset = i - (len(strips_split) // 2)
+            strip_off = max(0, -offset)
+            matrix_off = abs(offset)*self.block_size
+            for j in range(self.N - abs(offset)):
+                idx0 =  j*self.block_size
+                idx1 = (j+1)*self.block_size
+                if offset >= 0:
+                    matrix[:, :, idx0: idx1, idx0 + matrix_off: idx1 + matrix_off] = strip[:, :, :, idx0 + strip_off: idx1 + strip_off]
+                else:
+                    matrix[:, :, idx0 + matrix_off: idx1 + matrix_off, idx0: idx1] = strip[:, :, :, idx0 + strip_off: idx1 + strip_off]
+        return matrix    
