@@ -419,7 +419,7 @@ class PositionalDecoder(nn.Module):
         
         self.freq_decoder = self._get_mlp(self.freq_dec_depth, self.freq_dim, self.freq_dec_hidden_size, self.freq_dec_hidden_size)
         self.freq_seq_constructor = nn.ModuleList([
-            self._get_mlp(self.freq_dec_depth, self.freq_dec_hidden_size, self.freq_dec_hidden_size, self.strip_len)
+            self._get_mlp(self.freq_dec_depth, self.freq_dec_hidden_size, self.freq_dec_hidden_size, self.strip_len, final_activation='sigmoid')
             for _ in range(self.kernel_num)
         ])
 
@@ -440,11 +440,7 @@ class PositionalDecoder(nn.Module):
 
     def _get_conv_block(self):
         return nn.Sequential(
-            nn.Conv2d(2*self.kernel_num, self.kernel_num, kernel_size=1, stride=1, dilation=1),
-            self._get_activation(),
-            nn.Conv2d(self.kernel_num, self.kernel_num, kernel_size=1, stride=1, dilation=1),
-            self._get_activation(),
-            nn.ConvTranspose2d(self.kernel_num, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation),
+            nn.ConvTranspose2d(2*self.kernel_num, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation),
         )
 
 
@@ -469,7 +465,7 @@ class PositionalDecoder(nn.Module):
         return matrix
     
 
-    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int):
+    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int, final_activation: str = 'self'):
         layers = []
         for i in range(layers_num):
             if i == 0:
@@ -480,17 +476,35 @@ class PositionalDecoder(nn.Module):
             else:
                 layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, hidden_size))
+
+            if i != layers_num - 1:
+                layers.append(self._get_activation())
+        
+        if final_activation == 'self':
             layers.append(self._get_activation())
+        elif final_activation == 'sigmoid':
+            layers.append(nn.Sigmoid())
+        elif final_activation == 'tanh':
+            layers.append(nn.Tanh())
+        else:
+            raise ValueError(f'Activation function: {final_activation} not implemented')
+        
         return nn.Sequential(*layers)
     
+
+    def _periodic_func(self, x: torch.Tensor, i: int):
+        if i % 2 == 0:
+            return torch.sin(x * 2**((i // 2) / 4))
+        else:
+            return torch.cos(x * 2**((i // 2) / 4))
+        
 
     def forward(self, x: torch.Tensor):
         block = self.block_decoder(x[:, self.freq_dim:]).unsqueeze(0)
         block_expand = block.expand(self.strip_len, -1, -1).permute((1, 2, 0)).unsqueeze(2)
 
         freq = self.freq_decoder(x[:, :self.freq_dim])
-        freq_seq = torch.stack([self.freq_seq_constructor[i](freq) for i in range(self.kernel_num)], dim=-1)
-        freq_seq = torch.cos(freq_seq)
+        freq_seq = torch.stack([self._periodic_func(self.freq_seq_constructor[i](freq), i) for i in range(self.kernel_num)], dim=-1)
 
         seq = self.seq_decoder(freq_seq, (block, torch.zeros_like(block)))[0]
         seq = seq.transpose(1, 2).unsqueeze(2)

@@ -34,7 +34,7 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'positional_autoencoder_fft_lstm_v2-1'
+model_name = 'positional_autoencoder_fft_lstm_v2-2'
 
 # Params
 params = {
