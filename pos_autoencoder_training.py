@@ -67,7 +67,6 @@ encoder_params = {
 
 
 decoder_params = {
-    'hidden_size': 128,
     'activation': 'leaky_relu',
     'freq_dec_depth': 4,
     'freq_dec_hidden_size': 128,

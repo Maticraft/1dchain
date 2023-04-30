@@ -709,22 +709,43 @@ class PositionalEncoder(nn.Module):
 
 
 class HamiltonianGenerator(nn.Module):
-    def __init__(self, representation_dim: int, output_size: t.Tuple[int, int, int], **kwargs: t.Dict[str, t.Any]):
+    def __init__(self, representation_dim: t.Union[int, t.Tuple[int, int]], output_size: t.Tuple[int, int, int], **kwargs: t.Dict[str, t.Any]):
         super(HamiltonianGenerator, self).__init__()
         self.channel_num = output_size[0]
         assert self.channel_num % 2 == 0, 'Channel number must be even'
         self.N = output_size[1]
         self.block_size = output_size[2]
-        self.representation_dim = representation_dim
+
+        if type(representation_dim) == int: 
+            self.freq_dim = representation_dim // 2
+            self.block_dim = representation_dim // 2
+        else:
+            self.freq_dim = representation_dim[0]
+            self.block_dim = representation_dim[1]
         
-        self.hidden_size = kwargs.get('hidden_size', 128)
+        self.freq_dec_depth = kwargs.get('freq_dec_depth', 4)
+        self.freq_dec_hidden_size = kwargs.get('freq_dec_hidden_size', 128)
+
+        self.block_dec_depth = kwargs.get('block_dec_depth', 4)
+        self.block_dec_hidden_size = kwargs.get('block_enc_hidden_size', 128)
+        
         self.activation = kwargs.get('activation', 'relu')
 
         self.blocks, self.block_pairs = self._initialize_block_pairs()
         self.block_pair_idx_map = self._initialize_block_pair_idx_map()
 
-        self.on_site_seq_generator = nn.ModuleList([self._get_mlp(4, self.representation_dim, self.hidden_size, self.N) for _ in range(2*len(self.block_pairs))])
-        self.interaction_seq_generator = nn.ModuleList([self._get_mlp(4, self.representation_dim, self.hidden_size, self.N) for _ in range(self.channel_num - 2)])
+        self.seq_num = 2*len(self.block_pairs) + self.channel_num - 2
+
+        self.freq_decoder = self._get_mlp(self.freq_dec_depth, self.freq_dim, self.freq_dec_hidden_size, self.seq_num)
+        self.freq_seq_constructor = nn.ModuleList([
+            self._get_mlp(self.freq_dec_depth, 1, self.freq_dec_hidden_size, self.N)
+            for _ in range(self.seq_num)
+        ])
+
+        self.block_decoder = self._get_mlp(self.block_dec_depth, self.block_dim, self.block_dec_hidden_size, self.seq_num)
+        self.seq_decoder = nn.LSTM(input_size=self.seq_num, hidden_size=self.seq_num, num_layers=1, batch_first=True)
+        
+        self.lin_mixer = nn.Conv2d(2*self.seq_num, self.seq_num, kernel_size=1, stride=1)
 
 
     def _initialize_block_pairs(self):
@@ -788,10 +809,24 @@ class HamiltonianGenerator(nn.Module):
         assumes:
           x.shape = (batch_size, representation_dim)
         '''
-        on_site_seqs = torch.stack([seq_gen(x) for seq_gen in self.on_site_seq_generator], dim=1)
-        interaction_seqs = torch.stack([seq_gen(x) for seq_gen in self.interaction_seq_generator], dim=1)
-        H_interaction = torch.stack([self._interaction_block_generator(interaction_seqs[:, i]) for i in range(self.channel_num - 2)], dim=1)
-        H_on_site = torch.stack([self._on_site_block_generator(on_site_seqs[:, :16]), self._on_site_block_generator(on_site_seqs[:, 16:])], dim=1)
+        block = self.block_decoder(x[:, self.freq_dim:]).unsqueeze(0)
+        block_expand = block.expand(self.N, -1, -1).permute((1, 2, 0)).unsqueeze(2)
+
+        freq = self.freq_decoder(x[:, :self.freq_dim])
+        freq_seq = torch.stack([self.freq_seq_constructor[i](freq[:, i].unsqueeze(-1)) for i in range(self.seq_num)], dim=1)
+        freq_seq = torch.cos(freq_seq).transpose(1, 2)
+        
+        seq = self.seq_decoder(freq_seq, (block, torch.zeros_like(block)))[0]
+        seq = seq.transpose(1, 2).unsqueeze(2)
+
+        block_seq = torch.cat([block_expand, seq], dim=1)
+        block_seq = self.lin_mixer(block_seq).squeeze(2)
+
+        interaction_block_seq = block_seq[:, :self.channel_num - 2]
+        on_site_block_seq = block_seq[:, self.channel_num - 2:]
+
+        H_interaction = torch.stack([self._interaction_block_generator(interaction_block_seq[:, i]) for i in range(self.channel_num - 2)], dim=1)
+        H_on_site = torch.stack([self._on_site_block_generator(on_site_block_seq[:, :16]), self._on_site_block_generator(on_site_block_seq[:, 16:])], dim=1)
         strips = torch.cat([H_interaction[:, :(self.channel_num // 2 - 1)], H_on_site, H_interaction[:, (self.channel_num // 2 - 1):]], dim=1)
         matrix = self._get_matrix_from_strips(strips)
         return matrix 
