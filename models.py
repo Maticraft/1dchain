@@ -836,7 +836,7 @@ class HamiltonianGenerator(nn.Module):
         '''
         assumes t.shape = (batch_size, seq_size)
         '''
-        zz_pair = self.block_pairs[self.block_pair_idx_map['zz']]
+        zz_pair = self.block_pairs[self.block_pair_idx_map['z1']]
         return self._block_generator(t, self.blocks[zz_pair[0]], self.blocks[zz_pair[1]])
 
 
@@ -868,7 +868,7 @@ class HamiltonianGenerator(nn.Module):
         strips_split = torch.tensor_split(strips, self.channel_num // 2, dim=1)
         for i, strip in enumerate(strips_split):
             offset = i - (len(strips_split) // 2)
-            strip_off = max(0, -offset)
+            strip_off = max(0, -offset)*self.block_size
             matrix_off = abs(offset)*self.block_size
             for j in range(self.N - abs(offset)):
                 idx0 =  j*self.block_size
