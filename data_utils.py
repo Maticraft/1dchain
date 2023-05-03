@@ -106,7 +106,7 @@ class HamiltionianDataset(Dataset):
 
   
 def generate_data(
-    hamiltionian: Hamiltonian,
+    hamiltionian: t.Type[Hamiltonian],
     param_list: t.List[t.Dict[str, t.Any]],
     directory: str,
     eig_decomposition: bool = False,

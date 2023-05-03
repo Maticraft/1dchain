@@ -51,7 +51,7 @@ def plot_matrix(matrix: np.ndarray, filepath: str, **kwargs: t.Dict[str, t.Any])
 
 
 def plot_test_eigvals(
-    model: Hamiltonian,
+    model: t.Type[Hamiltonian],
     encoder: torch.nn.Module,
     decoder: torch.nn.Module,
     xaxis: str,

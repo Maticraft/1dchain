@@ -453,15 +453,17 @@ class PositionalDecoder(nn.Module):
         strips_split = torch.tensor_split(strips, self.channel_num // 2, dim=1)
         for i, strip in enumerate(strips_split):
             offset = i - (len(strips_split) // 2)
-            strip_off = max(0, -offset)
             matrix_off = abs(offset)*self.block_size
-            for j in range(self.N - abs(offset)):
+            for j in range(self.N):
                 idx0 =  j*self.block_size
                 idx1 = (j+1)*self.block_size
                 if offset >= 0:
-                    matrix[:, :, idx0: idx1, idx0 + matrix_off: idx1 + matrix_off] = strip[:, :, :, idx0 + strip_off: idx1 + strip_off]
+                    matrix_idx0 = (idx0 + matrix_off) % self.N
+                    matrix_idx1 = matrix_idx0 + self.block_size
                 else:
-                    matrix[:, :, idx0 + matrix_off: idx1 + matrix_off, idx0: idx1] = strip[:, :, :, idx0 + strip_off: idx1 + strip_off]
+                    matrix_idx0 = (idx0 - matrix_off) % self.N
+                    matrix_idx1 = matrix_idx0 + self.block_size
+                matrix[:, :, idx0: idx1, matrix_idx0: matrix_idx1] = strip[:, :, :, idx0: idx1]
         return matrix
     
 
@@ -630,22 +632,31 @@ class PositionalEncoder(nn.Module):
 
     def _get_strip(self, x: torch.Tensor, offset: int, fill_mode: str = 'zeros'):
         strip = torch.zeros((x.shape[0], x.shape[1], self.block_size, self.N*self.block_size)).to(x.device)
-        strip_off = max(0, -offset)
+        strip_off = max(0, -offset) # should be fixed with: *self.block_size
         x_off = abs(offset)*self.block_size
-        for i in range(self.N - abs(offset)):
+        for i in range(self.N):
             idx0 =  i*self.block_size
-            idx1 = (i+1)*self.block_size
+            idx1 = idx0 + self.block_size
             if offset >= 0:
-                strip[:, :, :, idx0 + strip_off: idx1 + strip_off] = x[:, :, idx0: idx1, idx0 + x_off: idx1 + x_off]
+                idx0_off = (idx0 + x_off) % self.N
+                idx1_off = idx0_off + self.block_size
             else:
-                strip[:, :, :, idx0 + strip_off: idx1 + strip_off] = x[:, :, idx0 + x_off: idx1 + x_off, idx0: idx1]
+                idx0_off = (idx0 - x_off) % self.N
+                idx1_off = idx0_off + self.block_size
+            strip[:, :, :, idx0: idx1] = x[:, :, idx0: idx1, idx0_off: idx1_off]
         if fill_mode == 'zeros':
+            if offset > 0:
+                strip[:, :, :, -x_off:] = 0.
+            elif offset < 0:
+                strip[:, :, :, :x_off] = 0.
             return strip
         elif fill_mode == 'circular':
             if offset > 0:
                 strip[:, :, :, -x_off:] = strip[:, :, :, :x_off]
             elif offset < 0:
                 strip[:, :, :, :x_off] = strip[:, :, :, -x_off:]
+            return strip
+        elif fill_mode == 'hamiltonian':
             return strip
         else:
             raise ValueError(f'Fill mode: {fill_mode} not implemented')

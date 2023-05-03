@@ -13,7 +13,7 @@ DEFAULT_PARAMS = {'N': 70, 'M': 2, 'delta': 0.3, 'mu': 0.9, 'J': 1., 'delta_q': 
 
 
 class SpinLadder(Hamiltonian):
-    def __init__(self, N, M, mu = 0.9, delta = 0.3, J = 1, q = np.pi/2, delta_q = np.pi, t = 1, S = 1, theta = np.pi/2, B = 0.):
+    def __init__(self, N, M, mu = 0.9, delta = 0.3, J = 1, q = np.pi/2, delta_q = np.pi, t = 1, S = 1, theta = np.pi/2, B = 0., periodic = False, use_potential_gates = False, **kwargs):
         self.block_size = 4
         self.M = M
         self.N = N
@@ -27,6 +27,14 @@ class SpinLadder(Hamiltonian):
         self.theta = theta
         self.B = B
         self.H = self._construct_open_boundary_hamiltonian(self.N, self.M)
+        if periodic:
+            self.H = self._add_N_periodic_boundary(self.H)
+        if use_potential_gates:
+            V = kwargs.get('potential', 1.)
+            V_pos = kwargs.get('potential_positions', [{'i': 0, 'j': 0}, {'i': N-1, 'j': M-1}])
+            for pos in V_pos:
+                self.H = self._add_potential_gate(self.H, pos['i'], pos['j'], V)
+
 
     def _construct_open_boundary_hamiltonian(self, N, M):
         sigma_z = np.array([[1, 0], [0, -1]], dtype=np.complex128)
@@ -50,9 +58,29 @@ class SpinLadder(Hamiltonian):
                     H[self._idx(i, j + 1) : self._idx(i, j + 1) + self.block_size, self._idx(i, j) : self._idx(i, j) + self.block_size] = np.conjugate(np.kron(sigma_z, self._interaction_block_ij_cdagger_c(self.t))).T
 
         return H
+    
+
+    def _add_N_periodic_boundary(self, H):
+        sigma_z = np.array([[1, 0], [0, -1]], dtype=np.complex128)
+        N = self.N
+        M = self.M
+        for j in range(M):
+            H[self._idx(N-1, j) : self._idx(N-1, j) + self.block_size, self._idx(0, j) : self._idx(0, j) + self.block_size] = np.kron(sigma_z, self._interaction_block_ij_cdagger_c(self.t))
+            H[self._idx(0, j) : self._idx(0, j) + self.block_size, self._idx(N-1, j) : self._idx(N-1, j) + self.block_size] = np.conjugate(np.kron(sigma_z, self._interaction_block_ij_cdagger_c(self.t))).T
+        return H
+    
+
+    def _add_potential_gate(self, H, i, j, V):
+        sigma_z = np.array([[1, 0], [0, -1]], dtype=np.complex128)
+        eye = np.eye(2, dtype=np.complex128)
+        block = np.kron(sigma_z, eye)
+        H[self._idx(i, j) : self._idx(i, j) + self.block_size, self._idx(i, j) : self._idx(i, j) + self.block_size] += V*block
+        return H
+
 
     def _idx(self, i, j):
         return (i*self.M + j)*self.block_size
+
 
     def _spin_block_i_cdagger_c(self, mu, i, j, theta, delta_q, q, S, B):
         sigma_z = np.array([[1, 0], [0, -1]], dtype=np.complex128)
