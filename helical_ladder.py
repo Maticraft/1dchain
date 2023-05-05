@@ -157,29 +157,41 @@ def generate_param_data(N, M, N_samples, flename):
     data.to_csv(flename, index=False)
 
 
-def generate_params(N, M, N_samples, N_qs):
+def generate_params(N, M, N_samples, periodic=False, use_potential_gates=False):
     deltas = np.random.normal(1.8, 1, size= N_samples)
-    qs = np.arange(0, 2*np.pi, 2*np.pi / N_qs)
-    delta_qs = np.arange(0, 2*np.pi, 2*np.pi / N_qs)
-    q_ids = np.random.choice(N_qs, size= N_samples)
-    # delta_q_ids = np.random.choice(N_qs, size= N_samples)
-    delta_q = np.pi
+    qs = np.random.uniform(0, 2*np.pi, size = N_samples)
+    delta_qs = np.random.uniform(0, 2*np.pi, size = N_samples)
     mus = np.random.normal(1.8, 1, size= N_samples)
     Js = np.random.normal(1.8, 1, size= N_samples)
     ts = np.random.normal(1, 0.5, size= N_samples)
     theta = np.pi / 2
+
+    if use_potential_gates:
+        use_potential = np.random.choice([True, False], size=N_samples)
+        Vs = np.random.normal(50, 50, size= N_samples)
+        num_gates = np.random.randint(1, 5, size=N_samples)
+        V_pos_i = [np.random.randint(0, N, size= num_gates[i]) for i in range(N_samples)]
+    else:
+        use_potential = [False for _ in range(N_samples)]
+        Vs = [0 for _ in range(N_samples)]
+        V_pos_i = [[] for _ in range(N_samples)]
+
 
     params = [
         {
             'N': N,
             'M': M,
             'delta': deltas[i],
-            'q': qs[q_ids[i]],
+            'q': qs[i],
             'mu': mus[i],
             'J': Js[i],
-            'delta_q': delta_q,
+            'delta_q': delta_qs[i],
             't': ts[i],
-            'theta': theta
+            'theta': theta,
+            'periodic': int(periodic),
+            'use_potential_gates': int(use_potential[i]),
+            'potential': Vs[i],
+            'potential_positions': [{'i': int(i_pos), 'j': int(j_pos)} for i_pos in V_pos_i[i] for j_pos in range(M)],
         } for i in range(N_samples)
     ]
 
@@ -227,16 +239,16 @@ if __name__ == '__main__':
     N = 70
     M = 2
 
-    N_samples = 100000
+    N_samples = 1000000
     N_qs = 100
 
     # generate_param_data(N, M, N_samples, './data/spin_ladder/spin_ladder_70_2_red_dist.csv')
     
     # ML_predictor = pickle.load(open(os.path.join(MODEL_SAVE_DIR, MODEL_NAME + '.pkl'), 'rb'))
     # params = generate_zm_params(N, M, N_samples // 2, ML_predictor) + generate_params(N, M, N_samples // 2)
-    params = generate_params(N, M, N_samples, N_qs)
+    params = generate_params(N, M, N_samples, periodic=True, use_potential_gates=True)
     #generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistFixedStd', eig_decomposition=True)
-    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDist100q_param', eig_decomposition=False, format='csr')
+    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistPeriodicPG', eig_decomposition=False, format='csr')
 
 
     # ladder = SpinLadder(**DEFAULT_PARAMS)

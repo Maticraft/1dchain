@@ -453,19 +453,19 @@ class PositionalDecoder(nn.Module):
         strips_split = torch.tensor_split(strips, self.channel_num // 2, dim=1)
         for i, strip in enumerate(strips_split):
             offset = i - (len(strips_split) // 2)
-            matrix_off = abs(offset)*self.block_size
+            matrix_off = abs(offset)*self.block_size 
             for j in range(self.N):
                 idx0 =  j*self.block_size
                 idx1 = (j+1)*self.block_size
                 if offset >= 0:
-                    matrix_idx0 = (idx0 + matrix_off) % self.N
+                    matrix_idx0 = (idx0 + matrix_off) % (self.N*self.block_size)
                     matrix_idx1 = matrix_idx0 + self.block_size
                 else:
-                    matrix_idx0 = (idx0 - matrix_off) % self.N
+                    matrix_idx0 = (idx0 - matrix_off) % (self.N*self.block_size)
                     matrix_idx1 = matrix_idx0 + self.block_size
                 matrix[:, :, idx0: idx1, matrix_idx0: matrix_idx1] = strip[:, :, :, idx0: idx1]
         return matrix
-    
+
 
     def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int, final_activation: str = 'self'):
         layers = []
@@ -632,16 +632,15 @@ class PositionalEncoder(nn.Module):
 
     def _get_strip(self, x: torch.Tensor, offset: int, fill_mode: str = 'zeros'):
         strip = torch.zeros((x.shape[0], x.shape[1], self.block_size, self.N*self.block_size)).to(x.device)
-        strip_off = max(0, -offset) # should be fixed with: *self.block_size
         x_off = abs(offset)*self.block_size
         for i in range(self.N):
             idx0 =  i*self.block_size
             idx1 = idx0 + self.block_size
             if offset >= 0:
-                idx0_off = (idx0 + x_off) % self.N
+                idx0_off = (idx0 + x_off) % (self.N * self.block_size)
                 idx1_off = idx0_off + self.block_size
             else:
-                idx0_off = (idx0 - x_off) % self.N
+                idx0_off = (idx0 - x_off) % (self.N * self.block_size)
                 idx1_off = idx0_off + self.block_size
             strip[:, :, :, idx0: idx1] = x[:, :, idx0: idx1, idx0_off: idx1_off]
         if fill_mode == 'zeros':

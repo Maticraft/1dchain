@@ -12,8 +12,8 @@ from models_files import save_autoencoder_params, save_autoencoder, save_data_li
 from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 # Pretrained model
-pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDistFixed/100/positional_autoencoder_fft_lstm_v2-2'
-epoch = 35
+pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q/100/pretrained_positional_autoencoder_fft_lstm_v2-2'
+epoch = 15
 
 # Paths
 data_path = './data/spin_ladder/70_2_RedDist1000q_pi2delta_q'
@@ -36,7 +36,7 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'pretrained_positional_autoencoder_fft_lstm_v2-2'
+model_name = 'pretrained_positional_autoencoder_fft_lstm_v2-2-fixed'
 
 # Load model
 encoder, decoder = load_positional_autoencoder(pretrained_model_dir, epoch)
@@ -46,7 +46,7 @@ params, encoder_params, decoder_params = load_autoencoder_params(pretrained_mode
 params['learning_rate'] = 1.e-5
 params['diag_loss'] = True
 params['diag_loss_weight'] = 0.01
-params['epochs'] = 50
+params['epochs'] = 10
 
 # Set the root dir
 root_dir = os.path.join(save_dir, f'{params["representation_dim"]}', model_name)
