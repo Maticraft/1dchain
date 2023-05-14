@@ -13,8 +13,8 @@ from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDistFixed'
-save_dir = './autoencoder/spin_ladder/70_2_RedDistFixed'
+data_path = './data/spin_ladder/70_2_RedDist1000q'
+save_dir = './autoencoder/spin_ladder/70_2_RedDist1000q'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -34,7 +34,7 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'positional_autoencoder_fft_lstm_v2-2'
+model_name = 'positional_autoencoder_fft_lstm_v2-3'
 
 # Params
 params = {
@@ -49,8 +49,9 @@ params = {
     'edge_loss_weight': 1.,
     'eigenstates_loss': False,
     'eigenstates_loss_weight': 1.,
-    'diag_loss': True,
-    'diag_loss_weight': 0.01
+    'diag_loss': False,
+    'diag_loss_weight': 0.01,
+    'log_scaled_loss': True
 }
 
 # Architecture
@@ -73,6 +74,8 @@ decoder_params = {
     'freq_dec_hidden_size': 128,
     'block_dec_depth': 4,
     'block_dec_hidden_size': 128,
+    'seq_dec_depth': 4,
+    'seq_dec_hidden_size': 128,
 }
 
 
@@ -94,7 +97,7 @@ if not os.path.isdir(ham_sub_path):
 
 save_autoencoder_params(params, encoder_params, decoder_params, root_dir)
 
-data = HamiltionianDataset(data_path, label_idx=(3, 4), eig_decomposition=params['eigenstates_loss'], format='numpy')
+data = HamiltionianDataset(data_path, label_idx=(3, 4), eig_decomposition=params['eigenstates_loss'], format='csr')
 
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size
@@ -130,7 +133,8 @@ for epoch in range(1, params['epochs'] + 1):
         eigenstates_loss=params['eigenstates_loss'],
         eigenstates_loss_weight=params['eigenstates_loss_weight'],
         diag_loss=params['diag_loss'],
-        diag_loss_weight=params['diag_loss_weight']
+        diag_loss_weight=params['diag_loss_weight'],
+        log_scaled_loss=params['log_scaled_loss']
     )
     te_loss, te_edge_loss, te_eig_loss, te_diag_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'], eigenstates_loss=params['eigenstates_loss'], diag_loss=params['diag_loss'])
     save_autoencoder(encoder, decoder, root_dir, epoch)

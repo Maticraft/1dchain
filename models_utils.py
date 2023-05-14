@@ -82,6 +82,12 @@ def reconstruct_hamiltonian(H: np.ndarray, encoder: nn.Module, decoder: nn.Modul
     return H_rec
 
 
+def log_scale_loss(x: torch.Tensor, loss: torch.Tensor):
+    scale = torch.log10(torch.abs(x))
+    factor = 10**(-scale)
+    return factor * loss
+
+
 def site_perm(x: torch.Tensor, N: int, block_size: int):
     permutation = torch.randperm(N)
     permuted_indices = torch.cat([torch.arange(i*block_size, (i+1)*block_size) for i in permutation], dim=0)
@@ -207,11 +213,17 @@ def train_autoencoder(
     eigenstates_loss_weight: float = .5,
     diag_loss: bool = False,
     diag_loss_weight: float = .01,
+    log_scaled_loss: bool = False,
 ):
     if site_permutation and edge_loss:
         raise NotImplementedError("Combining edge loss with site permutation is not implemented")
 
-    criterion = nn.MSELoss()
+
+    if log_scaled_loss:
+        assert not diag_loss, "Diagonal loss is not implemented for log scaled loss"
+        criterion = nn.MSELoss(reduction='none')
+    else:
+        criterion = nn.MSELoss()
 
     encoder_model.to(device)
     decoder_model.to(device)
@@ -232,27 +244,30 @@ def train_autoencoder(
         encoder_optimizer.zero_grad()
         decoder_optimizer.zero_grad()
         z = encoder_model(x)
-        x_hat = decoder_model(z)
+        x_hat = decoder_model(z) 
         loss = criterion(x_hat, x)
-        total_loss += loss.item()
+        total_loss += torch.mean(loss).item()
 
         if edge_loss:
             e_loss = edge_diff(x_hat, x, criterion, edge_width=8)
             loss += edge_loss_weight * e_loss
-            total_edge_loss += e_loss.item()
+            total_edge_loss += torch.mean(e_loss).item()
 
         if eigenstates_loss:
             assert eig_dec is not None, "Incorrect eigen decomposition values"
             eig_dec = eig_dec[0].to(device), eig_dec[1].to(device)
             eig_loss = eigenvectors_loss(x_hat, eig_dec, criterion)
             loss += eigenstates_loss_weight * eig_loss
-            total_eigenstates_loss += eig_loss.item()
+            total_eigenstates_loss += torch.mean(eig_loss).item()
 
         if diag_loss:
             diag_loss = diagonal_loss(x_hat, x, criterion, block_size=4)
             loss += diag_loss_weight * diag_loss
-            total_diag_loss += diag_loss.item()
+            total_diag_loss += torch.mean(diag_loss).item()
 
+        if log_scaled_loss:
+            loss = log_scale_loss(x, loss)    
+            loss = torch.mean(loss)
         loss.backward()
         encoder_optimizer.step()
         decoder_optimizer.step()

@@ -411,7 +411,10 @@ class PositionalDecoder(nn.Module):
         self.freq_dec_hidden_size = kwargs.get('freq_dec_hidden_size', 128)
 
         self.block_dec_depth = kwargs.get('block_dec_depth', 4)
-        self.block_dec_hidden_size = kwargs.get('block_enc_hidden_size', 128)
+        self.block_dec_hidden_size = kwargs.get('block_dec_hidden_size', 128)
+
+        self.seq_dec_depth = kwargs.get('seq_dec_depth', 4)
+        self.seq_dec_hidden_size = kwargs.get('seq_dec_hidden_size', 128)
 
         self.activation = kwargs.get('activation', 'relu')
 
@@ -423,7 +426,9 @@ class PositionalDecoder(nn.Module):
             for _ in range(self.kernel_num)
         ])
 
-        self.block_decoder = self._get_mlp(self.block_dec_depth, self.block_dim, self.block_dec_hidden_size, self.kernel_num)
+        self.naive_block_decoder = self._get_mlp(self.block_dec_depth, self.block_dim, self.block_dec_hidden_size, self.kernel_num)
+
+        self.naive_seq_decoder = self._get_mlp(self.seq_dec_depth, self.freq_dim+self.block_dim, self.seq_dec_hidden_size, self.strip_len)
 
         self.seq_decoder = nn.LSTM(input_size=self.kernel_num, hidden_size=self.kernel_num, num_layers=1, batch_first=True)
         self.conv = self._get_conv_block()
@@ -440,7 +445,7 @@ class PositionalDecoder(nn.Module):
 
     def _get_conv_block(self):
         return nn.Sequential(
-            nn.ConvTranspose2d(2*self.kernel_num, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation),
+            nn.ConvTranspose2d(2*self.kernel_num+1, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation),
         )
 
 
@@ -502,7 +507,7 @@ class PositionalDecoder(nn.Module):
         
 
     def forward(self, x: torch.Tensor):
-        block = self.block_decoder(x[:, self.freq_dim:]).unsqueeze(0)
+        block = self.naive_block_decoder(x[:, self.freq_dim:]).unsqueeze(0)
         block_expand = block.expand(self.strip_len, -1, -1).permute((1, 2, 0)).unsqueeze(2)
 
         freq = self.freq_decoder(x[:, :self.freq_dim])
@@ -511,7 +516,9 @@ class PositionalDecoder(nn.Module):
         seq = self.seq_decoder(freq_seq, (block, torch.zeros_like(block)))[0]
         seq = seq.transpose(1, 2).unsqueeze(2)
 
-        block_seq = torch.cat([block_expand, seq], dim=1)
+        naive_seq = self.naive_seq_decoder(x).unsqueeze(1).unsqueeze(1)
+
+        block_seq = torch.cat([block_expand, seq, naive_seq], dim=1)
         
         strips = self.conv(block_seq)
         matrix = self._get_matrix_from_strips(strips)
