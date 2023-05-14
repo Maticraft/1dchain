@@ -116,10 +116,16 @@ def generate_data(
         filename = 'data_' + str(i)
         model = hamiltionian(**params)
         matrix = model.get_hamiltonian()
-        label = model.get_label()
+        try:
+            label = model.get_label()
+        except:
+            continue
 
         if eig_decomposition:
-            eigvals, eigvec = np.linalg.eigh(matrix)
+            try:
+                eigvals, eigvec = np.linalg.eigh(matrix)
+            except:
+                continue
         else:
             eigvals, eigvec = None, None
 

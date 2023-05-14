@@ -246,9 +246,9 @@ if __name__ == '__main__':
     
     # ML_predictor = pickle.load(open(os.path.join(MODEL_SAVE_DIR, MODEL_NAME + '.pkl'), 'rb'))
     # params = generate_zm_params(N, M, N_samples // 2, ML_predictor) + generate_params(N, M, N_samples // 2)
-    params = generate_params(N, M, N_samples, periodic=True, use_potential_gates=True)
+    params = generate_params(N, M, N_samples, periodic=False, use_potential_gates=True)
     #generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistFixedStd', eig_decomposition=True)
-    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistPeriodicPG', eig_decomposition=False, format='csr')
+    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistPG', eig_decomposition=False, format='csr')
 
 
     # ladder = SpinLadder(**DEFAULT_PARAMS)
