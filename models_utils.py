@@ -83,7 +83,8 @@ def reconstruct_hamiltonian(H: np.ndarray, encoder: nn.Module, decoder: nn.Modul
 
 
 def log_scale_loss(x: torch.Tensor, loss: torch.Tensor):
-    scale = torch.log10(torch.abs(x))
+    scale_basis = torch.where(torch.abs(x) < 1.e-5, torch.ones_like(x), x)
+    scale = torch.log10(torch.abs(scale_basis))
     factor = 10**(-scale)
     return factor * loss
 
