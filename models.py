@@ -411,19 +411,24 @@ class PositionalDecoder(nn.Module):
         self.freq_dec_hidden_size = kwargs.get('freq_dec_hidden_size', 128)
 
         self.block_dec_depth = kwargs.get('block_dec_depth', 4)
-        self.block_dec_hidden_size = kwargs.get('block_enc_hidden_size', 128)
+        self.block_dec_hidden_size = kwargs.get('block_dec_hidden_size', 128)
+
+        self.seq_dec_depth = kwargs.get('seq_dec_depth', 4)
+        self.seq_dec_hidden_size = kwargs.get('seq_dec_hidden_size', 128)
 
         self.activation = kwargs.get('activation', 'relu')
 
         self.strip_len = self._get_convs_input_size(1)
         
-        self.freq_decoder = self._get_mlp(self.freq_dec_depth, self.freq_dim, self.freq_dec_hidden_size, self.kernel_num)
+        self.freq_decoder = self._get_mlp(self.freq_dec_depth, self.freq_dim, self.freq_dec_hidden_size, self.freq_dec_hidden_size)
         self.freq_seq_constructor = nn.ModuleList([
-            self._get_mlp(self.freq_dec_depth, 1, self.freq_dec_hidden_size, self.strip_len)
+            self._get_mlp(self.freq_dec_depth, self.freq_dec_hidden_size, self.freq_dec_hidden_size, self.strip_len, final_activation='sigmoid')
             for _ in range(self.kernel_num)
         ])
 
-        self.block_decoder = self._get_mlp(self.block_dec_depth, self.block_dim, self.block_dec_hidden_size, self.kernel_num)
+        self.naive_block_decoder = self._get_mlp(self.block_dec_depth, self.block_dim, self.block_dec_hidden_size, self.kernel_num)
+
+        self.naive_seq_decoder = self._get_mlp(self.seq_dec_depth, self.freq_dim+self.block_dim, self.seq_dec_hidden_size, self.strip_len)
 
         self.seq_decoder = nn.LSTM(input_size=self.kernel_num, hidden_size=self.kernel_num, num_layers=1, batch_first=True)
         self.conv = self._get_conv_block()
@@ -440,7 +445,7 @@ class PositionalDecoder(nn.Module):
 
     def _get_conv_block(self):
         return nn.Sequential(
-            nn.ConvTranspose2d(2*self.kernel_num, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation),
+            nn.ConvTranspose2d(2*self.kernel_num+1, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation),
         )
 
 
@@ -453,19 +458,21 @@ class PositionalDecoder(nn.Module):
         strips_split = torch.tensor_split(strips, self.channel_num // 2, dim=1)
         for i, strip in enumerate(strips_split):
             offset = i - (len(strips_split) // 2)
-            strip_off = max(0, -offset)
-            matrix_off = abs(offset)*self.block_size
-            for j in range(self.N - abs(offset)):
+            matrix_off = abs(offset)*self.block_size 
+            for j in range(self.N):
                 idx0 =  j*self.block_size
                 idx1 = (j+1)*self.block_size
                 if offset >= 0:
-                    matrix[:, :, idx0: idx1, idx0 + matrix_off: idx1 + matrix_off] = strip[:, :, :, idx0 + strip_off: idx1 + strip_off]
+                    matrix_idx0 = (idx0 + matrix_off) % (self.N*self.block_size)
+                    matrix_idx1 = matrix_idx0 + self.block_size
                 else:
-                    matrix[:, :, idx0 + matrix_off: idx1 + matrix_off, idx0: idx1] = strip[:, :, :, idx0 + strip_off: idx1 + strip_off]
+                    matrix_idx0 = (idx0 - matrix_off) % (self.N*self.block_size)
+                    matrix_idx1 = matrix_idx0 + self.block_size
+                matrix[:, :, idx0: idx1, matrix_idx0: matrix_idx1] = strip[:, :, :, idx0: idx1]
         return matrix
-    
 
-    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int):
+
+    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int, final_activation: str = 'self'):
         layers = []
         for i in range(layers_num):
             if i == 0:
@@ -476,22 +483,42 @@ class PositionalDecoder(nn.Module):
             else:
                 layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, hidden_size))
+
+            if i != layers_num - 1:
+                layers.append(self._get_activation())
+        
+        if final_activation == 'self':
             layers.append(self._get_activation())
+        elif final_activation == 'sigmoid':
+            layers.append(nn.Sigmoid())
+        elif final_activation == 'tanh':
+            layers.append(nn.Tanh())
+        else:
+            raise ValueError(f'Activation function: {final_activation} not implemented')
+        
         return nn.Sequential(*layers)
     
 
+    def _periodic_func(self, x: torch.Tensor, i: int):
+        if i % 2 == 0:
+            return torch.sin(x * 2**((i // 2) / 4))
+        else:
+            return torch.cos(x * 2**((i // 2) / 4))
+        
+
     def forward(self, x: torch.Tensor):
-        block = self.block_decoder(x[:, self.freq_dim:]).unsqueeze(0)
+        block = self.naive_block_decoder(x[:, self.freq_dim:]).unsqueeze(0)
         block_expand = block.expand(self.strip_len, -1, -1).permute((1, 2, 0)).unsqueeze(2)
 
         freq = self.freq_decoder(x[:, :self.freq_dim])
-        freq_seq = torch.stack([self.freq_seq_constructor[i](freq[:, i].unsqueeze(-1)) for i in range(self.kernel_num)], dim=1)
-        freq_seq = torch.cos(freq_seq).transpose(1, 2)
-        
+        freq_seq = torch.stack([self._periodic_func(self.freq_seq_constructor[i](freq), i) for i in range(self.kernel_num)], dim=-1)
+
         seq = self.seq_decoder(freq_seq, (block, torch.zeros_like(block)))[0]
         seq = seq.transpose(1, 2).unsqueeze(2)
 
-        block_seq = torch.cat([block_expand, seq], dim=1)
+        naive_seq = self.naive_seq_decoder(x).unsqueeze(1).unsqueeze(1)
+
+        block_seq = torch.cat([block_expand, seq, naive_seq], dim=1)
         
         strips = self.conv(block_seq)
         matrix = self._get_matrix_from_strips(strips)
@@ -612,22 +639,30 @@ class PositionalEncoder(nn.Module):
 
     def _get_strip(self, x: torch.Tensor, offset: int, fill_mode: str = 'zeros'):
         strip = torch.zeros((x.shape[0], x.shape[1], self.block_size, self.N*self.block_size)).to(x.device)
-        strip_off = max(0, -offset)
         x_off = abs(offset)*self.block_size
-        for i in range(self.N - abs(offset)):
+        for i in range(self.N):
             idx0 =  i*self.block_size
-            idx1 = (i+1)*self.block_size
+            idx1 = idx0 + self.block_size
             if offset >= 0:
-                strip[:, :, :, idx0 + strip_off: idx1 + strip_off] = x[:, :, idx0: idx1, idx0 + x_off: idx1 + x_off]
+                idx0_off = (idx0 + x_off) % (self.N * self.block_size)
+                idx1_off = idx0_off + self.block_size
             else:
-                strip[:, :, :, idx0 + strip_off: idx1 + strip_off] = x[:, :, idx0 + x_off: idx1 + x_off, idx0: idx1]
+                idx0_off = (idx0 - x_off) % (self.N * self.block_size)
+                idx1_off = idx0_off + self.block_size
+            strip[:, :, :, idx0: idx1] = x[:, :, idx0: idx1, idx0_off: idx1_off]
         if fill_mode == 'zeros':
+            if offset > 0:
+                strip[:, :, :, -x_off:] = 0.
+            elif offset < 0:
+                strip[:, :, :, :x_off] = 0.
             return strip
         elif fill_mode == 'circular':
             if offset > 0:
                 strip[:, :, :, -x_off:] = strip[:, :, :, :x_off]
             elif offset < 0:
                 strip[:, :, :, :x_off] = strip[:, :, :, -x_off:]
+            return strip
+        elif fill_mode == 'hamiltonian':
             return strip
         else:
             raise ValueError(f'Fill mode: {fill_mode} not implemented')

@@ -106,7 +106,7 @@ class HamiltionianDataset(Dataset):
 
   
 def generate_data(
-    hamiltionian: Hamiltonian,
+    hamiltionian: t.Type[Hamiltonian],
     param_list: t.List[t.Dict[str, t.Any]],
     directory: str,
     eig_decomposition: bool = False,
@@ -116,10 +116,16 @@ def generate_data(
         filename = 'data_' + str(i)
         model = hamiltionian(**params)
         matrix = model.get_hamiltonian()
-        label = model.get_label()
+        try:
+            label = model.get_label()
+        except:
+            continue
 
         if eig_decomposition:
-            eigvals, eigvec = np.linalg.eigh(matrix)
+            try:
+                eigvals, eigvec = np.linalg.eigh(matrix)
+            except:
+                continue
         else:
             eigvals, eigvec = None, None
 

@@ -12,12 +12,12 @@ from models_files import save_autoencoder_params, save_autoencoder, save_data_li
 from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 # Pretrained model
-pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDist100q/100/pretrained_positional_autoencoder_fft_lstm_v2'
-epoch = 50
+pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDist1000q/100/pretrained_positional_autoencoder_fft_lstm_v2-2'
+epoch = 10
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDist1000q_pi2delta_q'
-save_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q'
+data_path = './data/spin_ladder/70_2_RedDistPG'
+save_dir = './autoencoder/spin_ladder/70_2_RedDistPG'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -36,7 +36,7 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'twice_pretrained_positional_autoencoder_fft_lstm_v2'
+model_name = 'twice_pretrained_positional_autoencoder_fft_lstm_v2-2-fixed_log_scaled_loss'
 
 # Load model
 encoder, decoder = load_positional_autoencoder(pretrained_model_dir, epoch)
@@ -44,8 +44,10 @@ params, encoder_params, decoder_params = load_autoencoder_params(pretrained_mode
 
 # Modify params
 params['learning_rate'] = 1.e-5
-params['diag_loss'] = True
+params['diag_loss'] = False
 params['diag_loss_weight'] = 0.01
+params['log_scaled_loss'] = True
+params['epochs'] = 20
 
 # Set the root dir
 root_dir = os.path.join(save_dir, f'{params["representation_dim"]}', model_name)
@@ -97,7 +99,8 @@ for epoch in range(1, params['epochs'] + 1):
         eigenstates_loss=params['eigenstates_loss'],
         eigenstates_loss_weight=params['eigenstates_loss_weight'],
         diag_loss=params['diag_loss'],
-        diag_loss_weight=params['diag_loss_weight']
+        diag_loss_weight=params['diag_loss_weight'],
+        log_scaled_loss=params['log_scaled_loss'],
     )
     te_loss, te_edge_loss, te_eig_loss, te_diag_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'], eigenstates_loss=params['eigenstates_loss'], diag_loss=params['diag_loss'])
     encoder_scheduler.step(te_loss)
