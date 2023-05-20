@@ -13,7 +13,7 @@ DEFAULT_PARAMS = {'N': 70, 'M': 2, 'delta': 0.3, 'mu': 0.9, 'J': 1., 'delta_q': 
 
 
 class SpinLadder(Hamiltonian):
-    def __init__(self, N, M, mu = 0.9, delta = 0.3, J = 1, q = np.pi/2, delta_q = np.pi, t = 1, S = 1, theta = np.pi/2, B = 0., periodic = False, use_potential_gates = False, **kwargs):
+    def __init__(self, N, M, mu = 0.9, delta = 0.3, J = 1, q = np.pi/2, delta_q = np.pi, t = 1, S = 1, theta = np.pi/2, B = 0., periodic = False, use_potential_gates = False, increase_potential_at_edges = False, **kwargs):
         self.block_size = 4
         self.M = M
         self.N = N
@@ -34,7 +34,11 @@ class SpinLadder(Hamiltonian):
             V_pos = kwargs.get('potential_positions', [{'i': 0, 'j': 0}, {'i': N-1, 'j': M-1}])
             for pos in V_pos:
                 self.H = self._add_potential_gate(self.H, pos['i'], pos['j'], V)
-
+        if increase_potential_at_edges:
+            V = kwargs.get('potential', 1.)
+            before = kwargs.get('potential_before', 0)
+            after = kwargs.get('potential_after', self.N)
+            self._increase_potential(V, before, after)
 
     def _construct_open_boundary_hamiltonian(self, N, M):
         sigma_z = np.array([[1, 0], [0, -1]], dtype=np.complex128)
@@ -68,6 +72,20 @@ class SpinLadder(Hamiltonian):
             H[self._idx(N-1, j) : self._idx(N-1, j) + self.block_size, self._idx(0, j) : self._idx(0, j) + self.block_size] = np.kron(sigma_z, self._interaction_block_ij_cdagger_c(self.t))
             H[self._idx(0, j) : self._idx(0, j) + self.block_size, self._idx(N-1, j) : self._idx(N-1, j) + self.block_size] = np.conjugate(np.kron(sigma_z, self._interaction_block_ij_cdagger_c(self.t))).T
         return H
+    
+
+    def _increase_potential(self, V, before=None, after=None):
+        if before is None:
+            before = 0
+        if after is None:
+            after = self.N
+
+        positions_before = [{'i': i, 'j': j} for i in range(0, before) for j in range(self.M)]
+        positions_after = [{'i': i, 'j': j} for i in range(after, self.N) for j in range(self.M)]
+        for pos in positions_before:
+            self.H = self._add_potential_gate(self.H, pos['i'], pos['j'], V)
+        for pos in positions_after:
+            self.H = self._add_potential_gate(self.H, pos['i'], pos['j'], V)
     
 
     def _add_potential_gate(self, H, i, j, V):
@@ -126,15 +144,15 @@ class SpinLadder(Hamiltonian):
 
     
     def get_label(self):
-        mp = majorana_polarization(self.H, threshold=1.e-5, axis='y', site='all')
+        mp = majorana_polarization(self.H, threshold=0.05, axis='y', site='all')
         values = list(mp.values())
         mp_y_sum_left = sum(values[:len(values)//2])
         mp_y_sum_right = sum(values[len(values)//2:])
-        mp_tot = majorana_polarization(self.H, threshold=1.e-5, axis='total', site='all')
+        mp_tot = majorana_polarization(self.H, threshold=0.05, axis='total', site='all')
         values_tot = list(mp_tot.values())
         mp_tot_sum_left = sum(values_tot[:len(values_tot)//2])
         mp_tot_sum_right = sum(values_tot[len(values_tot)//2:])
-        return f"{mp_tot_sum_left}, {mp_tot_sum_right}, {mp_y_sum_left}, {mp_y_sum_right}, {count_mzm_states(self.H, threshold=1.e-5)}"
+        return f"{mp_tot_sum_left}, {mp_tot_sum_right}, {mp_y_sum_left}, {mp_y_sum_right}, {count_mzm_states(self.H, threshold=0.05)}"
 
 
 
@@ -157,7 +175,7 @@ def generate_param_data(N, M, N_samples, flename):
     data.to_csv(flename, index=False)
 
 
-def generate_params(N, M, N_samples, periodic=False, use_potential_gates=False):
+def generate_params(N, M, N_samples, periodic=False, use_potential_gates=False, increase_potential_at_edges=False):
     deltas = np.random.normal(1.8, 1, size= N_samples)
     qs = np.random.uniform(0, 2*np.pi, size = N_samples)
     delta_qs = np.random.uniform(0, 2*np.pi, size = N_samples)
@@ -168,13 +186,23 @@ def generate_params(N, M, N_samples, periodic=False, use_potential_gates=False):
 
     if use_potential_gates:
         use_potential = np.random.choice([True, False], size=N_samples)
-        Vs = np.random.normal(50, 50, size= N_samples)
+        Vs = np.random.normal(5, 5, size= N_samples)
         num_gates = np.random.randint(1, 5, size=N_samples)
         V_pos_i = [np.random.randint(0, N, size= num_gates[i]) for i in range(N_samples)]
     else:
         use_potential = [False for _ in range(N_samples)]
         Vs = [0 for _ in range(N_samples)]
         V_pos_i = [[] for _ in range(N_samples)]
+
+    if increase_potential_at_edges:
+        use_edge_potential = np.random.choice([True, False], size=N_samples)
+        Vs = np.random.normal(5, 5, size= N_samples)
+        before_site = np.random.randint(0, N//3, size=N_samples)
+        after_site = np.random.randint(2*N//3, N, size=N_samples)
+    else:
+        use_edge_potential = [False for _ in range(N_samples)]
+        before_site = [0 for _ in range(N_samples)]
+        after_site = [N for _ in range(N_samples)]
 
 
     params = [
@@ -192,6 +220,9 @@ def generate_params(N, M, N_samples, periodic=False, use_potential_gates=False):
             'use_potential_gates': int(use_potential[i]),
             'potential': Vs[i],
             'potential_positions': [{'i': int(i_pos), 'j': int(j_pos)} for i_pos in V_pos_i[i] for j_pos in range(M)],
+            'increase_potential_at_edges': int(use_edge_potential[i]),
+            'potential_before': int(before_site[i]),
+            'potential_after': int(after_site[i])
         } for i in range(N_samples)
     ]
 
@@ -246,9 +277,9 @@ if __name__ == '__main__':
     
     # ML_predictor = pickle.load(open(os.path.join(MODEL_SAVE_DIR, MODEL_NAME + '.pkl'), 'rb'))
     # params = generate_zm_params(N, M, N_samples // 2, ML_predictor) + generate_params(N, M, N_samples // 2)
-    params = generate_params(N, M, N_samples, periodic=False, use_potential_gates=True)
+    params = generate_params(N, M, N_samples, periodic=True, use_potential_gates=False, increase_potential_at_edges=True)
     #generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistFixedStd', eig_decomposition=True)
-    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistPG', eig_decomposition=False, format='csr')
+    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistSimplePeriodicPG', eig_decomposition=False, format='csr')
 
 
     # ladder = SpinLadder(**DEFAULT_PARAMS)
