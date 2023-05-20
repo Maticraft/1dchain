@@ -430,7 +430,10 @@ class PositionalDecoder(nn.Module):
 
         self.naive_seq_decoder = self._get_mlp(self.seq_dec_depth, self.freq_dim+self.block_dim, self.seq_dec_hidden_size, self.strip_len)
 
-        self.seq_decoder = nn.LSTM(input_size=self.kernel_num, hidden_size=self.kernel_num, num_layers=1, batch_first=True)
+        self.tf_seq_decoder_layer = nn.TransformerEncoderLayer(d_model=self.kernel_num, nhead=2, dim_feedforward=128, batch_first=True)
+        self.tf_seq_decoder = nn.TransformerEncoder(self.tf_seq_decoder_layer, num_layers=1)
+
+        # self.seq_decoder = nn.LSTM(input_size=self.kernel_num, hidden_size=self.kernel_num, num_layers=1, batch_first=True)
         self.conv = self._get_conv_block()
 
 
@@ -513,7 +516,9 @@ class PositionalDecoder(nn.Module):
         freq = self.freq_decoder(x[:, :self.freq_dim])
         freq_seq = torch.stack([self._periodic_func(self.freq_seq_constructor[i](freq), i) for i in range(self.kernel_num)], dim=-1)
 
-        seq = self.seq_decoder(freq_seq, (block, torch.zeros_like(block)))[0]
+        # seq = self.seq_decoder(freq_seq, (block, torch.zeros_like(block)))[0]
+        tf_input = freq_seq * block_expand.squeeze(2).transpose(1, 2)
+        seq = self.tf_seq_decoder(tf_input)
         seq = seq.transpose(1, 2).unsqueeze(2)
 
         naive_seq = self.naive_seq_decoder(x).unsqueeze(1).unsqueeze(1)

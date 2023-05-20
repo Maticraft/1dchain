@@ -12,9 +12,12 @@ from models_files import save_autoencoder_params, save_autoencoder, save_data_li
 from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 
+# torch config
+torch.set_float32_matmul_precision('high')
+
 # Paths
-data_path = './data/spin_ladder/70_2_RedDist1000q'
-save_dir = './autoencoder/spin_ladder/70_2_RedDist1000q'
+data_path = './data/spin_ladder/70_2_RedDistFixed'
+save_dir = './autoencoder/spin_ladder/70_2_RedDistFixed'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -34,12 +37,12 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'positional_autoencoder_fft_lstm_v2-3'
+model_name = 'positional_autoencoder_fft_tf_v2-3_optimized'
 
 # Params
 params = {
     'epochs': 60,
-    'batch_size': 128,
+    'batch_size': 16,
     'N': 140,
     'in_channels': 10,
     'block_size': 4,
@@ -49,9 +52,9 @@ params = {
     'edge_loss_weight': 1.,
     'eigenstates_loss': False,
     'eigenstates_loss_weight': 1.,
-    'diag_loss': False,
+    'diag_loss': True,
     'diag_loss_weight': 0.01,
-    'log_scaled_loss': True
+    'log_scaled_loss': False
 }
 
 # Architecture
@@ -97,7 +100,7 @@ if not os.path.isdir(ham_sub_path):
 
 save_autoencoder_params(params, encoder_params, decoder_params, root_dir)
 
-data = HamiltionianDataset(data_path, label_idx=(3, 4), eig_decomposition=params['eigenstates_loss'], format='csr')
+data = HamiltionianDataset(data_path, label_idx=(3, 4), eig_decomposition=params['eigenstates_loss'], format='numpy')
 
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size
@@ -108,6 +111,9 @@ test_loader = DataLoader(test_data, params['batch_size'])
 
 encoder = PositionalEncoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
 decoder = PositionalDecoder(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
+
+encoder = torch.compile(encoder)
+decoder = torch.compile(decoder)
 
 print(encoder)
 print(decoder)
