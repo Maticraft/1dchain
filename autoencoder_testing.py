@@ -22,6 +22,7 @@ hamiltonian_ref_plot_name = 'hamiltonian{}.png'
 
 epoch = 10
 
+
 # Data params
 # params = {'N': 70, 'M': 2, 'delta': 1.8, 'mu': 1.8, 'q': np.pi/2, 'J': 1.8, 'delta_q': np.pi, 't': 1}
 params = DEFAULT_PARAMS
