@@ -427,8 +427,7 @@ class PositionalDecoder(nn.Module):
         ])
 
         self.naive_block_decoder = self._get_mlp(self.block_dec_depth, self.block_dim, self.block_dec_hidden_size, self.kernel_num)
-
-        self.naive_seq_decoder = self._get_mlp(self.seq_dec_depth, self.freq_dim+self.block_dim, self.seq_dec_hidden_size, self.strip_len)
+        self.mask_seq_decoder = self._get_mlp(self.seq_dec_depth, self.freq_dim+self.block_dim, self.seq_dec_hidden_size, self.strip_len, final_activation='sigmoid')
 
         self.seq_decoder = nn.LSTM(input_size=self.kernel_num, hidden_size=self.kernel_num, num_layers=1, batch_first=True)
         self.conv = self._get_conv_block()
@@ -445,7 +444,7 @@ class PositionalDecoder(nn.Module):
 
     def _get_conv_block(self):
         return nn.Sequential(
-            nn.ConvTranspose2d(2*self.kernel_num+1, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation),
+            nn.ConvTranspose2d(2*self.kernel_num, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation),
         )
 
 
@@ -506,7 +505,7 @@ class PositionalDecoder(nn.Module):
             return torch.cos(x * 2**((i // 2) / 4))
         
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, return_mask: bool = False):
         block = self.naive_block_decoder(x[:, self.freq_dim:]).unsqueeze(0)
         block_expand = block.expand(self.strip_len, -1, -1).permute((1, 2, 0)).unsqueeze(2)
 
@@ -516,12 +515,16 @@ class PositionalDecoder(nn.Module):
         seq = self.seq_decoder(freq_seq, (block, torch.zeros_like(block)))[0]
         seq = seq.transpose(1, 2).unsqueeze(2)
 
-        naive_seq = self.naive_seq_decoder(x).unsqueeze(1).unsqueeze(1)
+        mask_seq = self.mask_seq_decoder(x).unsqueeze(1).unsqueeze(1)
+        block_masked = block_expand[:, 0, :, :].unsqueeze(1) * mask_seq
 
-        block_seq = torch.cat([block_expand, seq, naive_seq], dim=1)
+        block_seq = torch.cat([block_masked, block_expand[:, 1:, :, :], seq], dim=1)
         
         strips = self.conv(block_seq)
         matrix = self._get_matrix_from_strips(strips)
+        
+        if return_mask:
+            return matrix, mask_seq
         return matrix
 
 

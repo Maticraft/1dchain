@@ -89,6 +89,23 @@ def log_scale_loss(x: torch.Tensor, loss: torch.Tensor):
     return factor * loss
 
 
+def mask_loss_fn(x: torch.Tensor, params: t.Dict[str, t.Any]):
+    criterion = nn.BCELoss()
+    string_width = params['M']
+    specific_positions = params['potential_positions']
+    left_edge = params['potential_before']
+    right_edge = params['potential_after']
+
+    mask = torch.zeros_like(x)
+    mask[:, :, :, :left_edge*string_width] = 1.
+    mask[:, :, :, right_edge*string_width:] = 1.
+    for pos in specific_positions:
+        mask[:, :, :, pos['i']*string_width + pos['j']] = 1.
+
+    loss = criterion(x, mask)
+    return loss
+
+
 def site_perm(x: torch.Tensor, N: int, block_size: int):
     permutation = torch.randperm(N)
     permuted_indices = torch.cat([torch.arange(i*block_size, (i+1)*block_size) for i in permutation], dim=0)
@@ -105,6 +122,7 @@ def test_autoencoder(
     edge_loss: bool = False,
     eigenstates_loss: bool = False,
     diag_loss: bool = False,
+    mask_loss: bool = False,
 ):
     if site_permutation and edge_loss:
         raise NotImplementedError("Combining edge loss with site permutation is not implemented")
@@ -121,13 +139,24 @@ def test_autoencoder(
     total_edge_loss = 0
     total_eigenstates_loss = 0
     total_diag_loss = 0
+    total_mask_loss = 0
 
-    for (x, _), eig_dec in tqdm(test_loader, "Testing autoencoder model"):
+    for data in tqdm(test_loader, "Testing autoencoder model"):
+        if mask_loss:
+            (x, _), eig_dec, params = data
+        else:
+            (x, _), eig_dec = data
+
         x = x.to(device)
         if site_permutation:
             x = site_perm(x, encoder_model.N, encoder_model.block_size)
         z = encoder_model(x)
-        x_hat = decoder_model(z)
+        
+        if mask_loss:
+            x_hat, mask_tensor = decoder_model(z, return_mask=mask_loss)
+        else:
+            x_hat = decoder_model(z)
+
         loss = criterion(x_hat, x)
         total_loss += loss.item()
 
@@ -142,22 +171,31 @@ def test_autoencoder(
             total_eigenstates_loss += eig_loss.item()
 
         if diag_loss:
-            diag_loss = diagonal_loss(x_hat, x, criterion, block_size=4)
-            total_diag_loss += diag_loss.item()
+            d_loss = diagonal_loss(x_hat, x, criterion, block_size=4)
+            total_diag_loss += d_loss.item()
+
+        if mask_loss:
+            m_loss = mask_loss_fn(mask_tensor, params)
+            total_mask_loss += m_loss.item()
 
     total_loss /= len(test_loader)
     total_edge_loss /= len(test_loader)
     total_eigenstates_loss /= len(test_loader)
     total_diag_loss /= len(test_loader)
+    total_mask_loss /= len(test_loader)
 
     print(f'Loss: {total_loss}')
     if edge_loss:
         print(f'Edge Loss: {total_edge_loss}')
     if eigenstates_loss:
         print(f'Eigenstates Loss: {total_eigenstates_loss}')
+    if diag_loss:
+        print(f'Diagonal Loss: {total_diag_loss}')
+    if mask_loss:
+        print(f'Mask Loss: {total_mask_loss}')
     print()
 
-    return total_loss, total_edge_loss, total_eigenstates_loss, total_diag_loss
+    return total_loss, total_edge_loss, total_eigenstates_loss, total_diag_loss, total_mask_loss
 
 
 def test_classifier(
@@ -215,13 +253,14 @@ def train_autoencoder(
     diag_loss: bool = False,
     diag_loss_weight: float = .01,
     log_scaled_loss: bool = False,
+    mask_loss: bool = False,
 ):
     if site_permutation and edge_loss:
         raise NotImplementedError("Combining edge loss with site permutation is not implemented")
 
-
     if log_scaled_loss:
         assert not diag_loss, "Diagonal loss is not implemented for log scaled loss"
+        assert not mask_loss, "Mask loss is not implemented for log scaled loss"
         criterion = nn.MSELoss(reduction='none')
     else:
         criterion = nn.MSELoss()
@@ -236,16 +275,25 @@ def train_autoencoder(
     total_edge_loss = 0
     total_eigenstates_loss = 0
     total_diag_loss = 0
+    total_mask_loss = 0
 
     print(f'Epoch: {epoch}')
-    for (x, _), eig_dec in tqdm(train_loader, 'Training model'):
+    for data in tqdm(train_loader, 'Training model'):
+        if mask_loss:
+            (x, _), eig_dec, params = data
+        else:
+            (x, _), eig_dec = data
+
         x = x.to(device)
         if site_permutation:
             x = site_perm(x, encoder_model.N, encoder_model.block_size)
         encoder_optimizer.zero_grad()
         decoder_optimizer.zero_grad()
         z = encoder_model(x)
-        x_hat = decoder_model(z) 
+        if mask_loss:
+            x_hat, mask_tensor = decoder_model(z, return_mask=mask_loss)
+        else:
+            x_hat = decoder_model(z)
         loss = criterion(x_hat, x)
         total_loss += torch.mean(loss).item()
 
@@ -262,13 +310,19 @@ def train_autoencoder(
             total_eigenstates_loss += torch.mean(eig_loss).item()
 
         if diag_loss:
-            diag_loss = diagonal_loss(x_hat, x, criterion, block_size=4)
-            loss += diag_loss_weight * diag_loss
-            total_diag_loss += torch.mean(diag_loss).item()
+            d_loss = diagonal_loss(x_hat, x, criterion, block_size=4)
+            loss += diag_loss_weight * d_loss
+            total_diag_loss += torch.mean(d_loss).item()
+
+        if mask_loss:
+            m_loss = mask_loss_fn(mask_tensor, params)
+            loss += m_loss
+            total_mask_loss += torch.mean(m_loss).item()
 
         if log_scaled_loss:
             loss = log_scale_loss(x, loss)    
             loss = torch.mean(loss)
+
         loss.backward()
         encoder_optimizer.step()
         decoder_optimizer.step()
@@ -278,15 +332,20 @@ def train_autoencoder(
     total_edge_loss /= len(train_loader)
     total_eigenstates_loss /= len(train_loader)
     total_diag_loss /= len(train_loader)
+    total_mask_loss /= len(train_loader)
 
     print(f'Loss: {total_loss}')
     if edge_loss:
         print(f'Edge Loss: {total_edge_loss}')
     if eigenstates_loss:
         print(f'Eigenstates Loss: {total_eigenstates_loss}')
+    if diag_loss:
+        print(f'Diagonal Loss: {total_diag_loss}')
+    if mask_loss:
+        print(f'Mask Loss: {total_mask_loss}')
     print()
 
-    return total_loss, total_edge_loss, total_eigenstates_loss, total_diag_loss
+    return total_loss, total_edge_loss, total_eigenstates_loss, total_diag_loss, total_mask_loss
 
 
 def train_classifier(

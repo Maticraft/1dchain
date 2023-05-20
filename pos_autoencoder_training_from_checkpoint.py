@@ -44,9 +44,10 @@ params, encoder_params, decoder_params = load_autoencoder_params(pretrained_mode
 
 # Modify params
 params['learning_rate'] = 1.e-5
-params['diag_loss'] = False
+params['diag_loss'] = True
 params['diag_loss_weight'] = 0.01
-params['log_scaled_loss'] = True
+params['log_scaled_loss'] = False
+params['mask_loss'] = False
 params['epochs'] = 20
 
 # Set the root dir
@@ -86,7 +87,7 @@ decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(decoder_optimizer
 save_data_list(['Epoch', 'Train loss', 'Train edge loss', 'Train diag loss', 'Train eigenstates loss', 'Test loss', 'Test edge loss', 'Test eigenstates loss', 'Te diag loss'], loss_path, mode='w')
 
 for epoch in range(1, params['epochs'] + 1):
-    tr_loss, tr_edge_loss, tr_eig_loss, tr_diag_loss = train_autoencoder(
+    tr_loss, tr_edge_loss, tr_eig_loss, tr_diag_loss, tr_m_loss = train_autoencoder(
         encoder,
         decoder,
         train_loader,
@@ -101,13 +102,14 @@ for epoch in range(1, params['epochs'] + 1):
         diag_loss=params['diag_loss'],
         diag_loss_weight=params['diag_loss_weight'],
         log_scaled_loss=params['log_scaled_loss'],
+        mask_loss=params['mask_loss'],
     )
-    te_loss, te_edge_loss, te_eig_loss, te_diag_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'], eigenstates_loss=params['eigenstates_loss'], diag_loss=params['diag_loss'])
+    te_loss, te_edge_loss, te_eig_loss, te_diag_loss, te_m_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'], eigenstates_loss=params['eigenstates_loss'], diag_loss=params['diag_loss'], mask_loss=params['mask_loss'])
     encoder_scheduler.step(te_loss)
     decoder_scheduler.step(te_loss)
 
     save_autoencoder(encoder, decoder, root_dir, epoch)
-    save_data_list([epoch, tr_loss, tr_edge_loss, tr_eig_loss, tr_diag_loss, te_loss, te_edge_loss, te_eig_loss, te_diag_loss], loss_path)
+    save_data_list([epoch, tr_loss, tr_edge_loss, tr_eig_loss, tr_diag_loss, tr_m_loss, te_loss, te_edge_loss, te_eig_loss, te_diag_loss, te_m_loss], loss_path)
 
     eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))
     plot_test_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim)

@@ -35,6 +35,7 @@ class HamiltionianDataset(Dataset):
         label_idx: t.Union[int, t.Tuple[int, int]] = 1,
         threshold: float = 1.e-5,
         eig_decomposition: bool = False,
+        load_params: bool = False,
         format: str = 'numpy'
     ):
         dic_path = os.path.join(data_dir, DICTIONARY_NAME)
@@ -45,6 +46,10 @@ class HamiltionianDataset(Dataset):
         self.threshold = threshold
         self.eig_dec = eig_decomposition
         self.format = format
+        self.load_params = load_params
+        if self.load_params:
+            params_dic_path = os.path.join(data_dir, PARAMS_DICTIONARY_NAME)
+            self.params_dictionary = self.load_parmas_dict(params_dic_path)
 
       
     def __len__(self) -> int:
@@ -79,6 +84,9 @@ class HamiltionianDataset(Dataset):
         label = torch.tensor(label)
         label = label.unsqueeze(0)
 
+        if self.load_params:
+            return (tensor, label), eig_dec, self.params_dictionary[idx]
+        
         return (tensor, label), eig_dec
 
 
@@ -89,6 +97,13 @@ class HamiltionianDataset(Dataset):
 
         parsed_data = [row.rstrip("\n").split(', ') for row in data]
 
+        return parsed_data
+
+    def load_parmas_dict(self, filepath: str) -> t.List[t.Dict[str, t.Any]]:
+        with open(filepath, 'r') as dictionary:
+            data = dictionary.readlines()
+
+        parsed_data = [json.loads(row.rstrip("\n").split(', ', 1)[1]) for row in data]            
         return parsed_data
     
 
