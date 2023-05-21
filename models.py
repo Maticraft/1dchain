@@ -433,7 +433,6 @@ class PositionalDecoder(nn.Module):
         self.tf_seq_decoder_layer = nn.TransformerEncoderLayer(d_model=self.kernel_num, nhead=2, dim_feedforward=128, batch_first=True)
         self.tf_seq_decoder = nn.TransformerEncoder(self.tf_seq_decoder_layer, num_layers=1)
 
-        # self.seq_decoder = nn.LSTM(input_size=self.kernel_num, hidden_size=self.kernel_num, num_layers=1, batch_first=True)
         self.conv = self._get_conv_block()
 
 
@@ -516,7 +515,6 @@ class PositionalDecoder(nn.Module):
         freq = self.freq_decoder(x[:, :self.freq_dim])
         freq_seq = torch.stack([self._periodic_func(self.freq_seq_constructor[i](freq), i) for i in range(self.kernel_num)], dim=-1)
 
-        # seq = self.seq_decoder(freq_seq, (block, torch.zeros_like(block)))[0]
         tf_input = freq_seq * block_expand.squeeze(2).transpose(1, 2)
         seq = self.tf_seq_decoder(tf_input)
         seq = seq.transpose(1, 2).unsqueeze(2)
@@ -573,7 +571,8 @@ class PositionalEncoder(nn.Module):
             self._get_activation(),
         )
 
-        self.block_lstm = nn.LSTM(self.kernel_num, self.kernel_num, batch_first=True)
+        self.tf_block_enc_layer = nn.TransformerEncoderLayer(d_model=self.kernel_num, nhead=2, dim_feedforward=128, batch_first=True)
+        self.tf_block_encoder = nn.TransformerEncoder(self.tf_block_enc_layer, num_layers=1)
         self.block_parser = nn.ModuleList([
             self._get_mlp(self.block_enc_depth, self.strip_len, self.block_enc_hidden_size, 1)
             for _ in range(self.kernel_num)
@@ -592,7 +591,8 @@ class PositionalEncoder(nn.Module):
             self._get_activation(),
         )
 
-        self.freq_lstm = nn.LSTM(self.kernel_num, self.kernel_num, batch_first=True)
+        self.tf_freq_enc_layer = nn.TransformerEncoderLayer(d_model=self.kernel_num, nhead=2, dim_feedforward=128, batch_first=True)
+        self.tf_freq_encoder = nn.TransformerEncoder(self.tf_freq_enc_layer, num_layers=1)
         self.freq_parser = nn.ModuleList([
             self._get_mlp(self.freq_enc_depth, self.strip_len, self.freq_enc_hidden_size, 1)
             for _ in range(self.kernel_num)
@@ -683,7 +683,7 @@ class PositionalEncoder(nn.Module):
         simple_out = self.simple_encoder(simple_out)
         
         block_strips = seq_strips.transpose(1, 2)
-        block_seq = self.block_lstm(block_strips)[0]
+        block_seq = self.tf_block_encoder(block_strips)
         block_out = torch.cat([self.block_parser[i](block_seq[:, :, i]) for i in range(self.kernel_num)], dim=-1)
         block_out = self.block_encoder(block_out)
 
@@ -697,7 +697,7 @@ class PositionalEncoder(nn.Module):
         fft_out = self.fft_encoder(fft_out)
 
         fft_strips = fft_strips.transpose(1, 2)
-        freq_seq = self.freq_lstm(fft_strips)[0]
+        freq_seq = self.tf_freq_encoder(fft_strips)
         freq_out = torch.cat([self.freq_parser[i](freq_seq[:, :, i]) for i in range(self.kernel_num)], dim=-1)
         freq_out = self.freq_encoder(freq_out)
 

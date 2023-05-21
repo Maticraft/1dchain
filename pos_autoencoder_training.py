@@ -11,10 +11,6 @@ from models_utils import train_autoencoder, test_autoencoder
 from models_files import save_autoencoder_params, save_autoencoder, save_data_list
 from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
-
-# torch config
-torch.set_float32_matmul_precision('high')
-
 # Paths
 data_path = './data/spin_ladder/70_2_RedDistFixed'
 save_dir = './autoencoder/spin_ladder/70_2_RedDistFixed'
@@ -37,12 +33,12 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'positional_autoencoder_fft_tf_v2-3_optimized'
+model_name = 'positional_autoencoder_fft_tf'
 
 # Params
 params = {
     'epochs': 60,
-    'batch_size': 16,
+    'batch_size': 64,
     'N': 140,
     'in_channels': 10,
     'block_size': 4,
@@ -111,9 +107,6 @@ test_loader = DataLoader(test_data, params['batch_size'])
 
 encoder = PositionalEncoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
 decoder = PositionalDecoder(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
-
-encoder = torch.compile(encoder)
-decoder = torch.compile(decoder)
 
 print(encoder)
 print(decoder)
