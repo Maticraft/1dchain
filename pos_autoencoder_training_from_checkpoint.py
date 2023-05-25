@@ -12,12 +12,12 @@ from models_files import save_autoencoder_params, save_autoencoder, save_data_li
 from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 # Pretrained model
-pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDistFixed/100/positional_autoencoder_fft_lstm_v2-4'
-epoch = 19
+pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q/100/pretrained_positional_autoencoder_fft_lstm_v2-4'
+epoch = 10
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDist1000q_pi2delta_q'
-save_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q'
+data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPG'
+save_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -36,7 +36,7 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'pretrained_positional_autoencoder_fft_lstm_v2-4'
+model_name = 'twice_pretrained_positional_autoencoder_fft_lstm_v2-4'
 
 # Load model
 encoder, decoder = load_positional_autoencoder(pretrained_model_dir, epoch)
@@ -47,8 +47,8 @@ params['learning_rate'] = 1.e-5
 params['diag_loss'] = True
 params['diag_loss_weight'] = 0.01
 params['log_scaled_loss'] = False
-params['mask_loss'] = False
-params['epochs'] = 20
+params['mask_loss'] = True
+params['epochs'] = 10
 
 # Set the root dir
 root_dir = os.path.join(save_dir, f'{params["representation_dim"]}', model_name)
@@ -68,7 +68,7 @@ if not os.path.isdir(ham_sub_path):
 
 save_autoencoder_params(params, encoder_params, decoder_params, root_dir)
 
-data = HamiltionianDataset(data_path, label_idx=(3, 4), eig_decomposition=params['eigenstates_loss'], format='csr')
+data = HamiltionianDataset(data_path, label_idx=(3, 4), eig_decomposition=params['eigenstates_loss'], format='csr', load_params=params['mask_loss'])
 
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size
@@ -84,7 +84,7 @@ decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=params['lr'])
 encoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, 'min')
 decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(decoder_optimizer, 'min')
 
-save_data_list(['Epoch', 'Train loss', 'Train edge loss', 'Train diag loss', 'Train eigenstates loss', 'Test loss', 'Test edge loss', 'Test eigenstates loss', 'Te diag loss'], loss_path, mode='w')
+save_data_list(['Epoch', 'Train loss', 'Train edge loss', 'Train diag loss', 'Train mask loss', 'Train eigenstates loss', 'Test loss', 'Test edge loss', 'Test eigenstates loss', 'Te diag loss', 'Test mask loss'], loss_path, mode='w')
 
 for epoch in range(1, params['epochs'] + 1):
     tr_loss, tr_edge_loss, tr_eig_loss, tr_diag_loss, tr_m_loss = train_autoencoder(

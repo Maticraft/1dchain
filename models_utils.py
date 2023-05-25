@@ -91,16 +91,21 @@ def log_scale_loss(x: torch.Tensor, loss: torch.Tensor):
 
 def mask_loss_fn(x: torch.Tensor, params: t.Dict[str, t.Any]):
     criterion = nn.BCELoss()
+    mask = torch.zeros_like(x)
+    sample_ids = params['increase_potential_at_edges'].nonzero()
+
     string_width = params['M']
     specific_positions = params['potential_positions']
     left_edge = params['potential_before']
     right_edge = params['potential_after']
 
-    mask = torch.zeros_like(x)
-    mask[:, :, :, :left_edge*string_width] = 1.
-    mask[:, :, :, right_edge*string_width:] = 1.
-    for pos in specific_positions:
-        mask[:, :, :, pos['i']*string_width + pos['j']] = 1.
+    for id in sample_ids:
+        mask[id, :, :, :left_edge[id]*string_width[id]] = 1.
+        mask[id, :, :, right_edge[id]*string_width[id]:] = 1.
+
+        if len(specific_positions) > 0:
+            for pos in specific_positions[id]:
+                mask[:, :, :, pos['i']*string_width[id] + pos['j']] = 1.
 
     loss = criterion(x, mask)
     return loss
