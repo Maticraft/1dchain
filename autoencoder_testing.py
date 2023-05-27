@@ -9,7 +9,7 @@ from models_plots import plot_test_matrices, plot_test_eigvals
 
 
 # Paths
-autoencoder_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q/100/pretrained_positional_autoencoder_fft_lstm_v2-2-fixed'
+autoencoder_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG/100/twice_pretrained_positional_autoencoder_fft_tf'
 test_dir_name = 'tests_ep{}'
 
 eigvals_auto_plot_name = 'eigvals_spectre_autoencoder_{}.png'
@@ -20,11 +20,19 @@ hamiltonian_auto_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff.png'
 hamiltonian_ref_plot_name = 'hamiltonian{}.png'
 
-epoch = 10
+epoch = 11
 
 # Data params
 # params = {'N': 70, 'M': 2, 'delta': 1.8, 'mu': 1.8, 'q': np.pi/2, 'J': 1.8, 'delta_q': np.pi, 't': 1}
-params = DEFAULT_PARAMS
+params = DEFAULT_PARAMS.copy()
+params['increase_potential_at_edges'] = True
+params['potential_before'] = 10
+params['potential_after'] = 60
+params['potential'] = 5
+params['periodic'] = True
+params['use_potential_gates'] = False
+params['potential_positions'] = [{'i': 10, 'j': 0}, {'i': 10, 'j': 1}]
+
 
 # Eigvals plot params
 x_axis = 'q'
