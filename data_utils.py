@@ -44,6 +44,7 @@ class HamiltionianDataset(Dataset):
         self.label_idx = label_idx
         self.threshold = threshold
         self.eig_dec = eig_decomposition
+        self.eig_vals_num = 4
         self.format = format
 
       
@@ -58,13 +59,22 @@ class HamiltionianDataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        tensor = self.load_data(MATRICES_DIR_NAME, idx)
+        tensor = self.load_data(MATRICES_DIR_NAME, idx, self.format)
         tensor = torch.stack((tensor.real, tensor.imag), dim=0)
 
         if self.eig_dec:
-            eigvals = self.load_data(EIGVALS_DIR_NAME, idx)
-            eigvec = self.load_data(EIGVEC_DIR_NAME, idx)
-            eig_dec = eigvals, eigvec
+            try:
+                eigvals = self.load_data(EIGVALS_DIR_NAME, idx, 'numpy')
+                eigvec = self.load_data(EIGVEC_DIR_NAME, idx, 'numpy')
+                eig_dec = eigvals, eigvec
+            except:
+                complex_tensor = torch.complex(tensor[0], tensor[1])
+                eigvals, eigvec = torch.linalg.eigh(complex_tensor)
+                min_eigvals, min_eigvals_id = torch.topk(torch.abs(eigvals), self.eig_vals_num, largest=False)
+                min_eigvec = eigvec[:, min_eigvals_id]
+                eig_dec = eigvals[min_eigvals_id], min_eigvec
+                save_matrix(min_eigvals, self.data_dir, EIGVALS_DIR_NAME, self.dictionary[idx][0], format='numpy')
+                save_matrix(min_eigvec, self.data_dir, EIGVEC_DIR_NAME, self.dictionary[idx][0], format='numpy')
         else:
             eig_dec = torch.zeros((1, tensor.shape[1])), torch.zeros((tensor.shape[0], tensor.shape[1]))
 
@@ -92,11 +102,11 @@ class HamiltionianDataset(Dataset):
         return parsed_data
     
 
-    def load_data(self, dir: str, idx: int):
-        if self.format == 'numpy':
+    def load_data(self, dir: str, idx: int, format: str):
+        if format == 'numpy':
             data_path = os.path.join(self.data_dir, dir, self.dictionary[idx][0] + '.npy')
             data = np.load(data_path)
-        elif self.format == 'csr':
+        elif format == 'csr':
             data_path = os.path.join(self.data_dir, dir, self.dictionary[idx][0] + '.npz')
             data = sparse.load_npz(data_path)
             data = data.toarray()

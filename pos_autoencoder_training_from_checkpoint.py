@@ -12,8 +12,8 @@ from models_files import save_autoencoder_params, save_autoencoder, save_data_li
 from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 # Pretrained model
-pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q/100/pretrained_positional_autoencoder_fft_tf'
-epoch = 8
+pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG/100/twice_pretrained_positional_autoencoder_fft_tf'
+epoch = 15
 
 # Paths
 data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPG'
@@ -36,7 +36,7 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'twice_pretrained_positional_autoencoder_fft_tf'
+model_name = 'twice_pretrained_positional_autoencoder_fft_tf_zmloss'
 
 # Load model
 encoder, decoder = load_positional_autoencoder(pretrained_model_dir, epoch)
@@ -47,6 +47,8 @@ params['learning_rate'] = 1.e-5
 params['diag_loss'] = True
 params['diag_loss_weight'] = 0.01
 params['log_scaled_loss'] = False
+params['eigenstates_loss'] = False
+params['eigenstates_loss_weight'] = 1.
 params['epochs'] = 40
 
 # Set the root dir
@@ -85,7 +87,7 @@ decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(decoder_optimizer
 
 save_data_list(['Epoch', 'Train loss', 'Train edge loss', 'Train diag loss', 'Train eigenstates loss', 'Test loss', 'Test edge loss', 'Test eigenstates loss', 'Te diag loss'], loss_path, mode='w')
 
-for epoch in range(1, params['epochs'] + 1):
+for epoch in range(16, params['epochs'] + 1):
     tr_loss, tr_edge_loss, tr_eig_loss, tr_diag_loss = train_autoencoder(
         encoder,
         decoder,
