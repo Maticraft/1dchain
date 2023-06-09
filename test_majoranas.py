@@ -3,12 +3,13 @@ from helical_ladder import DEFAULT_PARAMS, SpinLadder
 from majorana_utils import plot_eigvals, plot_majorana_polarization
 
 params = DEFAULT_PARAMS.copy()
+params['q'] = np.pi
 params['increase_potential_at_edges'] = True
 params['potential_before'] = 15
 params['potential_after'] = 65
 params['potential'] = 1
 params['periodic'] = True
-params['use_potential_gates'] = True
+params['use_potential_gates'] = False
 params['potential_positions'] = [{'i': 10, 'j': 0}, {'i': 10, 'j': 1}]
 
 x_axis = 'q'
