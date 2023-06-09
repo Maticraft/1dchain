@@ -13,11 +13,11 @@ from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 # Pretrained model
 pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG/100/twice_pretrained_positional_autoencoder_fft_tf'
-epoch = 15
+epoch = 22
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPG'
-save_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG'
+data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPGDisorderDiv'
+save_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGDisorderDiv'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -36,7 +36,7 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'twice_pretrained_positional_autoencoder_fft_tf_zmloss'
+model_name = 'twice_pretrained_positional_autoencoder_fft_tf'
 
 # Load model
 encoder, decoder = load_positional_autoencoder(pretrained_model_dir, epoch)
@@ -87,7 +87,7 @@ decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(decoder_optimizer
 
 save_data_list(['Epoch', 'Train loss', 'Train edge loss', 'Train diag loss', 'Train eigenstates loss', 'Test loss', 'Test edge loss', 'Test eigenstates loss', 'Te diag loss'], loss_path, mode='w')
 
-for epoch in range(16, params['epochs'] + 1):
+for epoch in range(1, params['epochs'] + 1):
     tr_loss, tr_edge_loss, tr_eig_loss, tr_diag_loss = train_autoencoder(
         encoder,
         decoder,

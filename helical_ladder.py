@@ -13,7 +13,7 @@ DEFAULT_PARAMS = {'N': 70, 'M': 2, 'delta': 0.3, 'mu': 0.9, 'J': 1., 'delta_q': 
 
 
 class SpinLadder(Hamiltonian):
-    def __init__(self, N, M, mu = 0.9, delta = 0.3, J = 1, q = np.pi/2, delta_q = np.pi, t = 1, S = 1, theta = np.pi/2, B = 0., periodic = False, use_potential_gates = False, increase_potential_at_edges = False, **kwargs):
+    def __init__(self, N, M, mu = 0.9, delta = 0.3, J = 1, q = np.pi/2, delta_q = np.pi, t = 1, S = 1, theta = np.pi/2, B = 0., periodic = False, use_disorder = False, increase_potential_at_edges = False, **kwargs):
         self.block_size = 4
         self.M = M
         self.N = N
@@ -29,11 +29,11 @@ class SpinLadder(Hamiltonian):
         self.H = self._construct_open_boundary_hamiltonian(self.N, self.M)
         if periodic:
             self.H = self._add_N_periodic_boundary(self.H)
-        if use_potential_gates:
-            V = kwargs.get('potential', 1.)
-            V_pos = kwargs.get('potential_positions', [{'i': 0, 'j': 0}, {'i': N-1, 'j': M-1}])
+        if use_disorder:
+            V_dis = kwargs.get('disorder_potential', 1.)
+            V_pos = kwargs.get('disorder_positions', [{'i': 0, 'j': 0}, {'i': N-1, 'j': M-1}])
             for pos in V_pos:
-                self.H = self._add_potential_gate(self.H, pos['i'], pos['j'], V)
+                self.H = self._add_potential_gate(self.H, pos['i'], pos['j'], V_dis)
         if increase_potential_at_edges:
             V = kwargs.get('potential', 1.)
             before = kwargs.get('potential_before', 0)
@@ -175,7 +175,7 @@ def generate_param_data(N, M, N_samples, flename):
     data.to_csv(flename, index=False)
 
 
-def generate_params(N, M, N_samples, periodic=False, use_potential_gates=False, increase_potential_at_edges=False):
+def generate_params(N, M, N_samples, periodic=False, use_disorder=False, increase_potential_at_edges=False):
     deltas = np.random.normal(1.8, 1, size= N_samples)
     qs = np.random.uniform(0, 2*np.pi, size = N_samples)
     delta_qs = np.random.uniform(0, 2*np.pi, size = N_samples)
@@ -184,14 +184,14 @@ def generate_params(N, M, N_samples, periodic=False, use_potential_gates=False, 
     ts = np.random.normal(1, 0.5, size= N_samples)
     theta = np.pi / 2
 
-    if use_potential_gates:
-        use_potential = np.random.choice([True, False], size=N_samples)
-        Vs = np.random.normal(5, 5, size= N_samples)
-        num_gates = np.random.randint(1, 5, size=N_samples)
-        V_pos_i = [np.random.randint(0, N, size= num_gates[i]) for i in range(N_samples)]
+    if use_disorder:
+        use_disorder_potential = np.random.choice([True, False], size=N_samples)
+        V_dis = np.random.normal(2, 2, size= N_samples)
+        num_gates = np.random.randint(1, 10, size=N_samples)
+        V_pos_i = [np.random.randint(0, N*M, size= num_gates[i]) for i in range(N_samples)]
     else:
-        use_potential = [False for _ in range(N_samples)]
-        Vs = [0 for _ in range(N_samples)]
+        use_disorder_potential = [False for _ in range(N_samples)]
+        V_dis = [0 for _ in range(N_samples)]
         V_pos_i = [[] for _ in range(N_samples)]
 
     if increase_potential_at_edges:
@@ -201,6 +201,7 @@ def generate_params(N, M, N_samples, periodic=False, use_potential_gates=False, 
         after_site = np.random.randint(2*N//3, N, size=N_samples)
     else:
         use_edge_potential = [False for _ in range(N_samples)]
+        Vs = [0 for _ in range(N_samples)]
         before_site = [0 for _ in range(N_samples)]
         after_site = [N for _ in range(N_samples)]
 
@@ -217,10 +218,11 @@ def generate_params(N, M, N_samples, periodic=False, use_potential_gates=False, 
             't': ts[i],
             'theta': theta,
             'periodic': int(periodic),
-            'use_potential_gates': int(use_potential[i]),
-            'potential': Vs[i],
-            'potential_positions': [{'i': int(i_pos), 'j': int(j_pos)} for i_pos in V_pos_i[i] for j_pos in range(M)],
+            'use_disorder': int(use_disorder_potential[i]),
+            'disorder_potential': V_dis[i],
+            'disorder_positions': [{'i': int(pos // M), 'j': int(pos % M)} for pos in V_pos_i[i]],
             'increase_potential_at_edges': int(use_edge_potential[i]),
+            'potential': Vs[i],
             'potential_before': int(before_site[i]),
             'potential_after': int(after_site[i])
         } for i in range(N_samples)
@@ -277,9 +279,9 @@ if __name__ == '__main__':
     
     # ML_predictor = pickle.load(open(os.path.join(MODEL_SAVE_DIR, MODEL_NAME + '.pkl'), 'rb'))
     # params = generate_zm_params(N, M, N_samples // 2, ML_predictor) + generate_params(N, M, N_samples // 2)
-    params = generate_params(N, M, N_samples, periodic=True, use_potential_gates=False, increase_potential_at_edges=True)
+    params = generate_params(N, M, N_samples, periodic=True, use_disorder=True, increase_potential_at_edges=True)
     #generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistFixedStd', eig_decomposition=True)
-    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistSimplePeriodicPG', eig_decomposition=False, format='csr')
+    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistSimplePeriodicPGDisorderDiv', eig_decomposition=False, format='csr')
 
 
     # ladder = SpinLadder(**DEFAULT_PARAMS)
