@@ -8,7 +8,7 @@ from data_utils import HamiltionianDataset
 from helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from models import Generator, Discriminator, PositionalDecoder, PositionalEncoder
 from models_utils import train_gan
-from models_files import save_gan_params, save_gan, save_data_list, get_full_model_config, load_gan_submodel_state_dict
+from models_files import save_gan_params, save_gan, save_data_list, get_full_model_config, load_gan_submodel_state_dict, load_model
 from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 # Paths
@@ -124,7 +124,7 @@ discriminator = Discriminator(PositionalEncoder, discriminator_config)
 load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, discriminator)
 
 encoder_config = get_full_model_config(params, encoder_params)
-encoder = PositionalEncoder(**encoder_config)
+encoder = load_model(PositionalEncoder, encoder_config, original_autoencoder_path, original_autoencoder_epoch)
 
 print(generator)
 print(discriminator)

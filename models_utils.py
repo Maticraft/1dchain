@@ -70,6 +70,8 @@ def get_eigvals(
 def reconstruct_hamiltonian(H: np.ndarray, encoder: nn.Module, decoder: nn.Module, device: torch.device = torch.device('cpu')):
     encoder.eval()
     decoder.eval()
+    encoder.to(device)
+    decoder.to(device)
     with torch.no_grad():
         H_torch = torch.from_numpy(H)
         H_torch = torch.stack((H_torch.real, H_torch.imag), dim= 0)
