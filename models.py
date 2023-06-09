@@ -707,6 +707,30 @@ class PositionalEncoder(nn.Module):
         return torch.cat([freq_enc, block_enc], dim=-1)
     
 
+class Discriminator(nn.Module):
+    def __init__(self, model_class: t.Type[nn.Module], model_config: t.Dict[str, t.Any]):
+        super(Discriminator, self).__init__()
+        self.nn = model_class(**model_config)
+        self.nn_out_features = model_config['representation_dim'] if isinstance(model_config['representation_dim'], int) else int(sum(model_config['representation_dim']))
+        self.dim_reduction = nn.Linear(self.nn_out_features, 1)
+    
+    def forward(self, x: torch.Tensor):
+        out = self.nn(x)
+        return self.dim_reduction(out)
+
+
+class Generator(nn.Module):
+    def __init__(self, model_class: t.Type[nn.Module], model_config: t.Dict[str, t.Any]):
+        super(Generator, self).__init__()
+        self.nn_in_features = model_config['representation_dim'] if isinstance(model_config['representation_dim'], int) else int(sum(model_config['representation_dim']))
+        self.nn = model_class(**model_config)
+    
+    def forward(self, x: torch.Tensor):
+        return self.nn(x)
+    
+    def get_noise(self, batch_size: int, device: torch.device):
+        return torch.randn((batch_size, self.nn_in_features), device=device)
+
 
 class HamiltonianGenerator(nn.Module):
     def __init__(self, representation_dim: t.Union[int, t.Tuple[int, int]], output_size: t.Tuple[int, int, int], **kwargs: t.Dict[str, t.Any]):
@@ -728,6 +752,9 @@ class HamiltonianGenerator(nn.Module):
 
         self.block_dec_depth = kwargs.get('block_dec_depth', 4)
         self.block_dec_hidden_size = kwargs.get('block_enc_hidden_size', 128)
+
+        self.seq_dec_depth = kwargs.get('seq_dec_depth', 4)
+        self.seq_dec_hidden_size = kwargs.get('seq_dec_hidden_size', 128)
         
         self.activation = kwargs.get('activation', 'relu')
 
@@ -736,16 +763,20 @@ class HamiltonianGenerator(nn.Module):
 
         self.seq_num = 2*len(self.block_pairs) + self.channel_num - 2
 
-        self.freq_decoder = self._get_mlp(self.freq_dec_depth, self.freq_dim, self.freq_dec_hidden_size, self.seq_num)
+        self.freq_decoder = self._get_mlp(self.freq_dec_depth, self.freq_dim, self.freq_dec_hidden_size, self.freq_dec_hidden_size)
         self.freq_seq_constructor = nn.ModuleList([
-            self._get_mlp(self.freq_dec_depth, 1, self.freq_dec_hidden_size, self.N)
+            self._get_mlp(self.freq_dec_depth, self.freq_dec_hidden_size, self.freq_dec_hidden_size, self.N, final_activation='sigmoid')
             for _ in range(self.seq_num)
         ])
 
-        self.block_decoder = self._get_mlp(self.block_dec_depth, self.block_dim, self.block_dec_hidden_size, self.seq_num)
-        self.seq_decoder = nn.LSTM(input_size=self.seq_num, hidden_size=self.seq_num, num_layers=1, batch_first=True)
-        
-        self.lin_mixer = nn.Conv2d(2*self.seq_num, self.seq_num, kernel_size=1, stride=1)
+        self.naive_block_decoder = self._get_mlp(self.block_dec_depth, self.block_dim, self.block_dec_hidden_size, self.seq_num)
+
+        self.naive_seq_decoder = self._get_mlp(self.seq_dec_depth, self.freq_dim+self.block_dim, self.seq_dec_hidden_size, self.N)
+
+        self.tf_seq_decoder_layer = nn.TransformerEncoderLayer(d_model=self.seq_num, nhead=2, dim_feedforward=128, batch_first=True)
+        self.tf_seq_decoder = nn.TransformerEncoder(self.tf_seq_decoder_layer, num_layers=1)
+
+        self.lin_mixer = nn.Conv2d(3*self.seq_num, self.seq_num, kernel_size=1, stride=1)
 
 
     def _initialize_block_pairs(self):
@@ -780,7 +811,7 @@ class HamiltonianGenerator(nn.Module):
         }
     
 
-    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int):
+    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int, final_activation: str = 'self'):
         layers = []
         for i in range(layers_num):
             if i == 0:
@@ -791,7 +822,14 @@ class HamiltonianGenerator(nn.Module):
             else:
                 layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, hidden_size))
+        if final_activation == 'self':
             layers.append(self._get_activation())
+        elif final_activation == 'sigmoid':
+            layers.append(nn.Sigmoid())
+        elif final_activation == 'tanh':
+            layers.append(nn.Tanh())
+        else:
+            raise ValueError(f'Activation function: {final_activation} not implemented')
         return nn.Sequential(*layers) 
     
 
@@ -804,22 +842,27 @@ class HamiltonianGenerator(nn.Module):
             return ValueError(f'Activation function: {self.activation} not implemented')
      
 
+    def _periodic_func(self, x: torch.Tensor, i: int):
+        if i % 2 == 0:
+            return torch.sin(x * 2**((i // 2) / 4))
+        else:
+            return torch.cos(x * 2**((i // 2) / 4))
+        
+
     def forward(self, x: torch.Tensor):
-        '''
-        assumes:
-          x.shape = (batch_size, representation_dim)
-        '''
-        block = self.block_decoder(x[:, self.freq_dim:]).unsqueeze(0)
-        block_expand = block.expand(self.N, -1, -1).permute((1, 2, 0)).unsqueeze(2)
+        block = self.naive_block_decoder(x[:, self.freq_dim:]).unsqueeze(0)
+        block_expand = block.expand(self.strip_len, -1, -1).permute((1, 2, 0)).unsqueeze(2)
 
         freq = self.freq_decoder(x[:, :self.freq_dim])
-        freq_seq = torch.stack([self.freq_seq_constructor[i](freq[:, i].unsqueeze(-1)) for i in range(self.seq_num)], dim=1)
-        freq_seq = torch.cos(freq_seq).transpose(1, 2)
-        
-        seq = self.seq_decoder(freq_seq, (block, torch.zeros_like(block)))[0]
+        freq_seq = torch.stack([self._periodic_func(self.freq_seq_constructor[i](freq), i) for i in range(self.kernel_num)], dim=-1)
+
+        tf_input = freq_seq * block_expand.squeeze(2).transpose(1, 2)
+        seq = self.tf_seq_decoder(tf_input)
         seq = seq.transpose(1, 2).unsqueeze(2)
 
-        block_seq = torch.cat([block_expand, seq], dim=1)
+        naive_seq = self.naive_seq_decoder(x).unsqueeze(1).unsqueeze(1)
+
+        block_seq = torch.cat([block_expand, seq, naive_seq], dim=1)
         block_seq = self.lin_mixer(block_seq).squeeze(2)
 
         interaction_block_seq = block_seq[:, :self.channel_num - 2]

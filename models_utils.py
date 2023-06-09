@@ -326,3 +326,59 @@ def train_classifier(
     print(f'Loss: {total_loss}\n')
 
     return total_loss
+
+
+def train_gan(
+    generator: nn.Module,
+    discriminator: nn.Module,
+    train_loader: torch.utils.data.DataLoader, 
+    epoch: int,
+    device: torch.device, 
+    generator_optimizer: torch.optim.Optimizer,
+    discriminator_optimizer: torch.optim.Optimizer,
+):
+    
+    criterion = nn.BCEWithLogitsLoss()
+
+    generator.to(device)
+    discriminator.to(device)
+
+    generator.train()
+    discriminator.train()
+
+    total_generator_loss = 0
+    total_discriminator_loss = 0
+
+    print(f'Epoch: {epoch}')
+    for (x, _), _ in tqdm(train_loader, 'Training model'):
+        x = x.to(device)
+        generator_optimizer.zero_grad()
+        discriminator_optimizer.zero_grad()
+
+        z = generator.get_noise(x.shape[0], device)
+        x_hat = generator(z)
+
+        real_prediction = discriminator(x)
+        fake_prediction = discriminator(x_hat.detach())
+
+        real_loss = criterion(real_prediction, torch.ones_like(real_prediction))
+        fake_loss = criterion(fake_prediction, torch.zeros_like(fake_prediction))
+        discriminator_loss = (real_loss + fake_loss) / 2
+        total_discriminator_loss += discriminator_loss.item()
+
+        generator_loss = criterion(fake_prediction, torch.ones_like(fake_prediction))
+        total_generator_loss += generator_loss.item()
+
+        discriminator_loss.backward(retain_graph=True)
+        discriminator_optimizer.step()
+
+        generator_loss.backward()
+        generator_optimizer.step()
+
+    total_generator_loss /= len(train_loader)
+    total_discriminator_loss /= len(train_loader)
+
+    print(f'Generator Loss: {total_generator_loss}')
+    print(f'Discriminator Loss: {total_discriminator_loss}\n')
+
+    return total_generator_loss, total_discriminator_loss
