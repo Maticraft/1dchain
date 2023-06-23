@@ -4,6 +4,8 @@ from tqdm import tqdm
 import numpy as np
 import torch
 import torch.nn as nn
+from torch.distributions.normal import Normal
+from torch.distributions.kl import kl_divergence
 
 
 def diagonal_loss(x_hat: torch.Tensor, x: torch.Tensor, criterion: t.Callable, block_size: int = 4):
@@ -21,6 +23,12 @@ def get_diagonal_strip(x: torch.Tensor, block_size: int):
         idx1 = (i+1)*block_size
         strip[:, :, :, idx0: idx1] = x[:, :, idx0: idx1, idx0: idx1]
     return strip
+
+
+def kl_divergence_loss(q_dist):
+    return kl_divergence(
+        q_dist, Normal(torch.zeros_like(q_dist.mean), torch.ones_like(q_dist.stddev))
+    )
 
 
 def edge_diff(x_hat: torch.Tensor, x: torch.Tensor, criterion: t.Callable, edge_width: int = 4):
@@ -290,6 +298,91 @@ def train_autoencoder(
     return total_loss, total_edge_loss, total_eigenstates_loss, total_diag_loss
 
 
+def train_vae(
+    vencoder_model: nn.Module,
+    decoder_model: nn.Module,
+    train_loader: torch.utils.data.DataLoader, 
+    epoch: int,
+    device: torch.device, 
+    vencoder_optimizer: torch.optim.Optimizer,
+    decoder_optimizer: torch.optim.Optimizer,
+    edge_loss: bool = False,
+    edge_loss_weight: float = .5,
+    eigenstates_loss: bool = False,
+    eigenstates_loss_weight: float = .5,
+    diag_loss: bool = False,
+    diag_loss_weight: float = .01,
+):
+    criterion = nn.MSELoss()
+
+    vencoder_model.to(device)
+    decoder_model.to(device)
+
+    vencoder_model.train()
+    decoder_model.train()
+
+    total_reconstruction_loss = 0
+    total_edge_loss = 0
+    total_eigenstates_loss = 0
+    total_diag_loss = 0
+    total_kl_loss = 0
+
+    print(f'Epoch: {epoch}')
+    for (x, _), eig_dec in tqdm(train_loader, 'Training model'):
+        x = x.to(device)
+        vencoder_optimizer.zero_grad()
+        decoder_optimizer.zero_grad()
+        z, (freq_dist, block_dist) = vencoder_model(x, return_distr = True)
+        x_hat = decoder_model(z) 
+        loss = criterion(x_hat, x)
+        total_reconstruction_loss += torch.mean(loss).item()
+
+        # k1_loss = kl_divergence_loss(freq_dist).mean() + kl_divergence_loss(block_dist).mean()
+        # total_kl_loss += k1_loss.item()
+        # loss += .01 * k1_loss
+
+        if edge_loss:
+            e_loss = edge_diff(x_hat, x, criterion, edge_width=8)
+            loss += edge_loss_weight * e_loss
+            total_edge_loss += torch.mean(e_loss).item()
+
+        if eigenstates_loss:
+            assert eig_dec is not None, "Incorrect eigen decomposition values"
+            eig_dec = eig_dec[0].to(device), eig_dec[1].to(device)
+            eig_loss = eigenvectors_loss(x_hat, eig_dec, criterion)
+            loss += eigenstates_loss_weight * eig_loss
+            total_eigenstates_loss += torch.mean(eig_loss).item()
+
+        if diag_loss:
+            diag_loss = diagonal_loss(x_hat, x, criterion, block_size=4)
+            loss += diag_loss_weight * diag_loss
+            total_diag_loss += torch.mean(diag_loss).item()
+
+
+        loss.backward()
+        vencoder_optimizer.step()
+        decoder_optimizer.step()
+
+    
+    total_reconstruction_loss /= len(train_loader)
+    total_edge_loss /= len(train_loader)
+    total_eigenstates_loss /= len(train_loader)
+    total_diag_loss /= len(train_loader)
+    total_kl_loss /= len(train_loader)
+
+    print(f'Reconstruction Loss: {total_reconstruction_loss}')
+    print(f'KL Loss: {total_kl_loss}')
+    if edge_loss:
+        print(f'Edge Loss: {total_edge_loss}')
+    if eigenstates_loss:
+        print(f'Eigenstates Loss: {total_eigenstates_loss}')
+    if diag_loss:
+        print(f'Diagonal Loss: {total_diag_loss}')
+    print()
+
+    return total_reconstruction_loss, total_kl_loss, total_edge_loss, total_eigenstates_loss, total_diag_loss
+
+
 def train_classifier(
     encoder_model: nn.Module,
     classifier_model: nn.Module,
@@ -354,8 +447,11 @@ def train_gan(
     print(f'Epoch: {epoch}')
     for (x, _), _ in tqdm(train_loader, 'Training model'):
         x = x.to(device)
-        generator_optimizer.zero_grad()
         discriminator_optimizer.zero_grad()
+        if epoch < 5:
+            discriminator.nn.requires_grad_(False)
+        else:
+            discriminator.nn.requires_grad_(True)
 
         z = generator.get_noise(x.shape[0], device)
         x_hat = generator(z)
@@ -366,13 +462,23 @@ def train_gan(
         real_loss = criterion(real_prediction, torch.ones_like(real_prediction))
         fake_loss = criterion(fake_prediction, torch.zeros_like(fake_prediction))
         discriminator_loss = (real_loss + fake_loss) / 2
-        total_discriminator_loss += discriminator_loss.item()
 
-        generator_loss = criterion(fake_prediction, torch.ones_like(fake_prediction))
-        total_generator_loss += generator_loss.item()
+        total_discriminator_loss += discriminator_loss.item()
 
         discriminator_loss.backward(retain_graph=True)
         discriminator_optimizer.step()
+
+        generator_optimizer.zero_grad()
+        if epoch < 5:
+            generator.nn.requires_grad_(False)
+        else:
+            generator.nn.requires_grad_(True)
+
+        z2 = generator.get_noise(x.shape[0], device)
+        x_hat2 = generator(z2)
+        fake_prediction2 = discriminator(x_hat2)
+        generator_loss = criterion(fake_prediction2, torch.ones_like(fake_prediction2))
+        total_generator_loss += generator_loss.item()
 
         generator_loss.backward()
         generator_optimizer.step()

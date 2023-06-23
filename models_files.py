@@ -5,7 +5,7 @@ import os
 import torch
 import torch.nn as nn
 
-from models import Decoder, DecoderEnsemble, Encoder, EncoderEnsemble, PositionalDecoder, PositionalEncoder, Generator, Discriminator
+from models import Decoder, DecoderEnsemble, Encoder, EncoderEnsemble, PositionalDecoder, PositionalEncoder, VariationalPositionalEncoder, Generator, Discriminator
 
 GENERAL_PARAMS_NAME = 'general_params.json'
 ENCODER_PARAMS_NAME = 'encoder_params.json'
@@ -31,19 +31,24 @@ MODEL_TO_NAMES = {
     PositionalDecoder: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
     PositionalEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),
     Generator: (GENERATOR_PARAMS_NAME, GENERATOR_NAME, GENERATOR_DIR),
-    Discriminator: (DISCRIMINATOR_PARAMS_NAME, DISCRIMINATOR_NAME, DISCRIMINATOR_DIR)
+    Discriminator: (DISCRIMINATOR_PARAMS_NAME, DISCRIMINATOR_NAME, DISCRIMINATOR_DIR),
+    VariationalPositionalEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR)
 }
 
-def load_autoencoder(root_dir: str, epoch: int):
+def load_autoencoder(root_dir: str, epoch: int) -> t.Tuple[Encoder, Decoder]:
     return load_ae_model(root_dir, epoch, Encoder, Decoder)
 
 
-def load_autoencoder_ensemble(root_dir: str, epoch: int):
+def load_autoencoder_ensemble(root_dir: str, epoch: int) -> t.Tuple[EncoderEnsemble, DecoderEnsemble]:
     return load_ae_model(root_dir, epoch, EncoderEnsemble, DecoderEnsemble)
 
 
-def load_positional_autoencoder(root_dir: str, epoch: int):
+def load_positional_autoencoder(root_dir: str, epoch: int) -> t.Tuple[PositionalEncoder, PositionalDecoder]:
     return load_ae_model(root_dir, epoch, PositionalEncoder, PositionalDecoder)
+
+
+def load_variational_positional_autoencoder(root_dir: str, epoch: int) -> t.Tuple[VariationalPositionalEncoder, PositionalDecoder]:
+    return load_ae_model(root_dir, epoch, VariationalPositionalEncoder, PositionalDecoder)
 
 
 def load_ae_model(root_dir: str, epoch: int, encoder_class: t.Type[nn.Module], decoder_class: t.Type[nn.Module]):
@@ -57,13 +62,25 @@ def load_ae_model(root_dir: str, epoch: int, encoder_class: t.Type[nn.Module], d
     return encoder, decoder
 
 
-def load_gan_model(root_dir: str, epoch: int, generator_class: t.Type[nn.Module], discriminator_class: t.Type[nn.Module]):
-    params, generator_params, discriminator_params = load_gan_params(root_dir, generator_class, discriminator_class)
-    generator_params = get_full_model_config(params, generator_params)
-    discriminator_params = get_full_model_config(params, discriminator_params)
-    
-    generator = load_model(generator_class, generator_params, root_dir, epoch)
-    discriminator = load_model(discriminator_class, discriminator_params, root_dir, epoch)
+def load_gan_from_positional_autoencoder(root_dir: str, epoch: int) -> t.Tuple[Generator, Discriminator]:
+    return load_gan_model(root_dir, epoch, PositionalDecoder, PositionalEncoder)
+
+
+def load_gan_model(root_dir: str, epoch: int, sub_generator_class: t.Type[nn.Module], sub_discriminator_class: t.Type[nn.Module]):
+    params, generator_config, discriminator_config = load_gan_params(root_dir)
+    generator_config = get_full_model_config(params, generator_config)
+    discriminator_config = get_full_model_config(params, discriminator_config)
+    generator_params = {
+        'model_class': sub_generator_class,
+        'model_config': generator_config,
+    }
+    discriminator_params = {
+        'model_class': sub_discriminator_class,
+        'model_config': discriminator_config,
+    }
+
+    generator = load_model(Generator, generator_params, root_dir, epoch)
+    discriminator = load_model(Discriminator, discriminator_params, root_dir, epoch)
 
     return generator, discriminator
 
@@ -83,12 +100,12 @@ def load_autoencoder_params(root_dir: str, encoder_class: t.Type[nn.Module], dec
     return general_params, encoder_params, decoder_params
 
 
-def load_gan_params(root_dir: str, generator_class: t.Type[nn.Module], discriminator_class: t.Type[nn.Module]):
+def load_gan_params(root_dir: str):
     params_save_path = os.path.join(root_dir, GENERAL_PARAMS_NAME)
     general_params = load_params(params_save_path)
 
-    generator_params = load_model_params(root_dir, generator_class)
-    discriminator_params = load_model_params(root_dir, discriminator_class)
+    generator_params = load_model_params(root_dir, Generator)
+    discriminator_params = load_model_params(root_dir, Discriminator)
 
     return general_params, generator_params, discriminator_params
 

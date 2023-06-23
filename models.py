@@ -3,6 +3,7 @@ from itertools import product
 
 import torch
 import torch.nn as nn
+from torch.distributions.normal import Normal
 
 from models_utils import get_edges
 
@@ -530,7 +531,7 @@ class PositionalDecoder(nn.Module):
 
 
 class PositionalEncoder(nn.Module):
-    def __init__(self, input_size: t.Tuple[int, int, int], representation_dim: t.Tuple[int, int], **kwargs: t.Dict[str, t.Any]):
+    def __init__(self, input_size: t.Tuple[int, int, int], representation_dim: t.Union[int, t.Tuple[int, int]], **kwargs: t.Dict[str, t.Any]):
         super(PositionalEncoder, self).__init__()
         self.channel_num = input_size[0]
         self.N = input_size[1]
@@ -542,7 +543,6 @@ class PositionalEncoder(nn.Module):
             self.freq_dim = representation_dim[0]
             self.block_dim = representation_dim[1]
 
-        self.kernel_size = self.block_size
         self.stride = self.block_size
         self.dilation = 1
         self.site_size = (1, self.N)
@@ -676,7 +676,7 @@ class PositionalEncoder(nn.Module):
 
     def forward(self, x: torch.Tensor):
         strip_bound = ((self.channel_num // 2) - 1) // 2
-        x = torch.cat([self._get_strip(x, i, self.padding_mode) for i in range(-strip_bound, strip_bound + 1)], dim=1)
+        x = torch.cat([self._get_strip(x, i, 'hamiltonian') for i in range(-strip_bound, strip_bound + 1)], dim=1)
         x = self.conv(x)
         seq_strips = x.view(-1, self.kernel_num, self.strip_len)
 
@@ -707,16 +707,52 @@ class PositionalEncoder(nn.Module):
         return torch.cat([freq_enc, block_enc], dim=-1)
     
 
+
+class VariationalPositionalEncoder(PositionalEncoder):
+    def __init__(self, input_size: t.Tuple[int, int, int], representation_dim: t.Union[int, t.Tuple[int, int]], **kwargs: t.Dict[str, t.Any]):
+        new_representation_dim = 2*representation_dim if isinstance(representation_dim, int) else (2*representation_dim[0], 2*representation_dim[1])
+        super(VariationalPositionalEncoder, self).__init__(input_size, new_representation_dim, **kwargs)
+
+    def forward(self, x: torch.Tensor, return_distr: bool = False):
+        x = super(VariationalPositionalEncoder, self).forward(x)
+        freq_enc, block_enc = x[..., :self.freq_dim], x[..., self.freq_dim:]
+        freq_mu, freq_std = torch.split(freq_enc, self.freq_dim // 2, dim=-1)
+        block_mu, block_std = torch.split(block_enc, self.block_dim // 2, dim=-1)
+        freq_dist = Normal(freq_mu, freq_std.exp())
+        block_dist = Normal(block_mu, block_std.exp())
+        freq_sample = freq_dist.rsample()
+        block_sample = block_dist.rsample()
+        sample = torch.cat([freq_sample, block_sample], dim=-1)
+        if return_distr:
+            return sample, (freq_dist, block_dist)
+        else:
+            return sample
+
+
 class Discriminator(nn.Module):
     def __init__(self, model_class: t.Type[nn.Module], model_config: t.Dict[str, t.Any]):
         super(Discriminator, self).__init__()
         self.nn = model_class(**model_config)
         self.nn_out_features = model_config['representation_dim'] if isinstance(model_config['representation_dim'], int) else int(sum(model_config['representation_dim']))
-        self.dim_reduction = nn.Linear(self.nn_out_features, 1)
+        self.classifier = self._get_mlp(3, self.nn_out_features, 128, 1)
     
     def forward(self, x: torch.Tensor):
         out = self.nn(x)
-        return self.dim_reduction(out)
+        return self.classifier(out)
+    
+    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int):
+        layers = []
+        for i in range(layers_num):
+            if i == 0:
+                layers.append(nn.Linear(input_size, hidden_size))
+            elif i == layers_num - 1:
+                layers.append(nn.BatchNorm1d(hidden_size))
+                layers.append(nn.Linear(hidden_size, output_size))
+            else:
+                layers.append(nn.BatchNorm1d(hidden_size))
+                layers.append(nn.Linear(hidden_size, hidden_size))
+            layers.append(nn.LeakyReLU(negative_slope=0.01))
+        return nn.Sequential(*layers)
 
 
 class Generator(nn.Module):
@@ -724,9 +760,25 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
         self.nn_in_features = model_config['representation_dim'] if isinstance(model_config['representation_dim'], int) else int(sum(model_config['representation_dim']))
         self.nn = model_class(**model_config)
+        self.noise_converter = self._get_mlp(3, self.nn_in_features, self.nn_in_features, self.nn_in_features)
     
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, ):
+        x = self.noise_converter(x)
         return self.nn(x)
+    
+    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int):
+        layers = []
+        for i in range(layers_num):
+            if i == 0:
+                layers.append(nn.Linear(input_size, hidden_size))
+            elif i == layers_num - 1:
+                layers.append(nn.BatchNorm1d(hidden_size))
+                layers.append(nn.Linear(hidden_size, output_size))
+            else:
+                layers.append(nn.BatchNorm1d(hidden_size))
+                layers.append(nn.Linear(hidden_size, hidden_size))
+            layers.append(nn.LeakyReLU(negative_slope=0.01))
+        return nn.Sequential(*layers)
     
     def get_noise(self, batch_size: int, device: torch.device):
         return torch.randn((batch_size, self.nn_in_features), device=device)
