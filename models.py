@@ -9,13 +9,14 @@ from models_utils import get_edges
 
 class Classifier(nn.Module):
     def __init__(self, input_dim: int, output_dim: int = 1, layers: int = 2, hidden_size: int = 128):
+        super(Classifier, self).__init__()
         self.mlp = self._get_mlp(layers, input_dim, hidden_size, output_dim)
         self.sigmoid = nn.Sigmoid()
 
     def _get_mlp(self, layers: int, input_dim: int, hidden_size: int, output_dim: int):
         mlp = []
         mlp.append(nn.Linear(input_dim, hidden_size))
-        mlp.append(nn.ReLU)
+        mlp.append(nn.ReLU())
         for i in range(layers - 1):
             mlp.append(nn.Linear(hidden_size, hidden_size))
             mlp.append(nn.ReLU())
@@ -713,13 +714,13 @@ class VariationalPositionalEncoder(PositionalEncoder):
         new_representation_dim = 2*representation_dim if isinstance(representation_dim, int) else (2*representation_dim[0], 2*representation_dim[1])
         super(VariationalPositionalEncoder, self).__init__(input_size, new_representation_dim, **kwargs)
 
-    def forward(self, x: torch.Tensor, return_distr: bool = False):
+    def forward(self, x: torch.Tensor, return_distr: bool = False, eps: float = 1e-10):
         x = super(VariationalPositionalEncoder, self).forward(x)
         freq_enc, block_enc = x[..., :self.freq_dim], x[..., self.freq_dim:]
         freq_mu, freq_std = torch.split(freq_enc, self.freq_dim // 2, dim=-1)
         block_mu, block_std = torch.split(block_enc, self.block_dim // 2, dim=-1)
-        freq_dist = Normal(freq_mu, freq_std.exp())
-        block_dist = Normal(block_mu, block_std.exp())
+        freq_dist = Normal(freq_mu, freq_std.exp() + eps)
+        block_dist = Normal(block_mu, block_std.exp() + eps)
         freq_sample = freq_dist.rsample()
         block_sample = block_dist.rsample()
         sample = torch.cat([freq_sample, block_sample], dim=-1)
@@ -780,8 +781,15 @@ class Generator(nn.Module):
             layers.append(nn.LeakyReLU(negative_slope=0.01))
         return nn.Sequential(*layers)
     
-    def get_noise(self, batch_size: int, device: torch.device):
-        return torch.randn((batch_size, self.nn_in_features), device=device)
+    def get_noise(self, batch_size: int, device: torch.device, noise_type: str = 'gaussian'):
+        if noise_type == 'gaussian':
+            return torch.randn((batch_size, self.nn_in_features), device=device)
+        elif noise_type == 'uniform':
+            return torch.rand((batch_size, self.nn_in_features), device=device)
+        elif noise_type == 'hybrid':
+            return torch.cat([torch.randn((batch_size, self.nn_in_features // 2), device=device), torch.rand((batch_size, self.nn_in_features // 2), device=device)], dim=-1)
+        else:
+            raise ValueError('Unknown noise type')
 
 
 class HamiltonianGenerator(nn.Module):

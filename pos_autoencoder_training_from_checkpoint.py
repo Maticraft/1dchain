@@ -6,7 +6,7 @@ import torch
 
 from data_utils import HamiltionianDataset
 from helical_ladder import  DEFAULT_PARAMS, SpinLadder
-from models import Encoder, Decoder
+from models import PositionalEncoder, PositionalDecoder
 from models_utils import train_autoencoder, test_autoencoder
 from models_files import save_autoencoder_params, save_autoencoder, save_data_list, load_autoencoder_params, load_positional_autoencoder
 from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
@@ -40,7 +40,7 @@ model_name = 'twice_pretrained_positional_autoencoder_fft_tf'
 
 # Load model
 encoder, decoder = load_positional_autoencoder(pretrained_model_dir, epoch)
-params, encoder_params, decoder_params = load_autoencoder_params(pretrained_model_dir)
+params, encoder_params, decoder_params = load_autoencoder_params(pretrained_model_dir, PositionalEncoder, PositionalDecoder)
 
 # Modify params
 params['learning_rate'] = 1.e-5

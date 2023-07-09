@@ -5,25 +5,30 @@ import os
 import torch
 import torch.nn as nn
 
-from models import Decoder, DecoderEnsemble, Encoder, EncoderEnsemble, PositionalDecoder, PositionalEncoder, VariationalPositionalEncoder, Generator, Discriminator
+from models import Classifier, Decoder, DecoderEnsemble, Encoder, EncoderEnsemble, PositionalDecoder, PositionalEncoder, VariationalPositionalEncoder, Generator, Discriminator
 
 GENERAL_PARAMS_NAME = 'general_params.json'
+CLASSIFIER_PARAMS_NAME = 'classifier_params.json'
 ENCODER_PARAMS_NAME = 'encoder_params.json'
 DECODER_PARAMS_NAME = 'decoder_params.json'
-ENCODER_DIR = 'encoder'
-DECODER_DIR = 'decoder'
-ENCODER_NAME = 'encoder{}.pt'
-DECODER_NAME = 'decoder{}.pt'
 GENERATOR_PARAMS_NAME = 'generator_params.json'
 DISCRIMINATOR_PARAMS_NAME = 'discriminator_params.json'
+CLASSIFIER_DIR = 'classifier'
+ENCODER_DIR = 'encoder'
+DECODER_DIR = 'decoder'
 GENERATOR_DIR = 'generator'
 DISCRIMINATOR_DIR = 'discriminator'
+CLASSIFIER_NAME = 'classifier{}.pt'
+ENCODER_NAME = 'encoder{}.pt'
+DECODER_NAME = 'decoder{}.pt'
 GENERATOR_NAME = 'generator{}.pt'
 DISCRIMINATOR_NAME = 'discriminator{}.pt'
+LATENT_DISTRIBUTION_NAME = 'latent_distribution.txt'
 DELIMITER = '  '
 
 
 MODEL_TO_NAMES = {
+    Classifier: (CLASSIFIER_PARAMS_NAME, CLASSIFIER_NAME, CLASSIFIER_DIR),
     Decoder: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
     DecoderEnsemble: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
     Encoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),
@@ -161,6 +166,15 @@ def save_gan(generator: Generator, discriminator: Discriminator, root_dir: str, 
     torch.save(discriminator.state_dict(), discriminator_path)
 
 
+def save_classifier(classifier: Classifier, root_dir: str, epoch: int):
+    classifier_dir = os.path.join(root_dir, CLASSIFIER_DIR)
+    if not os.path.isdir(classifier_dir):
+        os.makedirs(classifier_dir)
+
+    classifier_path = os.path.join(classifier_dir, CLASSIFIER_NAME.format(f'_ep{epoch}'))
+    torch.save(classifier.state_dict(), classifier_path)
+
+
 def save_autoencoder_params(
     general_params: t.Dict[str, t.Any],
     encoder_params: t.Dict[str, t.Any],
@@ -199,6 +213,17 @@ def save_all_params(
         save_params(params, params_save_path)
     
 
+def load_data_list(path: str, skip_header: bool = False):
+    with open(path) as f:
+        data = f.readlines()
+    data = [x.strip() for x in data]
+    data = [x.split(DELIMITER) for x in data]
+    if skip_header:
+        data = data[1:]
+    data = [[float(y) for y in x] for x in data]
+    return data
+
+
 def save_data_list(data: t.List[t.Any], path: str, mode:str = 'a'):
     data_str = [str(x) for x in data]
     with open(path, mode) as f:
@@ -209,3 +234,29 @@ def save_params(params: t.Dict[str, t.Any], file_path: str):
     data = json.dumps(params)
     with open(file_path, 'w') as f:
         f.write(data)
+
+
+def load_latent_distribution(root_dir: str, epoch: int):
+    latent_distribution_path = os.path.join(root_dir, LATENT_DISTRIBUTION_NAME.format(f'_ep{epoch}'))
+    latent_distribution = load_data_list(latent_distribution_path)
+    mean, std = zip(*latent_distribution)
+    mean = torch.tensor(mean)
+    std = torch.tensor(std)
+    return mean, std
+
+
+def save_latent_distribution(
+    latent_distribution: t.Tuple[torch.Tensor, torch.Tensor],
+    root_dir: str,
+):
+    if not os.path.isdir(root_dir):
+        os.makedirs(root_dir)
+
+    latent_distribution_path = os.path.join(root_dir, LATENT_DISTRIBUTION_NAME)
+    mean, std = latent_distribution
+    
+    mean = mean.detach().cpu().tolist()
+    std = std.detach().cpu().tolist()
+    save_data_list(['mean', 'std'], latent_distribution_path, mode='w')
+    for mean_i, std_i in zip(mean, std):
+        save_data_list([mean_i, std_i], latent_distribution_path)

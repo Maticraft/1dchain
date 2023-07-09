@@ -1,6 +1,7 @@
 import typing as t
 from tqdm import tqdm
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
@@ -169,7 +170,7 @@ def test_autoencoder(
     return total_loss, total_edge_loss, total_eigenstates_loss, total_diag_loss
 
 
-def test_classifier(
+def test_encoder_with_classifier(
     encoder_model: nn.Module,
     classifier_model: nn.Module,
     test_loader: torch.utils.data.DataLoader, 
@@ -188,9 +189,10 @@ def test_classifier(
 
     for (x, y), _ in tqdm(test_loader, "Testing classifer model"):
         x = x.to(device)
+        y = y.to(device)
         z = encoder_model(x)
         output = classifier_model(z)
-        loss = criterion(prediction, y)
+        loss = criterion(output, y)
         total_loss += loss.item()
 
         prediction = torch.round(output)              
@@ -247,7 +249,7 @@ def train_autoencoder(
     total_diag_loss = 0
 
     print(f'Epoch: {epoch}')
-    for (x, _), eig_dec in tqdm(train_loader, 'Training model'):
+    for (x, _), eig_dec in tqdm(train_loader, 'Training autoencoder model'):
         x = x.to(device)
         if site_permutation:
             x = site_perm(x, encoder_model.N, encoder_model.block_size)
@@ -383,44 +385,70 @@ def train_vae(
     return total_reconstruction_loss, total_kl_loss, total_edge_loss, total_eigenstates_loss, total_diag_loss
 
 
-def train_classifier(
+def train_encoder_with_classifier(
     encoder_model: nn.Module,
+    decoder_model: nn.Module,
     classifier_model: nn.Module,
     train_loader: torch.utils.data.DataLoader, 
     epoch: int,
     device: torch.device, 
-    optimizer: torch.optim.Optimizer,
+    encoder_optimizer: torch.optim.Optimizer,
+    decoder_optimizer: torch.optim.Optimizer,
+    classifier_optimizer: torch.optim.Optimizer,
 ):
 
-    criterion = nn.BCELoss()
+    class_criterion = nn.BCELoss()
+    ae_criterion = nn.MSELoss()
 
     encoder_model.to(device)
     classifier_model.to(device)
+    decoder_model.to(device)
 
     encoder_model.eval()
     classifier_model.train()
 
-    total_loss = 0
+    total_loss_class = 0
+    total_loss_ae = 0
 
     print(f'Epoch: {epoch}')
-    for (x, y), _ in tqdm(train_loader, 'Training model'):
+    for (x, y), _ in tqdm(train_loader, 'Training classifier model'):
         x = x.to(device)
-        optimizer.zero_grad()
+        y = y.to(device)
+        classifier_optimizer.zero_grad()
+        encoder_optimizer.zero_grad()
+        decoder_optimizer.zero_grad()
 
-        z = encoder_model(x).detach()
+        z = encoder_model(x)
 
-        prediction = classifier_model(z)
-        loss = criterion(prediction, y)
-        total_loss += loss.item()
+        # reduce the examples so that the number of examples in each class is the same
+        y_sq = y.squeeze()
+        z_reduced = torch.cat((z[y_sq == 0][:len(z[y_sq == 1])], z[y_sq == 1]))
+        y_reduced = torch.cat((y[y_sq == 0][:len(z[y_sq == 1])], y[y_sq == 1]))
 
+        prediction = classifier_model(z_reduced)
+        loss_class = class_criterion(prediction, y_reduced)
+
+        if len(z_reduced) > 0:
+            total_loss_class += loss_class.item()
+
+        x_hat = decoder_model(z) 
+        loss_ae = ae_criterion(x_hat, x)
+
+        total_loss_ae += loss_ae.item()
+
+        loss = 0.01*loss_class + loss_ae
         loss.backward()
-        optimizer.step()
+        classifier_optimizer.step()
+        encoder_optimizer.step()
+        decoder_optimizer.step()
     
-    total_loss /= len(train_loader)
+    total_loss_ae /= len(train_loader)
+    total_loss_class /= len(train_loader)
 
-    print(f'Loss: {total_loss}\n')
+    print(f'Classification loss: {total_loss_class}\n')
+    print(f'Autoencoder loss: {total_loss_ae}\n')
 
-    return total_loss
+    return total_loss_class, total_loss_ae
 
 
 def train_gan(
@@ -448,12 +476,12 @@ def train_gan(
     for (x, _), _ in tqdm(train_loader, 'Training model'):
         x = x.to(device)
         discriminator_optimizer.zero_grad()
-        if epoch < 5:
-            discriminator.nn.requires_grad_(False)
-        else:
-            discriminator.nn.requires_grad_(True)
+        # if epoch < 5:
+        #     discriminator.nn.requires_grad_(False)
+        # else:
+        #     discriminator.nn.requires_grad_(True)
 
-        z = generator.get_noise(x.shape[0], device)
+        z = generator.get_noise(x.shape[0], device, noise_type='hybrid')
         x_hat = generator(z)
 
         real_prediction = discriminator(x)
@@ -469,12 +497,12 @@ def train_gan(
         discriminator_optimizer.step()
 
         generator_optimizer.zero_grad()
-        if epoch < 5:
-            generator.nn.requires_grad_(False)
-        else:
-            generator.nn.requires_grad_(True)
+        # if epoch < 5:
+        #     generator.nn.requires_grad_(False)
+        # else:
+        #     generator.nn.requires_grad_(True)
 
-        z2 = generator.get_noise(x.shape[0], device)
+        z2 = generator.get_noise(x.shape[0], device, noise_type='hybrid')
         x_hat2 = generator(z2)
         fake_prediction2 = discriminator(x_hat2)
         generator_loss = criterion(fake_prediction2, torch.ones_like(fake_prediction2))
@@ -490,3 +518,31 @@ def train_gan(
     print(f'Discriminator Loss: {total_discriminator_loss}\n')
 
     return total_generator_loss, total_discriminator_loss
+
+
+def calculate_latent_space_distribution(
+    encoder: nn.Module,
+    data_loader: torch.utils.data.DataLoader,
+    device: torch.device,
+):
+    encoder.to(device)
+    encoder.eval()
+
+    # get latent space shape
+    (x, _), _ = next(iter(data_loader))
+    x = x.to(device)
+    z: torch.Tensor = encoder(x)
+    latent_space_shape = z.shape[1]
+
+    # calculate latent space distribution (mean and std)
+    latent_space_mean = torch.zeros(latent_space_shape).to(device)
+    latent_space_std = torch.zeros(latent_space_shape).to(device)
+    for (x, _), _ in tqdm(data_loader, 'Calculating latent space distribution'):
+        x = x.to(device)
+        z = encoder(x)
+        latent_space_mean += z.mean(dim=0)
+        latent_space_std += z.std(dim=0)
+    latent_space_mean /= len(data_loader)
+    latent_space_std /= len(data_loader)
+
+    return latent_space_mean, latent_space_std

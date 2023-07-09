@@ -1,12 +1,73 @@
 import typing as t
 
+from tqdm import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch.nn as nn
+from sklearn.manifold import TSNE
 
 from data_utils import Hamiltonian
 from models_utils import get_eigvals, reconstruct_hamiltonian
 from models_files import DELIMITER
+
+
+def plot_tsne_freq_block(
+    encoder_model: nn.Module,
+    test_loader: torch.utils.data.DataLoader, 
+    device: torch.device, 
+    file_path: str,
+):
+    encoder_model.to(device)
+    encoder_model.eval()
+
+    z1_list = []
+    z2_list = []
+    y_list = []
+
+    for (x, y), _ in tqdm(test_loader, "Testing t-SNE"):
+        x = x.to(device)
+        z = encoder_model(x).detach().cpu().numpy()
+        z1_list.append(z[:, :z.shape[1] // 2])
+        z2_list.append(z[:, z.shape[1] // 2:])
+        y_list.append(y.detach().cpu().numpy())
+
+    plot_tsne(file_path.format('_freq'), z1_list, y_list)
+    plot_tsne(file_path.format('_block'), z2_list, y_list)
+
+
+def plot_full_space_tsne(
+    encoder_model: nn.Module,
+    test_loader: torch.utils.data.DataLoader, 
+    device: torch.device, 
+    file_path: str,
+):
+    encoder_model.to(device)
+    encoder_model.eval()
+
+    z_list = []
+    y_list = []
+
+    for (x, y), _ in tqdm(test_loader, "Testing t-SNE"):
+        x = x.to(device)
+        z = encoder_model(x).detach().cpu().numpy()
+        z_list.append(z)
+        y_list.append(y.detach().cpu().numpy())
+
+    plot_tsne(file_path, z_list, y_list)
+
+
+def plot_tsne(file_path, z_list, y_list):
+    z = np.concatenate(z_list, axis=0)
+    y = np.concatenate(y_list, axis=0)
+
+    tsne = TSNE(n_components=2, random_state=0)
+    z_tsne = tsne.fit_transform(z)
+
+    plt.figure(figsize=(10, 10))
+    plt.scatter(z_tsne[:, 0], z_tsne[:, 1], c=y, cmap='bwr')
+    plt.axis('off')
+    plt.savefig(file_path)
 
 
 def plot_convergence(results_path: str, save_path: str, read_label: bool = False):
@@ -31,22 +92,6 @@ def plot_convergence(results_path: str, save_path: str, read_label: bool = False
     plt.yscale('log')
     plt.legend()
     plt.savefig(save_path)
-    plt.close()
-
-
-def plot_matrix(matrix: np.ndarray, filepath: str, **kwargs: t.Dict[str, t.Any]):
-    vmin = kwargs.get('vmin', -0.5)        
-    vmax = kwargs.get('vmax', 0.5)
-    norm = kwargs.get('norm', None)
-    fig = plt.figure()
-    if 'cmap' in kwargs:
-        cmap = kwargs['cmap']
-    else:
-        cmap = 'PuOr'
-    im = plt.imshow(matrix, cmap=cmap, vmin = vmin, vmax = vmax, norm=norm)
-    cbar = fig.colorbar(im, shrink=0.9)
-    cbar.ax.tick_params(labelsize=35)
-    plt.savefig(filepath, dpi=560)
     plt.close()
 
 
@@ -90,25 +135,6 @@ def plot_test_eigvals(
         simple_plot(xaxis, xparams, 'Energy difference', energies_diff, save_path_diff, **kwargs)
 
 
-def plot_test_matrices(
-    matrix: np.ndarray,
-    encoder: torch.nn.Module,
-    decoder: torch.nn.Module,
-    save_path_diff: str,
-    save_path_rec: t.Optional[str] = None,
-    save_path_org: t.Optional[str] = None,
-    device: torch.device = torch.device('cpu'),
-):
-    rec_matrix = reconstruct_hamiltonian(matrix, encoder, decoder, device)
-    if save_path_org:
-        plot_matrix(np.real(matrix), save_path_org.format('_real'))
-        plot_matrix(np.imag(matrix), save_path_org.format('_imag'))
-    if save_path_rec:
-        plot_matrix(np.real(rec_matrix), save_path_rec.format('_real'))
-        plot_matrix(np.imag(rec_matrix), save_path_rec.format('_imag'))
-    plot_matrix(np.abs(rec_matrix - matrix), save_path_diff, vmin = 1.e-3, vmax = 1, norm = 'log', cmap='YlGnBu')
-
-
 def simple_plot(
     xaxis: str,
     xvalues: t.List[t.Any],
@@ -141,4 +167,57 @@ def simple_plot(
 
     plt.ylabel(yaxis)
     plt.savefig(filename)
+    plt.close()
+
+
+def plot_test_matrices(
+    matrix: np.ndarray,
+    encoder: torch.nn.Module,
+    decoder: torch.nn.Module,
+    save_path_diff: str,
+    save_path_rec: t.Optional[str] = None,
+    save_path_org: t.Optional[str] = None,
+    device: torch.device = torch.device('cpu'),
+):
+    rec_matrix = reconstruct_hamiltonian(matrix, encoder, decoder, device)
+    if save_path_org:
+        plot_matrix(np.real(matrix), save_path_org.format('_real'))
+        plot_matrix(np.imag(matrix), save_path_org.format('_imag'))
+    if save_path_rec:
+        plot_matrix(np.real(rec_matrix), save_path_rec.format('_real'))
+        plot_matrix(np.imag(rec_matrix), save_path_rec.format('_imag'))
+    plot_matrix(np.abs(rec_matrix - matrix), save_path_diff, vmin = 1.e-3, vmax = 1, norm = 'log', cmap='YlGnBu')
+
+
+def plot_matrix(matrix: np.ndarray, filepath: str, **kwargs: t.Dict[str, t.Any]):
+    vmin = kwargs.get('vmin', -0.5)        
+    vmax = kwargs.get('vmax', 0.5)
+    norm = kwargs.get('norm', None)
+    fig = plt.figure()
+    if 'cmap' in kwargs:
+        cmap = kwargs['cmap']
+    else:
+        cmap = 'PuOr'
+    im = plt.imshow(matrix, cmap=cmap, vmin = vmin, vmax = vmax, norm=norm)
+    cbar = fig.colorbar(im, shrink=0.9)
+    cbar.ax.tick_params(labelsize=35)
+    plt.savefig(filepath, dpi=560)
+    plt.close()
+
+
+def plot_latent_space_distribution(
+    latent_space_distribution: t.Tuple[torch.Tensor, torch.Tensor],
+    save_path: str,
+):
+    mean, std = latent_space_distribution
+    plt.errorbar(
+        x = np.arange(len(mean)),
+        y = mean.detach().cpu().numpy(),
+        yerr = std.detach().cpu().numpy(),
+        fmt = 'o',
+        capsize = 5,
+    )
+    plt.xlabel('Latent space index')
+    plt.ylabel('Mean and standard deviation')
+    plt.savefig(save_path)
     plt.close()
