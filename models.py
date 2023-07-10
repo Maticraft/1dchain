@@ -761,14 +761,16 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
         self.nn_in_features = model_config['representation_dim'] if isinstance(model_config['representation_dim'], int) else int(sum(model_config['representation_dim']))
         self.nn = model_class(**model_config)
-        self.noise_converter = self._get_mlp(3, self.nn_in_features, self.nn_in_features, self.nn_in_features)
+        self.noise_converter = self._get_mlp(1, self.nn_in_features, self.nn_in_features, self.nn_in_features)
     
     def forward(self, x: torch.Tensor, ):
-        x = self.noise_converter(x)
+        # x = self.noise_converter(x)
         return self.nn(x)
     
     def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int):
         layers = []
+        if layers_num == 1:
+            return nn.Linear(input_size, output_size)
         for i in range(layers_num):
             if i == 0:
                 layers.append(nn.Linear(input_size, hidden_size))
@@ -781,13 +783,17 @@ class Generator(nn.Module):
             layers.append(nn.LeakyReLU(negative_slope=0.01))
         return nn.Sequential(*layers)
     
-    def get_noise(self, batch_size: int, device: torch.device, noise_type: str = 'gaussian'):
+    def get_noise(self, batch_size: int, device: torch.device, noise_type: str = 'gaussian', **kwargs: t.Dict[str, t.Any]):
         if noise_type == 'gaussian':
             return torch.randn((batch_size, self.nn_in_features), device=device)
         elif noise_type == 'uniform':
             return torch.rand((batch_size, self.nn_in_features), device=device)
         elif noise_type == 'hybrid':
             return torch.cat([torch.randn((batch_size, self.nn_in_features // 2), device=device), torch.rand((batch_size, self.nn_in_features // 2), device=device)], dim=-1)
+        elif noise_type == 'custom':
+            mean = kwargs['mean'].unsqueeze(0).expand(batch_size, -1)
+            std = kwargs['std'].unsqueeze(0).expand(batch_size, -1)
+            return torch.normal(mean, std).to(device)
         else:
             raise ValueError('Unknown noise type')
 

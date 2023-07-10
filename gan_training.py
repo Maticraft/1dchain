@@ -8,8 +8,8 @@ from data_utils import HamiltionianDataset
 from helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from models import Generator, Discriminator, PositionalDecoder, PositionalEncoder
 from models_utils import train_gan
-from models_files import save_gan_params, save_gan, save_data_list, get_full_model_config, load_gan_submodel_state_dict, load_model
-from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
+from models_files import save_gan_params, save_gan, save_data_list, get_full_model_config, load_gan_submodel_state_dict, load_model, load_latent_distribution, save_latent_distribution
+from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals, plot_matrix
 
 # Paths
 data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPG'
@@ -17,11 +17,10 @@ save_dir = './gan/spin_ladder/70_2_RedDistSimplePeriodicPG'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
-
 # Load state from pretrained autoencoder
 original_autoencoder_path = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG/100/twice_pretrained_positional_autoencoder_fft_tf'
 original_autoencoder_epoch = 22
-
+distibution_path = os.path.join(original_autoencoder_path, 'tests_ep{}'.format(original_autoencoder_epoch))
 
 # Reference eigvals plot params
 eigvals_sub_dir = 'eigvals'
@@ -38,7 +37,7 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'GAN_fft_tf_mlp_ae_frozen_pretraining_disc'
+model_name = 'GAN_fft_tf_init_distrib_noise'
 
 # Params
 params = {
@@ -72,7 +71,7 @@ discriminator_params = {
     'block_enc_depth': 4,
     'block_enc_hidden_size': 128,
     'padding_mode': 'zeros',
-    'lr': 1.e-7,
+    'lr': 1.e-6,
 }
 
 
@@ -85,8 +84,7 @@ generator_params = {
     "block_dec_hidden_size": 128,
     "seq_dec_depth": 4,
     "seq_dec_hidden_size": 128,
-    'lr': 1.e-6,
-
+    'lr': 1.e-5,
 }
 
 
@@ -136,6 +134,9 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 generator_optimizer = torch.optim.Adam(generator.parameters(), lr=generator_params['lr'])
 discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=discriminator_params['lr'])
 
+init_distribution = load_latent_distribution(distibution_path)
+save_latent_distribution(init_distribution, root_dir)
+
 save_data_list(['Epoch', 'Generator loss', 'Discriminator loss'], loss_path, mode='w')
 
 for epoch in range(1, params['epochs'] + 1):
@@ -147,6 +148,7 @@ for epoch in range(1, params['epochs'] + 1):
         device,
         generator_optimizer,
         discriminator_optimizer,
+        init_distribution,
     )
     save_gan(generator, discriminator, root_dir, epoch)
     save_data_list([epoch, gen_loss, disc_loss], loss_path)
@@ -156,5 +158,17 @@ for epoch in range(1, params['epochs'] + 1):
     ham_auto_path = os.path.join(ham_sub_path, hamiltonian_plot_name.format(f'_ep{epoch}' + '{}'))
     ham_diff_path = os.path.join(ham_sub_path, hamiltonain_diff_plot_name.format(f'_ep{epoch}'))
     plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, generator.nn, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device)
+
+    # Plot sample hamiltonian
+    test_matrix_path = os.path.join(root_dir, f'test_{epoch}')
+    generator.to(device)
+    os.makedirs(test_matrix_path, exist_ok=True)
+    for i in range(10):
+        generator.eval()
+        z = generator.get_noise(1, device=device, noise_type='custom', mean=init_distribution[0], std=init_distribution[1])
+        matrix = generator.nn(z).detach().cpu().numpy()[0]
+        
+        plot_matrix(matrix[0], os.path.join(test_matrix_path, f"random_hamiltonian_real_{i}.png"))
+        plot_matrix(matrix[1], os.path.join(test_matrix_path, f"random_hamiltonian_imag_{i}.png"))
    
 plot_convergence(loss_path, convergence_path, read_label=True)

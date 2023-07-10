@@ -236,9 +236,9 @@ def save_params(params: t.Dict[str, t.Any], file_path: str):
         f.write(data)
 
 
-def load_latent_distribution(root_dir: str, epoch: int):
-    latent_distribution_path = os.path.join(root_dir, LATENT_DISTRIBUTION_NAME.format(f'_ep{epoch}'))
-    latent_distribution = load_data_list(latent_distribution_path)
+def load_latent_distribution(root_dir: str):
+    latent_distribution_path = os.path.join(root_dir, LATENT_DISTRIBUTION_NAME)
+    latent_distribution = load_data_list(latent_distribution_path, skip_header=True)
     mean, std = zip(*latent_distribution)
     mean = torch.tensor(mean)
     std = torch.tensor(std)

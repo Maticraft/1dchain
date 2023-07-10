@@ -459,6 +459,7 @@ def train_gan(
     device: torch.device, 
     generator_optimizer: torch.optim.Optimizer,
     discriminator_optimizer: torch.optim.Optimizer,
+    init_distribution: t.Optional[t.Tuple[torch.Tensor, torch.Tensor]] = None,
 ):
     
     criterion = nn.BCEWithLogitsLoss()
@@ -481,7 +482,10 @@ def train_gan(
         # else:
         #     discriminator.nn.requires_grad_(True)
 
-        z = generator.get_noise(x.shape[0], device, noise_type='hybrid')
+        if init_distribution is not None:
+            z = generator.get_noise(x.shape[0], device, noise_type='custom', mean=init_distribution[0], std=init_distribution[1])
+        else:
+            z = generator.get_noise(x.shape[0], device, noise_type='hybrid')
         x_hat = generator(z)
 
         real_prediction = discriminator(x)
@@ -502,7 +506,10 @@ def train_gan(
         # else:
         #     generator.nn.requires_grad_(True)
 
-        z2 = generator.get_noise(x.shape[0], device, noise_type='hybrid')
+        if init_distribution is not None:
+            z2 = generator.get_noise(x.shape[0], device, noise_type='custom', mean=init_distribution[0], std=init_distribution[1])
+        else:
+            z2 = generator.get_noise(x.shape[0], device, noise_type='hybrid')
         x_hat2 = generator(z2)
         fake_prediction2 = discriminator(x_hat2)
         generator_loss = criterion(fake_prediction2, torch.ones_like(fake_prediction2))
