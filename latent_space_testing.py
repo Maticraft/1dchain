@@ -12,7 +12,7 @@ from models_plots import plot_full_space_tsne, plot_tsne_freq_block, plot_latent
 
 model_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG/100/classifier_bal_twice_pretrained_positional_autoencoder_fft_tf'
 epoch = 4
-batch_size = 64
+batch_size = 128
 
 # Paths
 data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPG'
@@ -36,7 +36,7 @@ if not os.path.isdir(dir_path):
 tsne_path = os.path.join(dir_path, tsne_file_name)
 latent_space_plot_path = os.path.join(dir_path, latent_space_plot_name)
 
-latent_space_distribution = calculate_latent_space_distribution(encoder, test_loader, device)
+latent_space_distribution = calculate_latent_space_distribution(encoder, test_loader, device, label=None)
 save_latent_distribution(latent_space_distribution, dir_path)
 plot_latent_space_distribution(latent_space_distribution, latent_space_plot_path)
 plot_full_space_tsne(encoder, test_loader, device, tsne_path.format('all'))

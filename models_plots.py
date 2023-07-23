@@ -8,6 +8,7 @@ import torch.nn as nn
 from sklearn.manifold import TSNE
 
 from data_utils import Hamiltonian
+from models import Generator
 from models_utils import get_eigvals, reconstruct_hamiltonian
 from models_files import DELIMITER
 
@@ -133,6 +134,35 @@ def plot_test_eigvals(
         kwargs['ylim'] = (1.e-4, 1.)
         kwargs['scale'] = 'log'
         simple_plot(xaxis, xparams, 'Energy difference', energies_diff, save_path_diff, **kwargs)
+
+
+def plot_generator_eigvals(
+    generator: Generator,
+    num_states: int,
+    save_path: str,
+    noise_type: str = 'hybrid',
+    num_interval_states: int = 100,
+    **kwargs: t.Dict[str, t.Any],
+):
+    generator = generator.cpu()
+    generator.eval()
+    
+    states_noise = generator.get_noise(num_states, torch.device('cpu'), noise_type, **kwargs)
+    
+    eps = 1/num_interval_states
+    states = []
+    for i in range(len(states_noise) - 1):
+        states.append(states_noise[i])
+        for j in range(num_interval_states):
+            states.append((1-j*eps)*states_noise[i] + j*eps*states_noise[i+1])  
+    states.append(states_noise[-1])
+    states = torch.stack(states)
+
+    output = generator(states)
+    Hs = torch.complex(output[:, 0, :, :], output[:, 1, :, :]).squeeze().detach().cpu().numpy()
+    eigvals = [np.linalg.eigvalsh(H) for H in Hs]
+
+    simple_plot(f'{num_states} random states transition', range(len(eigvals)), 'Eigen energy', eigvals, save_path, **kwargs)
 
 
 def simple_plot(
