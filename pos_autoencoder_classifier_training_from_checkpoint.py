@@ -8,7 +8,7 @@ from data_utils import HamiltionianDataset
 from helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from models import PositionalEncoder, PositionalDecoder, Classifier
 from models_utils import train_autoencoder, test_autoencoder, train_encoder_with_classifier, test_encoder_with_classifier
-from models_files import save_autoencoder_params, save_autoencoder, save_classifier, save_data_list, load_autoencoder_params, load_positional_autoencoder
+from models_files import save_autoencoder_params, save_autoencoder, save_model, save_data_list, load_autoencoder_params, load_positional_autoencoder
 from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 # Pretrained model
@@ -100,7 +100,7 @@ for epoch in range(1, params['epochs'] + 1):
     decoder_scheduler.step(te_loss)
 
     save_autoencoder(encoder, decoder, root_dir, epoch)
-    save_classifier(classifier, root_dir, epoch)
+    save_model(classifier, root_dir, epoch)
     save_data_list([epoch, tr_class_loss, tr_ae_loss, te_class_loss, te_acc, te_loss, te_edge_loss, te_eig_loss, te_diag_loss], loss_path)
 
     eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))

@@ -90,6 +90,18 @@ def load_gan_model(root_dir: str, epoch: int, sub_generator_class: t.Type[nn.Mod
     return generator, discriminator
 
 
+def load_generator(root_dir: str, epoch: int, sub_generator_class: t.Type[nn.Module]):
+    params, generator_config, _ = load_gan_params(root_dir)
+    generator_config = get_full_model_config(params, generator_config)
+    generator_params = {
+        'model_class': sub_generator_class,
+        'model_config': generator_config,
+    }
+
+    generator = load_model(Generator, generator_params, root_dir, epoch)
+    return generator
+
+
 def load_gan_submodel_state_dict(root_dir: str, epoch: int, model: t.Union[Generator, Discriminator]):
     model_path = os.path.join(root_dir, MODEL_TO_NAMES[type(model.nn)][2], MODEL_TO_NAMES[type(model.nn)][1].format(f'_ep{epoch}'))
     model.nn.load_state_dict(torch.load(model_path))
@@ -137,6 +149,10 @@ def get_full_model_config(params: t.Dict[str, t.Any], model_params: t.Dict[str, 
     }
 
 
+def load_classifier(root_dir: str, epoch: int, **classifier_config: t.Dict[str, t.Any]) -> Classifier:
+    return load_model(Classifier, classifier_config, root_dir, epoch)
+
+
 def load_model(model_type: t.Type[nn.Module], model_params: t.Dict[str, t.Any], root_dir: str, epoch: int):
     model = model_type(**model_params)
     model_path = os.path.join(root_dir, MODEL_TO_NAMES[model_type][2], MODEL_TO_NAMES[model_type][1].format(f'_ep{epoch}'))
@@ -145,34 +161,26 @@ def load_model(model_type: t.Type[nn.Module], model_params: t.Dict[str, t.Any], 
 
 
 def save_autoencoder(encoder: torch.nn.Module, decoder: torch.nn.Module, root_dir: str, epoch: int):
-    if not os.path.isdir(root_dir):
-        os.makedirs(root_dir)
-
-    encoder_path = os.path.join(root_dir, ENCODER_DIR, ENCODER_NAME.format(f'_ep{epoch}'))
-    decoder_path = os.path.join(root_dir, DECODER_DIR, DECODER_NAME.format(f'_ep{epoch}'))
-
-    torch.save(encoder.state_dict(), encoder_path)
-    torch.save(decoder.state_dict(), decoder_path)
+    save_model(encoder, root_dir, epoch)
+    save_model(decoder, root_dir, epoch)
 
 
 def save_gan(generator: Generator, discriminator: Discriminator, root_dir: str, epoch: int):
+    save_model(generator, root_dir, epoch)
+    save_model(discriminator, root_dir, epoch)
+
+
+def save_model(model: nn.Module, root_dir: str, epoch: int):
+    model_type = type(model)
     if not os.path.isdir(root_dir):
         os.makedirs(root_dir)
 
-    generator_path = os.path.join(root_dir, GENERATOR_DIR, GENERATOR_NAME.format(f'_ep{epoch}'))
-    discriminator_path = os.path.join(root_dir, DISCRIMINATOR_DIR, DISCRIMINATOR_NAME.format(f'_ep{epoch}'))
+    model_dir = os.path.join(root_dir, MODEL_TO_NAMES[model_type][2])
+    if not os.path.isdir(model_dir):
+        os.makedirs(model_dir)
 
-    torch.save(generator.state_dict(), generator_path)
-    torch.save(discriminator.state_dict(), discriminator_path)
-
-
-def save_classifier(classifier: Classifier, root_dir: str, epoch: int):
-    classifier_dir = os.path.join(root_dir, CLASSIFIER_DIR)
-    if not os.path.isdir(classifier_dir):
-        os.makedirs(classifier_dir)
-
-    classifier_path = os.path.join(classifier_dir, CLASSIFIER_NAME.format(f'_ep{epoch}'))
-    torch.save(classifier.state_dict(), classifier_path)
+    model_path = os.path.join(model_dir, MODEL_TO_NAMES[model_type][1].format(f'_ep{epoch}'))
+    torch.save(model.state_dict(), model_path)
 
 
 def save_autoencoder_params(

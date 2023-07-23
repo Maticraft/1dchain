@@ -31,6 +31,11 @@ def kl_divergence_loss(q_dist):
         q_dist, Normal(torch.zeros_like(q_dist.mean), torch.ones_like(q_dist.stddev))
     )
 
+def distribution_loss(x_hat: torch.Tensor, distribution: t.Tuple[torch.Tensor, torch.Tensor]):
+    mean, stddev = distribution
+    distance_from_distribution = torch.abs(x_hat - mean) - stddev
+    loss = torch.maximum(distance_from_distribution, torch.zeros_like(distance_from_distribution))
+    return torch.mean(loss)
 
 def edge_diff(x_hat: torch.Tensor, x: torch.Tensor, criterion: t.Callable, edge_width: int = 4):
     x_hat_edges = get_edges(x_hat, edge_width)
@@ -206,6 +211,52 @@ def test_encoder_with_classifier(
     bal_acc = 100.* (sensitivity + specifity) / 2
 
     print(f'Loss: {total_loss}, balanced accuracy: {bal_acc}')
+
+    return total_loss, bal_acc, conf_matrix
+
+
+def test_generator_with_classifier(
+    generator_model: nn.Module,
+    # encoder_model: nn.Module,
+    classifier_model: nn.Module,
+    test_loader: torch.utils.data.DataLoader, 
+    device: torch.device, 
+):
+    criterion = nn.BCELoss()
+
+    classifier_model.to(device)
+    generator_model.to(device)
+    # encoder_model.to(device)
+
+    classifier_model.eval()
+    generator_model.eval()
+    # encoder_model.eval()
+
+    total_loss = 0
+    conf_matrix = np.zeros((2, 2))
+
+    for (x, y), _ in tqdm(test_loader, 'Testing generator for classifier'):
+        x = x.to(device)
+
+        z = generator_model.get_noise(x.shape[0], device, noise_type='hybrid')
+        x_hat = generator_model.noise_converter(z)
+        # latent_prime = encoder_model(x_hat)
+        y_hat = classifier_model(x_hat)
+        desired_y = torch.ones_like(y_hat)
+
+        loss = criterion(y_hat, desired_y)
+        total_loss += loss.item()
+
+        prediction = torch.round(y_hat)
+
+        for i, j in zip(desired_y, prediction):
+            conf_matrix[int(i), int(j)] += 1
+    
+    total_loss /= len(test_loader)
+    specifity = conf_matrix[1, 1] / (conf_matrix[1, 0] + conf_matrix[1, 1])
+    bal_acc = 100.* specifity
+
+    print(f'Total loss: {total_loss}, balanced accuracy: {bal_acc}')
 
     return total_loss, bal_acc, conf_matrix
 
@@ -451,6 +502,65 @@ def train_encoder_with_classifier(
     return total_loss_class, total_loss_ae
 
 
+def train_noise_controller(
+    generator_model: nn.Module,
+    # encoder_model: nn.Module,
+    classifier_model: nn.Module,
+    train_loader: torch.utils.data.DataLoader, 
+    epoch: int,
+    device: torch.device, 
+    noise_controller_optimizer: torch.optim.Optimizer,
+    correct_distribution: t.Tuple[torch.Tensor, torch.Tensor],
+):
+
+    criterion = nn.BCELoss()
+
+    classifier_model.to(device)
+    generator_model.to(device)
+    # encoder_model.to(device)
+
+    classifier_model.train()
+    generator_model.train()
+    # encoder_model.train()
+
+    mean, std = correct_distribution
+
+    total_classifier_loss = 0
+    total_ddistribution_loss = 0
+
+    print(f'Epoch: {epoch}')
+    for (x, y), _ in tqdm(train_loader, 'Training noise controller for generator'):
+        x = x.to(device)
+        noise_controller_optimizer.zero_grad()
+        generator_model.nn.requires_grad_(False)
+        # encoder_model.requires_grad_(False)
+        classifier_model.requires_grad_(False)
+
+        z = generator_model.get_noise(x.shape[0], device, noise_type='hybrid')
+        x_hat = generator_model.noise_converter(z)
+        # latent_prime = encoder_model(x_hat)
+        y_hat = classifier_model(x_hat)
+        desired_y = torch.ones_like(y_hat)
+
+        loss = criterion(y_hat, desired_y)
+        total_classifier_loss += loss.item()
+
+        distrib_loss = distribution_loss(x_hat, (mean.to(device), std.to(device)))
+        total_ddistribution_loss += distrib_loss.item()
+        loss += 5*distrib_loss
+
+        loss.backward()
+        noise_controller_optimizer.step()
+    
+    total_classifier_loss /= len(train_loader)
+    total_ddistribution_loss /= len(train_loader)
+
+    print(f'Total classifier loss: {total_classifier_loss}\n')
+    print(f'Total distribution loss: {total_ddistribution_loss}\n')
+
+    return total_classifier_loss, total_ddistribution_loss
+
+
 def train_gan(
     generator: nn.Module,
     discriminator: nn.Module,
@@ -531,6 +641,7 @@ def calculate_latent_space_distribution(
     encoder: nn.Module,
     data_loader: torch.utils.data.DataLoader,
     device: torch.device,
+    label: t.Optional[int] = None,
 ):
     encoder.to(device)
     encoder.eval()
@@ -543,13 +654,30 @@ def calculate_latent_space_distribution(
 
     # calculate latent space distribution (mean and std)
     latent_space_mean = torch.zeros(latent_space_shape).to(device)
-    latent_space_std = torch.zeros(latent_space_shape).to(device)
-    for (x, _), _ in tqdm(data_loader, 'Calculating latent space distribution'):
+    total_num_samples = 0
+    for (x, y), _ in tqdm(data_loader, 'Calculating latent space mean'):
         x = x.to(device)
-        z = encoder(x)
-        latent_space_mean += z.mean(dim=0)
-        latent_space_std += z.std(dim=0)
-    latent_space_mean /= len(data_loader)
-    latent_space_std /= len(data_loader)
+        if label is not None:
+            y = y.to(device).squeeze()
+            x = x[y == label]
+        if x.shape[0] > 0:
+            total_num_samples += x.shape[0]
+            z = encoder(x)
+            latent_space_mean += z.sum(dim=0)
+
+    latent_space_mean /= total_num_samples
+
+    latent_space_std = torch.zeros(latent_space_shape).to(device)
+    for (x, y), _ in tqdm(data_loader, 'Calculating latent space std'):
+        x = x.to(device)
+        if label is not None:
+            y = y.to(device).squeeze()
+            x = x[y == label]
+        if x.shape[0] > 0:
+            z = encoder(x)
+            latent_space_std += ((z - latent_space_mean)**2).sum(dim=0)
+
+    latent_space_std /= total_num_samples
+    latent_space_std = torch.sqrt(latent_space_std)
 
     return latent_space_mean, latent_space_std

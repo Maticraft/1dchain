@@ -757,30 +757,54 @@ class Discriminator(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self, model_class: t.Type[nn.Module], model_config: t.Dict[str, t.Any]):
+    def __init__(self, model_class: t.Type[nn.Module], model_config: t.Dict[str, t.Any], **kwargs: t.Dict[str, t.Any]):
         super(Generator, self).__init__()
         self.nn_in_features = model_config['representation_dim'] if isinstance(model_config['representation_dim'], int) else int(sum(model_config['representation_dim']))
         self.nn = model_class(**model_config)
-        self.noise_converter = self._get_mlp(1, self.nn_in_features, self.nn_in_features, self.nn_in_features)
+        if 'distribution' in kwargs:
+            activation = self._create_activation_from_distribution(kwargs['distribution'])
+        else:
+            activation = nn.LeakyReLU(negative_slope=0.01)
+
+        self.noise_converter = self._get_mlp(5, self.nn_in_features, self.nn_in_features, self.nn_in_features, final_activation=activation)
     
-    def forward(self, x: torch.Tensor, ):
+    def forward(self, x: torch.Tensor):
         # x = self.noise_converter(x)
         return self.nn(x)
     
-    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int):
+    def _create_activation_from_distribution(self, distribution: t.Tuple[torch.Tensor, torch.Tensor]):
+        mu, std = distribution
+        class Activation(nn.Module):
+            def __init__(self, mu: torch.Tensor, std: torch.Tensor):
+                super(Activation, self).__init__()
+                self.mu = mu
+                self.std = std
+            def activation(self, x: torch.Tensor):
+                mu = self.mu.to(x.device)
+                std = self.std.to(x.device)
+                min_cutoff = torch.maximum(x, mu - 2*std)
+                max_cutoff = torch.minimum(min_cutoff, mu + 2*std)
+                return max_cutoff
+            def forward(self, x: torch.Tensor):
+                return self.activation(x)
+        return Activation(mu, std)
+    
+    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int, final_activation = t.Callable):
         layers = []
         if layers_num == 1:
             return nn.Linear(input_size, output_size)
         for i in range(layers_num):
             if i == 0:
                 layers.append(nn.Linear(input_size, hidden_size))
+                layers.append(nn.LeakyReLU(negative_slope=0.01))
             elif i == layers_num - 1:
                 layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, output_size))
+                layers.append(final_activation)
             else:
                 layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, hidden_size))
-            layers.append(nn.LeakyReLU(negative_slope=0.01))
+                layers.append(nn.LeakyReLU(negative_slope=0.01))
         return nn.Sequential(*layers)
     
     def get_noise(self, batch_size: int, device: torch.device, noise_type: str = 'gaussian', **kwargs: t.Dict[str, t.Any]):
