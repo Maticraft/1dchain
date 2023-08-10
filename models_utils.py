@@ -119,6 +119,7 @@ def test_autoencoder(
     device: torch.device, 
     site_permutation: bool = False,
     edge_loss: bool = False,
+    eigenvalues_loss: bool = False,
     eigenstates_loss: bool = False,
     diag_loss: bool = False,
 ):
@@ -135,6 +136,7 @@ def test_autoencoder(
 
     total_loss = 0
     total_edge_loss = 0
+    total_eigenvalues_loss = 0
     total_eigenstates_loss = 0
     total_diag_loss = 0
 
@@ -151,6 +153,16 @@ def test_autoencoder(
             e_loss = edge_diff(x_hat, x, criterion, edge_width=8)
             total_edge_loss += e_loss.item()
 
+        if eigenvalues_loss:
+            assert eig_dec is not None, "Incorrect eigen decomposition values"
+            target_eigvals = eig_dec[0].to(device)
+            if isinstance(z, tuple):
+                encoded_eigvals = z[1]
+            else:
+                encoded_eigvals = torch.linalg.eigvals(z).real
+            eigvals_loss = criterion(encoded_eigvals, target_eigvals)
+            total_eigenvalues_loss += eigvals_loss.item()
+
         if eigenstates_loss:
             assert eig_dec is not None, "Incorrect eigen decomposition values"
             eig_dec = eig_dec[0].to(device), eig_dec[1].to(device)
@@ -163,6 +175,7 @@ def test_autoencoder(
 
     total_loss /= len(test_loader)
     total_edge_loss /= len(test_loader)
+    total_eigenvalues_loss /= len(test_loader)
     total_eigenstates_loss /= len(test_loader)
     total_diag_loss /= len(test_loader)
 
@@ -173,7 +186,7 @@ def test_autoencoder(
         print(f'Eigenstates Loss: {total_eigenstates_loss}')
     print()
 
-    return total_loss, total_edge_loss, total_eigenstates_loss, total_diag_loss
+    return total_loss, total_edge_loss, total_eigenvalues_loss, total_eigenstates_loss, total_diag_loss
 
 
 def test_encoder_with_classifier(
@@ -273,6 +286,8 @@ def train_autoencoder(
     site_permutation: bool = False,
     edge_loss: bool = False,
     edge_loss_weight: float = .5,
+    eigenvalues_loss: bool = False,
+    eigenvalues_loss_weight: float = .5,
     eigenstates_loss: bool = False,
     eigenstates_loss_weight: float = .5,
     diag_loss: bool = False,
@@ -297,6 +312,7 @@ def train_autoencoder(
 
     total_loss = 0
     total_edge_loss = 0
+    total_eigenvalues_loss = 0
     total_eigenstates_loss = 0
     total_diag_loss = 0
 
@@ -316,6 +332,17 @@ def train_autoencoder(
             e_loss = edge_diff(x_hat, x, criterion, edge_width=8)
             loss += edge_loss_weight * e_loss
             total_edge_loss += torch.mean(e_loss).item()
+
+        if eigenvalues_loss:
+            assert eig_dec is not None, "Incorrect eigen decomposition values"
+            if isinstance(z, tuple):
+                encoded_eigvals = z[1]
+            else:
+                encoded_eigvals = torch.linalg.eigvals(x_hat)
+            target_eigvals = eig_dec[0].to(device)
+            eig_loss = criterion(encoded_eigvals, target_eigvals)
+            loss += eigenvalues_loss_weight * eig_loss
+            total_eigenvalues_loss += torch.mean(eig_loss).item()
 
         if eigenstates_loss:
             assert eig_dec is not None, "Incorrect eigen decomposition values"
@@ -339,6 +366,7 @@ def train_autoencoder(
     
     total_loss /= len(train_loader)
     total_edge_loss /= len(train_loader)
+    total_eigenvalues_loss /= len(train_loader)
     total_eigenstates_loss /= len(train_loader)
     total_diag_loss /= len(train_loader)
 
@@ -349,7 +377,7 @@ def train_autoencoder(
         print(f'Eigenstates Loss: {total_eigenstates_loss}')
     print()
 
-    return total_loss, total_edge_loss, total_eigenstates_loss, total_diag_loss
+    return total_loss, total_edge_loss, total_eigenvalues_loss, total_eigenstates_loss, total_diag_loss
 
 
 def train_vae(

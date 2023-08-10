@@ -5,7 +5,7 @@ import os
 import torch
 import torch.nn as nn
 
-from models import Classifier, Decoder, DecoderEnsemble, Encoder, EncoderEnsemble, PositionalDecoder, PositionalEncoder, VariationalPositionalEncoder, Generator, Discriminator
+from models import Classifier, Decoder, DecoderEnsemble, Encoder, EncoderEnsemble, PositionalDecoder, PositionalEncoder, VariationalPositionalEncoder, Generator, Discriminator, EigvalsPositionalDecoder, EigvalsPositionalEncoder
 
 GENERAL_PARAMS_NAME = 'general_params.json'
 CLASSIFIER_PARAMS_NAME = 'classifier_params.json'
@@ -37,7 +37,9 @@ MODEL_TO_NAMES = {
     PositionalEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),
     Generator: (GENERATOR_PARAMS_NAME, GENERATOR_NAME, GENERATOR_DIR),
     Discriminator: (DISCRIMINATOR_PARAMS_NAME, DISCRIMINATOR_NAME, DISCRIMINATOR_DIR),
-    VariationalPositionalEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR)
+    VariationalPositionalEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),
+    EigvalsPositionalEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),
+    EigvalsPositionalDecoder: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
 }
 
 def load_autoencoder(root_dir: str, epoch: int) -> t.Tuple[Encoder, Decoder]:
@@ -54,6 +56,10 @@ def load_positional_autoencoder(root_dir: str, epoch: int) -> t.Tuple[Positional
 
 def load_variational_positional_autoencoder(root_dir: str, epoch: int) -> t.Tuple[VariationalPositionalEncoder, PositionalDecoder]:
     return load_ae_model(root_dir, epoch, VariationalPositionalEncoder, PositionalDecoder)
+
+
+def load_eigvals_positional_autoencoder(root_dir: str, epoch: int) -> t.Tuple[EigvalsPositionalEncoder, EigvalsPositionalDecoder]:
+    return load_ae_model(root_dir, epoch, EigvalsPositionalEncoder, EigvalsPositionalDecoder)
 
 
 def load_ae_model(root_dir: str, epoch: int, encoder_class: t.Type[nn.Module], decoder_class: t.Type[nn.Module]):

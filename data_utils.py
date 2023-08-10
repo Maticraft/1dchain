@@ -34,8 +34,10 @@ class HamiltionianDataset(Dataset):
         data_limit: t.Optional[int] = None,
         label_idx: t.Union[int, t.Tuple[int, int]] = 1,
         threshold: float = 1.e-5,
+        eigvals: bool = False,
         eig_decomposition: bool = False,
-        format: str = 'numpy'
+        format: str = 'numpy',
+        **kwargs,
     ):
         dic_path = os.path.join(data_dir, DICTIONARY_NAME)
         self.dictionary = self.load_dict(dic_path)
@@ -43,8 +45,9 @@ class HamiltionianDataset(Dataset):
         self.data_limit = data_limit
         self.label_idx = label_idx
         self.threshold = threshold
+        self.eigvals = eigvals
         self.eig_dec = eig_decomposition
-        self.eig_vals_num = 4
+        self.eig_vals_num = kwargs.get('eigvals_num', 4)
         self.format = format
 
       
@@ -72,9 +75,20 @@ class HamiltionianDataset(Dataset):
                 eigvals, eigvec = torch.linalg.eigh(complex_tensor)
                 min_eigvals, min_eigvals_id = torch.topk(torch.abs(eigvals), self.eig_vals_num, largest=False)
                 min_eigvec = eigvec[:, min_eigvals_id]
-                eig_dec = eigvals[min_eigvals_id], min_eigvec
+                eig_dec = min_eigvals, min_eigvec
                 save_matrix(min_eigvals, self.data_dir, EIGVALS_DIR_NAME, self.dictionary[idx][0], format='numpy')
                 save_matrix(min_eigvec, self.data_dir, EIGVEC_DIR_NAME, self.dictionary[idx][0], format='numpy')
+        elif self.eigvals:
+            try:
+                eigvals = self.load_data(EIGVALS_DIR_NAME, idx, 'numpy')
+                if len(eigvals) < self.eig_vals_num:
+                    raise Exception()
+            except:
+                complex_tensor = torch.complex(tensor[0], tensor[1])
+                eigvals = torch.linalg.eigvalsh(complex_tensor)
+                min_eigvals, min_eigvals_id = torch.topk(torch.abs(eigvals), self.eig_vals_num, largest=False)
+                eig_dec = min_eigvals, torch.zeros((tensor.shape[0], tensor.shape[1]))
+                save_matrix(min_eigvals, self.data_dir, EIGVALS_DIR_NAME, self.dictionary[idx][0], format='numpy')
         else:
             eig_dec = torch.zeros((1, tensor.shape[1])), torch.zeros((tensor.shape[0], tensor.shape[1]))
 

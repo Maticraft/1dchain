@@ -728,6 +728,73 @@ class VariationalPositionalEncoder(PositionalEncoder):
             return sample, (freq_dist, block_dist)
         else:
             return sample
+        
+
+class EigvalsPositionalEncoder(nn.Module):
+    def __init__(self, input_size: t.Tuple[int, int, int], representation_dim: t.Union[int, t.Tuple[int, int]], **kwargs: t.Dict[str, t.Any]) -> None:
+        super(EigvalsPositionalEncoder, self).__init__()
+        self.channel_num = input_size[0]
+        self.N = input_size[1]
+        self.block_size = input_size[2]
+        self.eigvals_num = kwargs.get('eigvals_num', self.N * self.block_size)
+        self.eigvals_mlp_layers = kwargs.get('eigvals_mlp_layers', 3)
+        self.pos_encoder = PositionalEncoder(input_size, representation_dim, **kwargs)
+        self.eigvals_encoder = nn.Sequential(
+            PositionalEncoder(input_size, self.eigvals_num, **kwargs),
+            self._get_mlp(self.eigvals_mlp_layers, self.eigvals_num, self.eigvals_num, self.eigvals_num)
+        )
+
+    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int):
+        layers = []
+        for i in range(layers_num):
+            if i == 0:
+                layers.append(nn.Linear(input_size, hidden_size))
+            elif i == layers_num - 1:
+                layers.append(nn.BatchNorm1d(hidden_size))
+                layers.append(nn.Linear(hidden_size, output_size))
+            else:
+                layers.append(nn.BatchNorm1d(hidden_size))
+                layers.append(nn.Linear(hidden_size, hidden_size))
+            layers.append(nn.LeakyReLU(negative_slope=0.01))
+        return nn.Sequential(*layers)
+    
+    def forward(self, x: torch.Tensor):
+        z = self.pos_encoder(x)
+        eigvals = self.eigvals_encoder(x)
+        return z, eigvals
+
+
+class EigvalsPositionalDecoder(nn.Module):
+    def __init__(self, representation_dim: t.Tuple[int, int], output_size: t.Tuple[int, int, int], **kwargs: t.Dict[str, t.Any]):
+        super(EigvalsPositionalDecoder, self).__init__()
+        self.channel_num = output_size[0]
+        self.N = output_size[1]
+        self.block_size = output_size[2]
+        self.eigvals_num = kwargs.get('eigvals_num', self.N * self.block_size)
+        self.mlp_layers = kwargs.get('mlp_layers', 3)
+        self.combined_decoder = nn.Sequential(
+            self._get_mlp(self.mlp_layers, self.eigvals_num + representation_dim, self.eigvals_num + representation_dim, representation_dim),
+            PositionalDecoder(representation_dim, output_size, **kwargs)
+        )
+
+    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int):
+        layers = []
+        for i in range(layers_num):
+            if i == 0:
+                layers.append(nn.Linear(input_size, hidden_size))
+            elif i == layers_num - 1:
+                layers.append(nn.BatchNorm1d(hidden_size))
+                layers.append(nn.Linear(hidden_size, output_size))
+            else:
+                layers.append(nn.BatchNorm1d(hidden_size))
+                layers.append(nn.Linear(hidden_size, hidden_size))
+            layers.append(nn.LeakyReLU(negative_slope=0.01))
+        return nn.Sequential(*layers)
+    
+    def forward(self, latent_tuple: t.Tuple[torch.Tensor, torch.Tensor]):
+        x = torch.cat(latent_tuple, dim=-1)
+        x = self.combined_decoder(x)
+        return x
 
 
 class Discriminator(nn.Module):
