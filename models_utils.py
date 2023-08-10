@@ -8,6 +8,7 @@ import torch.nn as nn
 from torch.distributions.normal import Normal
 from torch.distributions.kl import kl_divergence
 
+from torch_utils import torch_total_polarization_loss
 
 def diagonal_loss(x_hat: torch.Tensor, x: torch.Tensor, criterion: t.Callable, block_size: int = 4):
     x_hat_strip = get_diagonal_strip(x_hat, block_size)
@@ -502,10 +503,42 @@ def train_encoder_with_classifier(
     return total_loss_class, total_loss_ae
 
 
+def test_noise_controller(
+    generator_model: nn.Module,
+    test_loader: torch.utils.data.DataLoader, 
+    epoch: int,
+    device: torch.device, 
+    correct_distribution: t.Tuple[torch.Tensor, torch.Tensor],
+):
+    generator_model.to(device)
+    generator_model.eval()
+
+    mean, std = correct_distribution
+
+    total_polarization_loss = 0
+
+    print(f'Epoch: {epoch}')
+    for (x, y), _ in tqdm(test_loader, 'Training noise controller for generator'):
+        x = x.to(device)
+
+        z = generator_model.get_noise(x.shape[0], device, noise_type='hybrid')
+        x_hat = generator_model(z)
+
+        loss = torch_total_polarization_loss(x_hat)
+        total_polarization_loss += loss.item()
+
+    
+    total_polarization_loss /= len(test_loader)
+
+    print(f'Total classifier loss: {total_polarization_loss}\n')
+
+    return total_polarization_loss
+
+
 def train_noise_controller(
     generator_model: nn.Module,
     # encoder_model: nn.Module,
-    classifier_model: nn.Module,
+    # classifier_model: nn.Module,
     train_loader: torch.utils.data.DataLoader, 
     epoch: int,
     device: torch.device, 
@@ -515,11 +548,11 @@ def train_noise_controller(
 
     criterion = nn.BCELoss()
 
-    classifier_model.to(device)
+    # classifier_model.to(device)
     generator_model.to(device)
     # encoder_model.to(device)
 
-    classifier_model.train()
+    # classifier_model.train()
     generator_model.train()
     # encoder_model.train()
 
@@ -534,20 +567,21 @@ def train_noise_controller(
         noise_controller_optimizer.zero_grad()
         generator_model.nn.requires_grad_(False)
         # encoder_model.requires_grad_(False)
-        classifier_model.requires_grad_(False)
+        # classifier_model.requires_grad_(False)
 
         z = generator_model.get_noise(x.shape[0], device, noise_type='hybrid')
-        x_hat = generator_model.noise_converter(z)
+        x_hat = generator_model(z)
         # latent_prime = encoder_model(x_hat)
-        y_hat = classifier_model(x_hat)
-        desired_y = torch.ones_like(y_hat)
+        # y_hat = classifier_model(x_hat)
+        # desired_y = torch.ones_like(y_hat)
+        # loss = criterion(y_hat, desired_y)
 
-        loss = criterion(y_hat, desired_y)
+        loss = torch_total_polarization_loss(x_hat)
         total_classifier_loss += loss.item()
 
-        distrib_loss = distribution_loss(x_hat, (mean.to(device), std.to(device)))
-        total_ddistribution_loss += distrib_loss.item()
-        loss += 5*distrib_loss
+        # distrib_loss = distribution_loss(x_hat, (mean.to(device), std.to(device)))
+        # total_ddistribution_loss += distrib_loss.item()
+        # loss += 5*distrib_loss
 
         loss.backward()
         noise_controller_optimizer.step()

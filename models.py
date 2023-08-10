@@ -769,7 +769,7 @@ class Generator(nn.Module):
         self.noise_converter = self._get_mlp(5, self.nn_in_features, self.nn_in_features, self.nn_in_features, final_activation=activation)
     
     def forward(self, x: torch.Tensor):
-        # x = self.noise_converter(x)
+        x = self.noise_converter(x)
         return self.nn(x)
     
     def _create_activation_from_distribution(self, distribution: t.Tuple[torch.Tensor, torch.Tensor]):

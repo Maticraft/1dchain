@@ -7,7 +7,7 @@ import torch
 from data_utils import HamiltionianDataset
 from helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from models import Generator, PositionalEncoder, PositionalDecoder, Classifier
-from models_utils import train_noise_controller, test_generator_with_classifier
+from models_utils import train_noise_controller, test_generator_with_classifier, test_noise_controller
 from models_files import get_full_model_config, load_gan_submodel_state_dict, load_latent_distribution, save_gan_params, save_latent_distribution, save_model, save_data_list, save_model, load_autoencoder_params, load_classifier, load_positional_autoencoder, save_autoencoder_params
 from models_plots import plot_convergence, plot_matrix
 
@@ -37,7 +37,7 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'classifier_bal_gen_ae_fft_tf_distribution2'
+model_name = 'gen_ae_fft_tf_polarization_fixed'
 
 # Load params
 params, encoder_params, decoder_params = load_autoencoder_params(pretrained_model_dir, PositionalEncoder, PositionalDecoder)
@@ -98,12 +98,12 @@ noise_controller_optimizer = torch.optim.Adam(generator.noise_converter.paramete
 save_data_list(['Epoch', 'Train_loss', 'Train_distribution_loss', 'Test_loss', 'Test_classifier_acc'], loss_path, mode='w')
 
 for epoch in range(1, params['epochs'] + 1):
-    tr_loss, tr_distr_loss = train_noise_controller(generator, classifier, train_loader, epoch, device, noise_controller_optimizer, init_distribution)
-    te_loss, te_acc, te_cm = test_generator_with_classifier(generator, classifier, test_loader, device)
+    tr_loss, tr_distr_loss = train_noise_controller(generator, train_loader, epoch, device, noise_controller_optimizer, init_distribution)
+    te_loss = test_noise_controller(generator, test_loader, epoch, device, init_distribution)
 
     save_model(generator, root_dir, epoch)
     save_model(classifier, root_dir, epoch)
-    save_data_list([epoch, tr_loss, tr_distr_loss, te_loss, te_acc], loss_path)
+    save_data_list([epoch, tr_loss, tr_distr_loss, te_loss], loss_path)
 
     # Plot sample hamiltonian
     test_matrix_path = os.path.join(root_dir, f'test_{epoch}')
