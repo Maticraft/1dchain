@@ -33,7 +33,7 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'eigvals_positional_autoencoder_fft_tf'
+model_name = 'gt_eigvals_positional_autoencoder_fft_tf'
 
 # Params
 params = {
@@ -47,13 +47,14 @@ params = {
     'lr': 1.e-5,
     'edge_loss': False,
     'edge_loss_weight': 1.,
-    'eigenvalues_loss': True,
+    'eigenvalues_loss': False,
     'eigenvalues_loss_weight': 1.,
     'eigenstates_loss': False,
     'eigenstates_loss_weight': 1.,
     'diag_loss': True,
     'diag_loss_weight': 0.01,
-    'log_scaled_loss': False
+    'log_scaled_loss': False,
+    'gt_eigvals': True
 }
 
 # Architecture
@@ -99,7 +100,7 @@ if not os.path.isdir(ham_sub_path):
 
 save_autoencoder_params(params, encoder_params, decoder_params, root_dir)
 
-data = HamiltionianDataset(data_path, label_idx=(3, 4), eigvals=params['eigenvalues_loss'], eig_decomposition=params['eigenstates_loss'], format='csr', eigvals_num=params['eigvals_num'])
+data = HamiltionianDataset(data_path, label_idx=(3, 4), eigvals=(params['eigenvalues_loss'] or params['gt_eigvals']), eig_decomposition=params['eigenstates_loss'], format='csr', eigvals_num=params['eigvals_num'])
 
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size
@@ -108,7 +109,7 @@ train_data, test_data = random_split(data, [train_size, test_size])
 train_loader = DataLoader(train_data, params['batch_size'])
 test_loader = DataLoader(test_data, params['batch_size'])
 
-encoder = EigvalsPositionalEncoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
+encoder = PositionalEncoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
 decoder = EigvalsPositionalDecoder(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
 
 print(encoder)
@@ -138,7 +139,8 @@ for epoch in range(1, params['epochs'] + 1):
         eigenstates_loss_weight=params['eigenstates_loss_weight'],
         diag_loss=params['diag_loss'],
         diag_loss_weight=params['diag_loss_weight'],
-        log_scaled_loss=params['log_scaled_loss']
+        log_scaled_loss=params['log_scaled_loss'],
+        gt_eigvals=params['gt_eigvals']
     )
     te_loss, te_edge_loss, te_ev_loss, te_eig_loss, te_diag_loss = test_autoencoder(
         encoder,
@@ -148,15 +150,16 @@ for epoch in range(1, params['epochs'] + 1):
         edge_loss=params['edge_loss'],
         eigenvalues_loss=params['eigenvalues_loss'],
         eigenstates_loss=params['eigenstates_loss'],
-        diag_loss=params['diag_loss']
+        diag_loss=params['diag_loss'],
+        gt_eigvals=params['gt_eigvals']
     )
     save_autoencoder(encoder, decoder, root_dir, epoch)
     save_data_list([epoch, tr_loss, tr_edge_loss, tr_ev_loss, tr_eig_loss, tr_diag_loss, te_loss, te_edge_loss, te_ev_loss, te_eig_loss, te_diag_loss], loss_path)
 
     eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))
-    plot_test_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim)
+    plot_test_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim, decoder_eigvals=True)
     ham_auto_path = os.path.join(ham_sub_path, hamiltonian_plot_name.format(f'_ep{epoch}' + '{}'))
     ham_diff_path = os.path.join(ham_sub_path, hamiltonain_diff_plot_name.format(f'_ep{epoch}'))
-    plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, decoder, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device)
+    plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, decoder, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device, decoder_eigvals=True)
    
 plot_convergence(loss_path, convergence_path, read_label=True)

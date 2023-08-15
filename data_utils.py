@@ -69,13 +69,13 @@ class HamiltionianDataset(Dataset):
             try:
                 eigvals = self.load_data(EIGVALS_DIR_NAME, idx, 'numpy')
                 eigvec = self.load_data(EIGVEC_DIR_NAME, idx, 'numpy')
-                eig_dec = eigvals, eigvec
+                eig_dec = eigvals.real, eigvec
             except:
                 complex_tensor = torch.complex(tensor[0], tensor[1])
                 eigvals, eigvec = torch.linalg.eigh(complex_tensor)
                 min_eigvals, min_eigvals_id = torch.topk(torch.abs(eigvals), self.eig_vals_num, largest=False)
                 min_eigvec = eigvec[:, min_eigvals_id]
-                eig_dec = min_eigvals, min_eigvec
+                eig_dec = min_eigvals.real, min_eigvec
                 save_matrix(min_eigvals, self.data_dir, EIGVALS_DIR_NAME, self.dictionary[idx][0], format='numpy')
                 save_matrix(min_eigvec, self.data_dir, EIGVEC_DIR_NAME, self.dictionary[idx][0], format='numpy')
         elif self.eigvals:
@@ -83,11 +83,12 @@ class HamiltionianDataset(Dataset):
                 eigvals = self.load_data(EIGVALS_DIR_NAME, idx, 'numpy')
                 if len(eigvals) < self.eig_vals_num:
                     raise Exception()
+                eig_dec = eigvals.real, torch.zeros((tensor.shape[0], tensor.shape[1]))
             except:
                 complex_tensor = torch.complex(tensor[0], tensor[1])
                 eigvals = torch.linalg.eigvalsh(complex_tensor)
                 min_eigvals, min_eigvals_id = torch.topk(torch.abs(eigvals), self.eig_vals_num, largest=False)
-                eig_dec = min_eigvals, torch.zeros((tensor.shape[0], tensor.shape[1]))
+                eig_dec = min_eigvals.real, torch.zeros((tensor.shape[0], tensor.shape[1]))
                 save_matrix(min_eigvals, self.data_dir, EIGVALS_DIR_NAME, self.dictionary[idx][0], format='numpy')
         else:
             eig_dec = torch.zeros((1, tensor.shape[1])), torch.zeros((tensor.shape[0], tensor.shape[1]))

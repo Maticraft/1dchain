@@ -68,11 +68,10 @@ def get_eigvals(
     matrix: np.ndarray,
     encoder: nn.Module,
     decoder: nn.Module,
-    device: t.Optional[torch.device] = None,
     return_ref_eigvals: bool = False,
+    **kwargs: t.Dict[str, t.Any]
 ):
-
-    H_rec = reconstruct_hamiltonian(matrix, encoder, decoder, device)
+    H_rec = reconstruct_hamiltonian(matrix, encoder, decoder, **kwargs)
     auto_energies = np.linalg.eigvalsh(H_rec)
 
     if return_ref_eigvals:
@@ -82,7 +81,7 @@ def get_eigvals(
         return auto_energies
 
 
-def reconstruct_hamiltonian(H: np.ndarray, encoder: nn.Module, decoder: nn.Module, device: torch.device = torch.device('cpu')):
+def reconstruct_hamiltonian(H: np.ndarray, encoder: nn.Module, decoder: nn.Module, device: torch.device = torch.device('cpu'), **kwargs: t.Dict[str, t.Any]):
     encoder.eval()
     decoder.eval()
     encoder.to(device)
@@ -91,8 +90,12 @@ def reconstruct_hamiltonian(H: np.ndarray, encoder: nn.Module, decoder: nn.Modul
         H_torch = torch.from_numpy(H)
         H_torch = torch.stack((H_torch.real, H_torch.imag), dim= 0)
         H_torch = H_torch.unsqueeze(0).float().to(device)
-
         latent_vec = encoder(H_torch)
+        if kwargs.get("decoder_eigvals", False):
+            eigvals = np.linalg.eigvalsh(H)
+            eigvals = torch.from_numpy(eigvals).float().to(device)
+            eigvals = eigvals.unsqueeze(0)
+            latent_vec = (latent_vec, eigvals)
         H_torch_rec = decoder(latent_vec)
         H_rec = torch.complex(H_torch_rec[:, 0, :, :], H_torch_rec[:, 1, :, :]).squeeze().cpu().numpy()
     return H_rec
@@ -122,6 +125,7 @@ def test_autoencoder(
     eigenvalues_loss: bool = False,
     eigenstates_loss: bool = False,
     diag_loss: bool = False,
+    gt_eigvals = False,
 ):
     if site_permutation and edge_loss:
         raise NotImplementedError("Combining edge loss with site permutation is not implemented")
@@ -145,6 +149,8 @@ def test_autoencoder(
         if site_permutation:
             x = site_perm(x, encoder_model.N, encoder_model.block_size)
         z = encoder_model(x)
+        if gt_eigvals:
+            z = (z, eig_dec[0].to(device))
         x_hat = decoder_model(z)
         loss = criterion(x_hat, x)
         total_loss += loss.item()
@@ -293,6 +299,7 @@ def train_autoencoder(
     diag_loss: bool = False,
     diag_loss_weight: float = .01,
     log_scaled_loss: bool = False,
+    gt_eigvals = False,
 ):
     if site_permutation and edge_loss:
         raise NotImplementedError("Combining edge loss with site permutation is not implemented")
@@ -324,6 +331,8 @@ def train_autoencoder(
         encoder_optimizer.zero_grad()
         decoder_optimizer.zero_grad()
         z = encoder_model(x)
+        if gt_eigvals:
+            z = (z, eig_dec[0].to(device))
         x_hat = decoder_model(z) 
         loss = criterion(x_hat, x)
         total_loss += torch.mean(loss).item()

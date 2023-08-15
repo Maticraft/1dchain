@@ -121,7 +121,7 @@ def plot_test_eigvals(
         param_model = model(**model_params)
         H = param_model.get_hamiltonian()
 
-        auto_eigvals, eigvals = get_eigvals(H, encoder, decoder, kwargs.get('device', None), return_ref_eigvals=True)
+        auto_eigvals, eigvals = get_eigvals(H, encoder, decoder, return_ref_eigvals=True, **kwargs)
         eigvals_diff = np.mean(np.abs(eigvals - auto_eigvals))
         energies_diff.append(eigvals_diff)
         energies_org.append(eigvals)
@@ -208,8 +208,9 @@ def plot_test_matrices(
     save_path_rec: t.Optional[str] = None,
     save_path_org: t.Optional[str] = None,
     device: torch.device = torch.device('cpu'),
+    **reconstruction_kwargs: t.Dict[str, t.Any],
 ):
-    rec_matrix = reconstruct_hamiltonian(matrix, encoder, decoder, device)
+    rec_matrix = reconstruct_hamiltonian(matrix, encoder, decoder, device, **reconstruction_kwargs)
     if save_path_org:
         plot_matrix(np.real(matrix), save_path_org.format('_real'))
         plot_matrix(np.imag(matrix), save_path_org.format('_imag'))
