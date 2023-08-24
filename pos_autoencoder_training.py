@@ -33,12 +33,12 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'gt_eigvals_positional_autoencoder_fft_tf'
+model_name = 'gt_eigvals_positional_autoencoder_fft_tf_v3'
 
 # Params
 params = {
     'epochs': 60,
-    'batch_size': 64,
+    'batch_size': 16,
     'N': 140,
     'in_channels': 10,
     'block_size': 4,

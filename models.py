@@ -765,17 +765,48 @@ class EigvalsPositionalEncoder(nn.Module):
 
 
 class EigvalsPositionalDecoder(nn.Module):
-    def __init__(self, representation_dim: t.Tuple[int, int], output_size: t.Tuple[int, int, int], **kwargs: t.Dict[str, t.Any]):
+    def __init__(self, representation_dim: int, output_size: t.Tuple[int, int, int], **kwargs: t.Dict[str, t.Any]):
         super(EigvalsPositionalDecoder, self).__init__()
+        self.representation_dim = representation_dim
         self.channel_num = output_size[0]
         self.N = output_size[1]
         self.block_size = output_size[2]
-        self.eigvals_num = kwargs.get('eigvals_num', self.N * self.block_size)
+        self.eigvals_num = self.N * self.block_size
         self.mlp_layers = kwargs.get('mlp_layers', 3)
-        self.combined_decoder = nn.Sequential(
-            self._get_mlp(self.mlp_layers, self.eigvals_num + representation_dim, self.eigvals_num + representation_dim, representation_dim),
-            PositionalDecoder(representation_dim, output_size, **kwargs)
+        self.hidden_size = kwargs.get('hidden_size', 64)
+        # self.combined_decoder = nn.Sequential(
+        #     self._get_mlp(self.mlp_layers, self.eigvals_num + representation_dim, self.eigvals_num + representation_dim, representation_dim),
+        #     PositionalDecoder(representation_dim, output_size, **kwargs)
+        # )
+
+        self.seq_decoder = self._get_mlp(self.mlp_layers, self.representation_dim, self.eigvals_num, self.eigvals_num)
+        self.seq_constructor = nn.ModuleList([
+            self._get_mlp(self.mlp_layers, self.eigvals_num, self.eigvals_num, self.eigvals_num)
+            for _ in range(self.hidden_size)
+        ])
+
+        self.amplitude_decoder = self._get_mlp(self.mlp_layers, self.representation_dim, self.eigvals_num, self.eigvals_num)
+
+        self.eigvecs_transformer_layer = nn.TransformerEncoderLayer(d_model=self.hidden_size, nhead=2, dim_feedforward=128, batch_first=True)
+        self.eigvecs_transformer = nn.TransformerEncoder(self.eigvecs_transformer_layer, num_layers=1)
+
+        self.eigvals_decoder = self._get_mlp(1, self.eigvals_num, self.eigvals_num, self.eigvals_num)
+
+        self.matrix_combiner = nn.Sequential(
+            nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=1),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.BatchNorm2d(self.hidden_size),
+            nn.Conv2d(self.hidden_size, 2, kernel_size=1),
+            nn.LeakyReLU(negative_slope=0.01),
+            nn.BatchNorm2d(2),
+            nn.Conv2d(2, 2, kernel_size=1)
         )
+
+    def _periodic_func(self, x: torch.Tensor, i: int):
+        if i % 2 == 0:
+            return torch.sin(x * 2**((i // 2) / 4))
+        else:
+            return torch.cos(x * 2**((i // 2) / 4))
 
     def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int):
         layers = []
@@ -783,18 +814,37 @@ class EigvalsPositionalDecoder(nn.Module):
             if i == 0:
                 layers.append(nn.Linear(input_size, hidden_size))
             elif i == layers_num - 1:
+                layers.append(nn.LeakyReLU(negative_slope=0.01))
                 layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, output_size))
             else:
+                layers.append(nn.LeakyReLU(negative_slope=0.01))
                 layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, hidden_size))
-            layers.append(nn.LeakyReLU(negative_slope=0.01))
+
         return nn.Sequential(*layers)
     
     def forward(self, latent_tuple: t.Tuple[torch.Tensor, torch.Tensor]):
-        x = torch.cat(latent_tuple, dim=-1)
-        x = self.combined_decoder(x)
-        return x
+        z, eigvals = latent_tuple
+        eigvecs_seq = self.seq_decoder(z) # shape (batch_size, eigvals_num)
+        eigvecs_periodic_seq = torch.stack([self._periodic_func(self.seq_constructor[i](eigvecs_seq), i) for i in range(self.hidden_size)], dim=-1) # shape (batch_size, eigvals_num, hidden_size)
+        eigvecs_periodic_seq_expanded = eigvecs_periodic_seq.view(-1, 1, self.eigvals_num, self.hidden_size).expand(-1, self.eigvals_num, -1, -1) # shape (batch_size, eigvals_num, eigvals_num, hidden_size)
+
+        eigvecs_amplitude = self.amplitude_decoder(z).view(-1, self.eigvals_num, 1, 1).expand(-1, -1, self.eigvals_num, self.hidden_size) # shape (batch_size, eigvals_num, eigvals_num, hidden_size)
+        
+        naive_eigvecs = eigvecs_amplitude * eigvecs_periodic_seq_expanded # shape (batch_size, eigvals_num, eigvals_num, hidden_size)
+        # eigvecs = torch.stack([self.eigvecs_transformer(naive_eigvecs[:, i, :, :]) for i in range(self.eigvals_num)], dim=1) # shape (batch_size, eigvals_num, eigvals_num, hidden_size)
+        eigvecs_with_correct_axis = naive_eigvecs.permute(0, 3, 2, 1) # shape (batch dim, hidden dim, eigvec dim, eigvals dim)
+
+        matrix = self.matrix_combiner(eigvecs_with_correct_axis) # shape (batch dim, 2, eigvec dim, eigvals dim)
+        complex_matrix = torch.complex(matrix[:, 0, :, :], matrix[:, 1, :, :]) # shape (batch dim, eigvec dim, eigvals dim)
+        inverse_matrix = torch.inverse(complex_matrix) # shape (batch dim, eigvec dim, eigvals dim)
+
+        eigvals_decoded = self.eigvals_decoder(eigvals)
+        eigvals_matrix = torch.diag_embed(eigvals_decoded).to(torch.complex64) # shape (batch dim, eigvals dim, eigvals dim)
+        reconstructed_matrix = torch.matmul(torch.matmul(complex_matrix, eigvals_matrix), inverse_matrix) # shape (batch dim, eigvec dim, eigvals dim)
+        return torch.stack([reconstructed_matrix.real, reconstructed_matrix.imag], dim=1) # shape (batch dim, 2, eigvec dim, eigvals dim)
+
 
 
 class Discriminator(nn.Module):

@@ -1,7 +1,7 @@
 import os
 from tqdm import tqdm
 
-from majorana_utils import plot_majorana_polarization
+from majorana_utils import plot_majorana_polarization, plot_eigvals_levels
 from models import Generator, PositionalDecoder, PositionalEncoder
 from models_files import load_generator, load_latent_distribution, load_autoencoder_params, get_full_model_config, load_gan_submodel_state_dict
 from models_plots import plot_generator_eigvals
@@ -13,7 +13,7 @@ gen_dir = './gan/spin_ladder/70_2_RedDistSimplePeriodicPG/100/gen_ae_fft_tf_pola
 test_dir_name = 'generation_tests_ep{}'
 latent_distrib_dir = 'tests_majoranas_ep{}'
 polarization_sub_dir = 'polarization_{}'
-gen_epoch = 1
+gen_epoch = 4
 
 eigvals_gen_plot_name = 'eigvals_spectre_generator_{}.png'
 
@@ -21,7 +21,7 @@ eigvals_gen_plot_name = 'eigvals_spectre_generator_{}.png'
 # Eigvals plot params
 num_states = 3
 num_plots = 10
-ylim = (-0.5, 0.5)
+ylim = (-0.3, 0.3)
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------------------
@@ -53,3 +53,4 @@ for i in tqdm(range(num_plots), desc='Plotting generator eigvals'):
 
     polarization_sub_path = os.path.join(test_sub_path, polarization_sub_dir.format(i))
     plot_majorana_polarization(H, polarization_sub_path, threshold = 1.e-2, string_num=2)
+    plot_eigvals_levels(H, os.path.join(test_sub_path, 'eigvals_levels_{}.png'.format(i)), ylim=ylim)

@@ -84,6 +84,28 @@ def plot_eigvals(model: t.Type[Hamiltonian], xaxis: str, xparams: t.List[t.Any],
     plt.close()
 
 
+def plot_eigvals_levels(
+    model: Hamiltonian,
+    save_path: str,
+    **kwargs: t.Dict[str, t.Any],
+):
+    H = model.get_hamiltonian()
+    eigvals = np.linalg.eigvalsh(H)
+    
+    if 'ylim' in kwargs:
+        plt.ylim(kwargs['ylim'])
+   
+    xrange = [0, 10]
+    for i in range(len(eigvals)):
+        plt.plot(xrange, [eigvals[i], eigvals[i]])
+
+    plt.xticks([])
+    plt.ylabel('Energy')
+    plt.savefig(save_path)
+    plt.close()
+
+
+
 def plot_eigvec(H: np.ndarray, component: int, dirpath: str, **kwargs: t.Dict[str, t.Any]):
     if component < 0 or component > 3:
         raise ValueError("Wrong component")
