@@ -12,8 +12,8 @@ from models_files import save_autoencoder_params, save_autoencoder, save_data_li
 from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPG'
-save_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG'
+data_path = './data/spin_ladder/70_2_RedDistFixed'
+save_dir = './autoencoder/spin_ladder/70_2_RedDistFixed'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -33,12 +33,12 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'gt_eigvals_positional_autoencoder_fft_tf_v3'
+model_name = 'gt_eigvals_positional_autoencoder_fft_tf_v4'
 
 # Params
 params = {
     'epochs': 60,
-    'batch_size': 16,
+    'batch_size': 64,
     'N': 140,
     'in_channels': 10,
     'block_size': 4,
@@ -78,7 +78,8 @@ decoder_params = {
     'freq_dec_hidden_size': 128,
     'block_dec_depth': 4,
     'block_dec_hidden_size': 128,
-    'mlp_layers': 4
+    'seq_dec_depth': 4,
+    'seq_dec_hidden_size': 128,
 }
 
 
@@ -100,7 +101,7 @@ if not os.path.isdir(ham_sub_path):
 
 save_autoencoder_params(params, encoder_params, decoder_params, root_dir)
 
-data = HamiltionianDataset(data_path, label_idx=(3, 4), eigvals=(params['eigenvalues_loss'] or params['gt_eigvals']), eig_decomposition=params['eigenstates_loss'], format='csr', eigvals_num=params['eigvals_num'])
+data = HamiltionianDataset(data_path, label_idx=(3, 4), eigvals=(params['eigenvalues_loss'] or params['gt_eigvals']), eig_decomposition=params['eigenstates_loss'], format='numpy', eigvals_num=params['eigvals_num'])
 
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size

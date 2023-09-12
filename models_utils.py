@@ -55,6 +55,15 @@ def eigenvectors_loss(x_hat: torch.Tensor, eig_dec: t.Tuple[torch.Tensor, torch.
     return criterion(torch.view_as_real(xv), torch.view_as_real(ev))
 
 
+def determinant_loss(x_hat: torch.Tensor, eigvals: torch.Tensor, criterion: t.Callable):
+    assert x_hat.shape[1] == 2, 'Wrong dimension of complex tensors'
+    x_hat_complex = torch.complex(x_hat[:, 0, :, :], x_hat[:, 1, :, :])
+    eigvals = torch.diag_embed(eigvals, dim1=-2, dim2=-1)
+    x_hat_det = torch.logdet(x_hat_complex - eigvals)
+    x_hat_det_real = torch.view_as_real(x_hat_det)
+    return torch.mean(x_hat_det_real)
+
+
 def get_edges(x: torch.Tensor, edge_width: int):
     edges = torch.zeros_like(x)
     edges[:, :, :edge_width, :] = x[:, :, :edge_width, :]
@@ -125,6 +134,7 @@ def test_autoencoder(
     eigenvalues_loss: bool = False,
     eigenstates_loss: bool = False,
     diag_loss: bool = False,
+    det_loss: bool = False,
     gt_eigvals = False,
 ):
     if site_permutation and edge_loss:
@@ -143,6 +153,7 @@ def test_autoencoder(
     total_eigenvalues_loss = 0
     total_eigenstates_loss = 0
     total_diag_loss = 0
+    total_det_loss = 0
 
     for (x, _), eig_dec in tqdm(test_loader, "Testing autoencoder model"):
         x = x.to(device)
@@ -169,6 +180,12 @@ def test_autoencoder(
             eigvals_loss = criterion(encoded_eigvals, target_eigvals)
             total_eigenvalues_loss += eigvals_loss.item()
 
+        if det_loss:
+            assert eig_dec is not None, "Incorrect eigen decomposition values"
+            target_eigvals = eig_dec[0].to(device)
+            det_loss = determinant_loss(x_hat, target_eigvals, criterion)
+            total_det_loss += det_loss.item()
+
         if eigenstates_loss:
             assert eig_dec is not None, "Incorrect eigen decomposition values"
             eig_dec = eig_dec[0].to(device), eig_dec[1].to(device)
@@ -184,6 +201,7 @@ def test_autoencoder(
     total_eigenvalues_loss /= len(test_loader)
     total_eigenstates_loss /= len(test_loader)
     total_diag_loss /= len(test_loader)
+    total_det_loss /= len(test_loader)
 
     print(f'Loss: {total_loss}')
     if edge_loss:
@@ -192,7 +210,7 @@ def test_autoencoder(
         print(f'Eigenstates Loss: {total_eigenstates_loss}')
     print()
 
-    return total_loss, total_edge_loss, total_eigenvalues_loss, total_eigenstates_loss, total_diag_loss
+    return total_loss, total_edge_loss, total_eigenvalues_loss, total_eigenstates_loss, total_diag_loss, total_det_loss
 
 
 def test_encoder_with_classifier(
@@ -298,6 +316,8 @@ def train_autoencoder(
     eigenstates_loss_weight: float = .5,
     diag_loss: bool = False,
     diag_loss_weight: float = .01,
+    det_loss: bool = False,
+    det_loss_weight: float = .01,
     log_scaled_loss: bool = False,
     gt_eigvals = False,
 ):
@@ -322,6 +342,7 @@ def train_autoencoder(
     total_eigenvalues_loss = 0
     total_eigenstates_loss = 0
     total_diag_loss = 0
+    total_det_loss = 0
 
     print(f'Epoch: {epoch}')
     for (x, _), eig_dec in tqdm(train_loader, 'Training autoencoder model'):
@@ -353,6 +374,13 @@ def train_autoencoder(
             loss += eigenvalues_loss_weight * eig_loss
             total_eigenvalues_loss += torch.mean(eig_loss).item()
 
+        if det_loss:
+            assert eig_dec is not None, "Incorrect eigen decomposition values"
+            target_eigvals = eig_dec[0].to(device)
+            det_loss = determinant_loss(x_hat, target_eigvals, criterion)
+            loss += det_loss_weight * det_loss
+            total_det_loss += torch.mean(det_loss).item()
+
         if eigenstates_loss:
             assert eig_dec is not None, "Incorrect eigen decomposition values"
             eig_dec = eig_dec[0].to(device), eig_dec[1].to(device)
@@ -378,6 +406,7 @@ def train_autoencoder(
     total_eigenvalues_loss /= len(train_loader)
     total_eigenstates_loss /= len(train_loader)
     total_diag_loss /= len(train_loader)
+    total_det_loss /= len(train_loader)
 
     print(f'Loss: {total_loss}')
     if edge_loss:
@@ -386,7 +415,7 @@ def train_autoencoder(
         print(f'Eigenstates Loss: {total_eigenstates_loss}')
     print()
 
-    return total_loss, total_edge_loss, total_eigenvalues_loss, total_eigenstates_loss, total_diag_loss
+    return total_loss, total_edge_loss, total_eigenvalues_loss, total_eigenstates_loss, total_diag_loss, total_det_loss
 
 
 def train_vae(
@@ -602,7 +631,7 @@ def train_noise_controller(
     for (x, y), _ in tqdm(train_loader, 'Training noise controller for generator'):
         x = x.to(device)
         noise_controller_optimizer.zero_grad()
-        generator_model.nn.requires_grad_(False)
+        # generator_model.nn.requires_grad_(False)
         # encoder_model.requires_grad_(False)
         # classifier_model.requires_grad_(False)
 

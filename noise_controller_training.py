@@ -37,7 +37,7 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'gen_ae_fft_tf_polarization_fixed'
+model_name = 'gen_ae_fft_tf_polarization_fixed_full_model'
 
 # Load params
 params, encoder_params, decoder_params = load_autoencoder_params(pretrained_model_dir, PositionalEncoder, PositionalDecoder)
@@ -93,7 +93,7 @@ test_loader = DataLoader(test_data, params['batch_size'])
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-noise_controller_optimizer = torch.optim.Adam(generator.noise_converter.parameters(), lr=params['learning_rate'])
+noise_controller_optimizer = torch.optim.Adam(generator.parameters(), lr=params['learning_rate'])
 
 save_data_list(['Epoch', 'Train_loss', 'Train_distribution_loss', 'Test_loss', 'Test_classifier_acc'], loss_path, mode='w')
 

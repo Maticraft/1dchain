@@ -6,18 +6,18 @@ import torch
 
 from data_utils import HamiltionianDataset
 from helical_ladder import  DEFAULT_PARAMS, SpinLadder
-from models import PositionalEncoder, PositionalDecoder
+from models import PositionalEncoder, PositionalDecoder, EigvalsPositionalDecoder
 from models_utils import train_autoencoder, test_autoencoder
-from models_files import save_autoencoder_params, save_autoencoder, save_data_list, load_autoencoder_params, load_positional_autoencoder
+from models_files import save_autoencoder_params, save_autoencoder, save_data_list, load_autoencoder_params, load_positional_autoencoder, load_ae_model
 from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 # Pretrained model
-pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG/100/twice_pretrained_positional_autoencoder_fft_tf'
-epoch = 22
+pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q/100/pretrained_gt_eigvals_positional_autoencoder_fft_tf_v4'
+epoch = 33
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPGDisorderDiv'
-save_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGDisorderDiv'
+data_path = './data/spin_ladder/70_2_RedDist1000q_pi2delta_q'
+save_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -36,20 +36,17 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'twice_pretrained_positional_autoencoder_fft_tf'
+model_name = 'pretrained_gt_eigvals_positional_autoencoder_fft_tf_v4_det_loss'
 
 # Load model
-encoder, decoder = load_positional_autoencoder(pretrained_model_dir, epoch)
-params, encoder_params, decoder_params = load_autoencoder_params(pretrained_model_dir, PositionalEncoder, PositionalDecoder)
+encoder, decoder = load_ae_model(pretrained_model_dir, epoch, PositionalEncoder, EigvalsPositionalDecoder)
+params, encoder_params, decoder_params = load_autoencoder_params(pretrained_model_dir, PositionalEncoder, EigvalsPositionalDecoder)
 
 # Modify params
 params['learning_rate'] = 1.e-5
-params['diag_loss'] = True
-params['diag_loss_weight'] = 0.01
-params['log_scaled_loss'] = False
-params['eigenstates_loss'] = False
-params['eigenstates_loss_weight'] = 1.
 params['epochs'] = 40
+params['det_loss'] = True
+params['det_loss_weight'] = .5
 
 # Set the root dir
 root_dir = os.path.join(save_dir, f'{params["representation_dim"]}', model_name)
@@ -69,7 +66,7 @@ if not os.path.isdir(ham_sub_path):
 
 save_autoencoder_params(params, encoder_params, decoder_params, root_dir)
 
-data = HamiltionianDataset(data_path, label_idx=(3, 4), eig_decomposition=params['eigenstates_loss'], format='csr')
+data = HamiltionianDataset(data_path, label_idx=(3, 4), eigvals=(params['eigenvalues_loss'] or params['gt_eigvals']), eig_decomposition=params['eigenstates_loss'], format='csr', eigvals_num=params['eigvals_num'])
 
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size
@@ -85,10 +82,10 @@ decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=params['lr'])
 encoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, 'min')
 decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(decoder_optimizer, 'min')
 
-save_data_list(['Epoch', 'Train loss', 'Train edge loss', 'Train diag loss', 'Train eigenstates loss', 'Test loss', 'Test edge loss', 'Test eigenstates loss', 'Te diag loss'], loss_path, mode='w')
+save_data_list(['Epoch', 'Train loss', 'Train edge loss', 'Train diag loss', 'Train eigenstates loss', 'Train det loss', 'Test loss', 'Test edge loss', 'Test eigenstates loss', 'Te diag loss', 'Test det loss'], loss_path, mode='w')
 
 for epoch in range(1, params['epochs'] + 1):
-    tr_loss, tr_edge_loss, tr_eig_loss, tr_diag_loss = train_autoencoder(
+    tr_loss, tr_edge_loss, tr_ev_loss, tr_eig_loss, tr_diag_loss, tr_det_loss = train_autoencoder(
         encoder,
         decoder,
         train_loader,
@@ -98,23 +95,39 @@ for epoch in range(1, params['epochs'] + 1):
         decoder_optimizer,
         edge_loss=params['edge_loss'],
         edge_loss_weight=params['edge_loss_weight'],
+        eigenvalues_loss=params['eigenvalues_loss'],
+        eigenvalues_loss_weight=params['eigenvalues_loss_weight'],
         eigenstates_loss=params['eigenstates_loss'],
         eigenstates_loss_weight=params['eigenstates_loss_weight'],
         diag_loss=params['diag_loss'],
         diag_loss_weight=params['diag_loss_weight'],
         log_scaled_loss=params['log_scaled_loss'],
+        det_loss=params['det_loss'],
+        det_loss_weight=params['det_loss_weight'],
+        gt_eigvals=params['gt_eigvals']
     )
-    te_loss, te_edge_loss, te_eig_loss, te_diag_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'], eigenstates_loss=params['eigenstates_loss'], diag_loss=params['diag_loss'])
+    te_loss, te_edge_loss, te_ev_loss, te_eig_loss, te_diag_loss, te_det_loss = test_autoencoder(
+        encoder,
+        decoder,
+        test_loader,
+        device,
+        edge_loss=params['edge_loss'],
+        eigenvalues_loss=params['eigenvalues_loss'],
+        eigenstates_loss=params['eigenstates_loss'],
+        diag_loss=params['diag_loss'],
+        det_loss=params['det_loss'],
+        gt_eigvals=params['gt_eigvals']
+    )
     encoder_scheduler.step(te_loss)
     decoder_scheduler.step(te_loss)
 
     save_autoencoder(encoder, decoder, root_dir, epoch)
-    save_data_list([epoch, tr_loss, tr_edge_loss, tr_eig_loss, tr_diag_loss, te_loss, te_edge_loss, te_eig_loss, te_diag_loss], loss_path)
+    save_data_list([epoch, tr_loss, tr_edge_loss, tr_ev_loss, tr_eig_loss, tr_diag_loss, tr_det_loss, te_loss, te_edge_loss, te_ev_loss, te_eig_loss, te_diag_loss, te_det_loss], loss_path)
 
     eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))
-    plot_test_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim)
+    plot_test_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim, decoder_eigvals=True)
     ham_auto_path = os.path.join(ham_sub_path, hamiltonian_plot_name.format(f'_ep{epoch}' + '{}'))
     ham_diff_path = os.path.join(ham_sub_path, hamiltonain_diff_plot_name.format(f'_ep{epoch}'))
-    plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, decoder, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device)
+    plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, decoder, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device, decoder_eigvals=True)
    
 plot_convergence(loss_path, convergence_path, read_label=True)

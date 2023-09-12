@@ -391,7 +391,7 @@ class EncoderEnsemble(nn.Module):
 
 
 class PositionalDecoder(nn.Module):
-    def __init__(self, representation_dim: t.Tuple[int, int], output_size: t.Tuple[int, int, int], **kwargs: t.Dict[str, t.Any]):
+    def __init__(self, representation_dim: t.Union[int, t.Tuple[int, int]], output_size: t.Tuple[int, int, int], **kwargs: t.Dict[str, t.Any]):
         super(PositionalDecoder, self).__init__()
         self.channel_num = output_size[0]
         self.N = output_size[1]
@@ -764,87 +764,60 @@ class EigvalsPositionalEncoder(nn.Module):
         return z, eigvals
 
 
-class EigvalsPositionalDecoder(nn.Module):
-    def __init__(self, representation_dim: int, output_size: t.Tuple[int, int, int], **kwargs: t.Dict[str, t.Any]):
-        super(EigvalsPositionalDecoder, self).__init__()
-        self.representation_dim = representation_dim
-        self.channel_num = output_size[0]
-        self.N = output_size[1]
-        self.block_size = output_size[2]
+class EigvalsPositionalDecoder(PositionalDecoder):
+    def __init__(self, representation_dim: t.Union[int, t.Tuple[int, int]], output_size: t.Tuple[int, int, int], **kwargs: t.Dict[str, t.Any]):
+        super(EigvalsPositionalDecoder, self).__init__(representation_dim, output_size, **kwargs)
+
         self.eigvals_num = self.N * self.block_size
-        self.mlp_layers = kwargs.get('mlp_layers', 3)
-        self.hidden_size = kwargs.get('hidden_size', 64)
-        # self.combined_decoder = nn.Sequential(
-        #     self._get_mlp(self.mlp_layers, self.eigvals_num + representation_dim, self.eigvals_num + representation_dim, representation_dim),
-        #     PositionalDecoder(representation_dim, output_size, **kwargs)
-        # )
 
-        self.seq_decoder = self._get_mlp(self.mlp_layers, self.representation_dim, self.eigvals_num, self.eigvals_num)
-        self.seq_constructor = nn.ModuleList([
-            self._get_mlp(self.mlp_layers, self.eigvals_num, self.eigvals_num, self.eigvals_num)
-            for _ in range(self.hidden_size)
-        ])
-
-        self.amplitude_decoder = self._get_mlp(self.mlp_layers, self.representation_dim, self.eigvals_num, self.eigvals_num)
-
-        self.eigvecs_transformer_layer = nn.TransformerEncoderLayer(d_model=self.hidden_size, nhead=2, dim_feedforward=128, batch_first=True)
-        self.eigvecs_transformer = nn.TransformerEncoder(self.eigvecs_transformer_layer, num_layers=1)
-
-        self.eigvals_decoder = self._get_mlp(1, self.eigvals_num, self.eigvals_num, self.eigvals_num)
-
-        self.matrix_combiner = nn.Sequential(
-            nn.Conv2d(self.hidden_size, self.hidden_size, kernel_size=1),
-            nn.LeakyReLU(negative_slope=0.01),
-            nn.BatchNorm2d(self.hidden_size),
-            nn.Conv2d(self.hidden_size, 2, kernel_size=1),
-            nn.LeakyReLU(negative_slope=0.01),
-            nn.BatchNorm2d(2),
-            nn.Conv2d(2, 2, kernel_size=1)
+        self.eigvals_encoder = nn.Sequential(
+            self._get_mlp(4, self.eigvals_num, self.eigvals_num, self.eigvals_num),
+            nn.Unflatten(1, (1, self.eigvals_num)),
+            nn.Conv1d(1, self.kernel_num, kernel_size=self.block_size, stride=self.block_size),
+            self._get_activation()
         )
 
-    def _periodic_func(self, x: torch.Tensor, i: int):
-        if i % 2 == 0:
-            return torch.sin(x * 2**((i // 2) / 4))
-        else:
-            return torch.cos(x * 2**((i // 2) / 4))
+        self.block_eigvals_combiner = nn.Sequential(
+            nn.Conv1d(2*self.kernel_num, self.kernel_num, kernel_size=1),
+            self._get_activation(),
+        )
 
-    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int):
-        layers = []
-        for i in range(layers_num):
-            if i == 0:
-                layers.append(nn.Linear(input_size, hidden_size))
-            elif i == layers_num - 1:
-                layers.append(nn.LeakyReLU(negative_slope=0.01))
-                layers.append(nn.BatchNorm1d(hidden_size))
-                layers.append(nn.Linear(hidden_size, output_size))
-            else:
-                layers.append(nn.LeakyReLU(negative_slope=0.01))
-                layers.append(nn.BatchNorm1d(hidden_size))
-                layers.append(nn.Linear(hidden_size, hidden_size))
+        self.naive_eigvals_seq_encoder = self._get_mlp(4, self.eigvals_num, self.eigvals_num, self.strip_len)
+        
+        self.tf_seq_decoder_layer = nn.TransformerEncoderLayer(d_model=self.kernel_num, nhead=2, dim_feedforward=128, batch_first=True)
+        self.tf_seq_decoder = nn.TransformerEncoder(self.tf_seq_decoder_layer, num_layers=1)
 
-        return nn.Sequential(*layers)
+    def _get_conv_block(self):
+        return nn.Sequential(
+            nn.ConvTranspose2d(2*self.kernel_num+2, self.channel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation),
+        )
     
     def forward(self, latent_tuple: t.Tuple[torch.Tensor, torch.Tensor]):
-        z, eigvals = latent_tuple
-        eigvecs_seq = self.seq_decoder(z) # shape (batch_size, eigvals_num)
-        eigvecs_periodic_seq = torch.stack([self._periodic_func(self.seq_constructor[i](eigvecs_seq), i) for i in range(self.hidden_size)], dim=-1) # shape (batch_size, eigvals_num, hidden_size)
-        eigvecs_periodic_seq_expanded = eigvecs_periodic_seq.view(-1, 1, self.eigvals_num, self.hidden_size).expand(-1, self.eigvals_num, -1, -1) # shape (batch_size, eigvals_num, eigvals_num, hidden_size)
+        x, eigvals = latent_tuple
+        block = self.naive_block_decoder(x[:, self.freq_dim:]).unsqueeze(0)
+        block_expand = block.expand(self.strip_len, -1, -1).permute((1, 2, 0)) # shape (batch_size, kernel_num, strip_len)
 
-        eigvecs_amplitude = self.amplitude_decoder(z).view(-1, self.eigvals_num, 1, 1).expand(-1, -1, self.eigvals_num, self.hidden_size) # shape (batch_size, eigvals_num, eigvals_num, hidden_size)
+        eigvals_enc = self.eigvals_encoder(eigvals) # shape (batch_size, kernel_num, strip_len)
+
+        block_eigvals = self.block_eigvals_combiner(torch.cat([block_expand, eigvals_enc], dim=1)) # shape (batch_size, kernel_num, strip_len)
+
+        freq = self.freq_decoder(x[:, :self.freq_dim])
+        freq_seq = torch.stack([self._periodic_func(self.freq_seq_constructor[i](freq), i) for i in range(self.kernel_num)], dim=-1) # shape (batch_size, strip_len, kernel_num)
+
+        tf_input = freq_seq * block_eigvals.transpose(1, 2) # shape (batch_size, strip_len, kernel_num)
+
+        seq = self.tf_seq_decoder(tf_input) # shape (batch_size, strip_len, kernel_num)
+        seq = seq.transpose(1, 2).unsqueeze(2) # shape (batch_size, kernel_num, 1, strip_len)
+
+        naive_block_seq = self.naive_seq_decoder(x).unsqueeze(1).unsqueeze(1) # shape (batch_size, 1, 1, strip_len)
+        naive_eigvals_seq = self.naive_eigvals_seq_encoder(eigvals).unsqueeze(1).unsqueeze(1) # shape (batch_size, 1, 1, strip_len)
+
+        block_eigvals = block_eigvals.unsqueeze(2)  # shape (batch_size, kernel_num, 1, strip_len)
+        block_seq = torch.cat([block_eigvals, seq, naive_block_seq, naive_eigvals_seq], dim=1) # shape (batch_size, 2*kernel_num+2, 1, strip_len)
         
-        naive_eigvecs = eigvecs_amplitude * eigvecs_periodic_seq_expanded # shape (batch_size, eigvals_num, eigvals_num, hidden_size)
-        # eigvecs = torch.stack([self.eigvecs_transformer(naive_eigvecs[:, i, :, :]) for i in range(self.eigvals_num)], dim=1) # shape (batch_size, eigvals_num, eigvals_num, hidden_size)
-        eigvecs_with_correct_axis = naive_eigvecs.permute(0, 3, 2, 1) # shape (batch dim, hidden dim, eigvec dim, eigvals dim)
-
-        matrix = self.matrix_combiner(eigvecs_with_correct_axis) # shape (batch dim, 2, eigvec dim, eigvals dim)
-        complex_matrix = torch.complex(matrix[:, 0, :, :], matrix[:, 1, :, :]) # shape (batch dim, eigvec dim, eigvals dim)
-        inverse_matrix = torch.inverse(complex_matrix) # shape (batch dim, eigvec dim, eigvals dim)
-
-        eigvals_decoded = self.eigvals_decoder(eigvals)
-        eigvals_matrix = torch.diag_embed(eigvals_decoded).to(torch.complex64) # shape (batch dim, eigvals dim, eigvals dim)
-        reconstructed_matrix = torch.matmul(torch.matmul(complex_matrix, eigvals_matrix), inverse_matrix) # shape (batch dim, eigvec dim, eigvals dim)
-        return torch.stack([reconstructed_matrix.real, reconstructed_matrix.imag], dim=1) # shape (batch dim, 2, eigvec dim, eigvals dim)
-
+        strips = self.conv(block_seq) # shape (batch_size, channel_num, block_size, block_size*N)
+        matrix = self._get_matrix_from_strips(strips) # shape (batch_size, 2, block_size*N, block_size*N)
+        return matrix
 
 
 class Discriminator(nn.Module):
