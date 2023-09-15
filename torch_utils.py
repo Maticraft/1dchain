@@ -33,7 +33,7 @@ def torch_total_polarization_loss(x_hat: torch.Tensor) -> torch.Tensor:
     values_tot = torch.stack(list(mp_tot.values()), dim=-1)
     mp_tot_sum_left = torch.sum(values_tot[:, :len(values_tot)//2], dim=-1)
     mp_tot_sum_right = torch.sum(values_tot[:, len(values_tot)//2:], dim=-1)
-    eigvals_loss = torch.mean(eigvals_loss, dim=-1)
+    eigvals_loss = torch.sum(eigvals_loss, dim=-1)
     return torch.mean(torch.abs(mp_tot_sum_left - 0.5) + torch.abs(mp_tot_sum_right - 0.5) + eigvals_loss)
 
 
@@ -48,10 +48,10 @@ def torch_extended_majorana_polarization(
     num_eigvals = eigvals.shape[-1]
 
     majoranas_ids = indices[:, :num_mzm]
-    not_majoranas_ids = indices[:, num_mzm:]
+    not_majoranas_ids = indices[:, num_mzm:2*num_mzm] # taking the same number of non-MZMs as MZMs
 
     majoranas_loss_weight = num_eigvals / num_mzm
-    not_majoranas_loss_weight = num_eigvals / (num_eigvals - num_mzm)
+    not_majoranas_loss_weight = num_eigvals / num_mzm # (num_eigvals - num_mzm)
 
     eigvals_loss = torch.zeros_like(eigvals, dtype=torch.float32)
     zm = torch.zeros_like(eigvecs) 

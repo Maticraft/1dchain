@@ -37,7 +37,7 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'gen_ae_fft_tf_polarization_fixed_full_model'
+model_name = 'gen_ae_fft_tf_polarization_fixed2_full_model'
 
 # Load params
 params, encoder_params, decoder_params = load_autoencoder_params(pretrained_model_dir, PositionalEncoder, PositionalDecoder)
