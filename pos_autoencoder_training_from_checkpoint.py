@@ -82,7 +82,7 @@ decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=params['lr'])
 encoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, 'min')
 decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(decoder_optimizer, 'min')
 
-save_data_list(['Epoch', 'Train loss', 'Train edge loss', 'Train diag loss', 'Train eigenstates loss', 'Train det loss', 'Test loss', 'Test edge loss', 'Test eigenstates loss', 'Te diag loss', 'Test det loss'], loss_path, mode='w')
+save_data_list(['Epoch', 'Train loss', 'Train edge loss', 'Train eigenvalues loss', 'Train eigenstates loss', 'Train diag loss', 'Test loss', 'Test edge loss', 'Test eigevalues loss', 'Test eigenstates loss', 'Test diag loss'], loss_path, mode='w')
 
 for epoch in range(1, params['epochs'] + 1):
     tr_loss, tr_edge_loss, tr_ev_loss, tr_eig_loss, tr_diag_loss, tr_det_loss = train_autoencoder(
@@ -129,5 +129,5 @@ for epoch in range(1, params['epochs'] + 1):
     ham_auto_path = os.path.join(ham_sub_path, hamiltonian_plot_name.format(f'_ep{epoch}' + '{}'))
     ham_diff_path = os.path.join(ham_sub_path, hamiltonain_diff_plot_name.format(f'_ep{epoch}'))
     plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, decoder, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device, decoder_eigvals=True)
-   
+
 plot_convergence(loss_path, convergence_path, read_label=True)

@@ -75,6 +75,7 @@ class HamiltionianDataset(Dataset):
                 eigvals, eigvec = torch.linalg.eigh(complex_tensor)
                 min_eigvals, min_eigvals_id = torch.topk(torch.abs(eigvals), self.eig_vals_num, largest=False)
                 min_eigvec = eigvec[:, min_eigvals_id]
+                min_eigvals = eigvals[min_eigvals_id] # because min_eigvals were absolute values
                 eig_dec = min_eigvals.real, min_eigvec
                 save_matrix(min_eigvals, self.data_dir, EIGVALS_DIR_NAME, self.dictionary[idx][0], format='numpy')
                 save_matrix(min_eigvec, self.data_dir, EIGVEC_DIR_NAME, self.dictionary[idx][0], format='numpy')
@@ -88,6 +89,7 @@ class HamiltionianDataset(Dataset):
                 complex_tensor = torch.complex(tensor[0], tensor[1])
                 eigvals = torch.linalg.eigvalsh(complex_tensor)
                 min_eigvals, min_eigvals_id = torch.topk(torch.abs(eigvals), self.eig_vals_num, largest=False)
+                min_eigvals = eigvals[min_eigvals_id] # because min_eigvals were absolute values
                 eig_dec = min_eigvals.real, torch.zeros((tensor.shape[0], tensor.shape[1]))
                 save_matrix(min_eigvals, self.data_dir, EIGVALS_DIR_NAME, self.dictionary[idx][0], format='numpy')
         else:

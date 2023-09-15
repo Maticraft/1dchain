@@ -13,7 +13,7 @@ gen_dir = './gan/spin_ladder/70_2_RedDistSimplePeriodicPG/100/gen_ae_fft_tf_pola
 test_dir_name = 'generation_tests_ep{}'
 latent_distrib_dir = 'tests_majoranas_ep{}'
 polarization_sub_dir = 'polarization_{}'
-gen_epoch = 1
+gen_epoch = 2
 
 eigvals_gen_plot_name = 'eigvals_spectre_generator_{}.png'
 

@@ -101,10 +101,11 @@ def reconstruct_hamiltonian(H: np.ndarray, encoder: nn.Module, decoder: nn.Modul
         H_torch = H_torch.unsqueeze(0).float().to(device)
         latent_vec = encoder(H_torch)
         if kwargs.get("decoder_eigvals", False):
-            eigvals = np.linalg.eigvalsh(H)
-            eigvals = torch.from_numpy(eigvals).float().to(device)
-            eigvals = eigvals.unsqueeze(0)
-            latent_vec = (latent_vec, eigvals)
+            eigvals = torch.linalg.eigvalsh(torch.complex(H_torch[:, 0, :, :], H_torch[:, 1, :, :]))
+            num_eigvals = kwargs.get("eigvals_num", H_torch.shape[-1])
+            min_eigvals, min_eigvals_id = torch.topk(torch.abs(eigvals), num_eigvals, largest=False)
+            # min_eigvals = torch.stack([eigvals[i, min_eigvals_id[i]] for i in range(len(eigvals))], dim=0) # uncomment for fixed eigvals
+            latent_vec = (latent_vec, min_eigvals.real)
         H_torch_rec = decoder(latent_vec)
         H_rec = torch.complex(H_torch_rec[:, 0, :, :], H_torch_rec[:, 1, :, :]).squeeze().cpu().numpy()
     return H_rec
@@ -323,7 +324,6 @@ def train_autoencoder(
 ):
     if site_permutation and edge_loss:
         raise NotImplementedError("Combining edge loss with site permutation is not implemented")
-
 
     if log_scaled_loss:
         assert not diag_loss, "Diagonal loss is not implemented for log scaled loss"
