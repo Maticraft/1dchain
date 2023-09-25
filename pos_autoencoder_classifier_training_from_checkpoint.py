@@ -6,14 +6,14 @@ import torch
 
 from data_utils import HamiltionianDataset
 from helical_ladder import  DEFAULT_PARAMS, SpinLadder
-from models import PositionalEncoder, PositionalDecoder, Classifier
+from models import PositionalEncoder, PositionalDecoder, Classifier, EigvalsPositionalDecoder
 from models_utils import train_autoencoder, test_autoencoder, train_encoder_with_classifier, test_encoder_with_classifier
-from models_files import save_autoencoder_params, save_autoencoder, save_model, save_data_list, load_autoencoder_params, load_positional_autoencoder
+from models_files import save_autoencoder_params, save_autoencoder, save_model, save_data_list, load_autoencoder_params, load_positional_autoencoder, load_ae_model
 from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 # Pretrained model
-pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG/100/twice_pretrained_positional_autoencoder_fft_tf'
-epoch = 22
+pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q/100/pretrained_gt_eigvals_positional_autoencoder_fft_tf_v4'
+epoch = 30
 
 # Paths
 data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPG'
@@ -35,11 +35,11 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'classifier2_bal_twice_pretrained_positional_autoencoder_fft_tf'
+model_name = 'classifier_bal_pretrained_gt_eigvals_positional_autoencoder_fft_tf_v4'
 
 # Load model
-encoder, decoder = load_positional_autoencoder(pretrained_model_dir, epoch)
-params, encoder_params, decoder_params = load_autoencoder_params(pretrained_model_dir, PositionalEncoder, PositionalDecoder)
+encoder, decoder = load_ae_model(pretrained_model_dir, epoch, PositionalEncoder, EigvalsPositionalDecoder)
+params, encoder_params, decoder_params = load_autoencoder_params(pretrained_model_dir, PositionalEncoder, EigvalsPositionalDecoder)
 
 # Modify params
 params['learning_rate'] = 1.e-5
@@ -70,7 +70,7 @@ if not os.path.isdir(ham_sub_path):
 
 save_autoencoder_params(params, encoder_params, decoder_params, root_dir)
 
-data = HamiltionianDataset(data_path, label_idx=(3, 4), eig_decomposition=params['eigenstates_loss'], format='csr')
+data = HamiltionianDataset(data_path, label_idx=(3, 4), eigvals=(params['eigenvalues_loss'] or params['gt_eigvals']), eig_decomposition=params['eigenstates_loss'], format='csr', eigvals_num=params['eigvals_num'])
 
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size
@@ -91,10 +91,12 @@ classifier_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(classifier_opt
 save_data_list(['Epoch', 'Train_classifier_loss', 'Train_ae_loss', 'Test_classifier_loss', 'Test_classifier_acc', 'Test_ae_loss', 'Test_edge_loss', 'Test_eigenstates_loss', 'Te_diag_loss'], loss_path, mode='w')
 
 for epoch in range(1, params['epochs'] + 1):
-    tr_class_loss, tr_ae_loss = train_encoder_with_classifier(encoder, decoder, classifier, train_loader, epoch, device, encoder_optimizer, decoder_optimizer, classifier_optimizer)
+    tr_class_loss, tr_ae_loss = train_encoder_with_classifier(encoder, decoder, classifier, train_loader, epoch, device, encoder_optimizer, decoder_optimizer, classifier_optimizer, gt_eigvals=params['gt_eigvals']
+)
 
     te_class_loss, te_acc, te_cm = test_encoder_with_classifier(encoder, classifier, test_loader, device)
-    te_loss, te_edge_loss, te_eig_loss, te_diag_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'], eigenstates_loss=params['eigenstates_loss'], diag_loss=params['diag_loss'])
+    te_loss, te_edge_loss, te_ev_loss, te_eig_loss, te_diag_loss, te_det_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'], eigenstates_loss=params['eigenstates_loss'], diag_loss=params['diag_loss'], gt_eigvals=params['gt_eigvals']
+)
     classifier_scheduler.step(te_class_loss)
     encoder_scheduler.step(te_loss)
     decoder_scheduler.step(te_loss)
@@ -104,9 +106,9 @@ for epoch in range(1, params['epochs'] + 1):
     save_data_list([epoch, tr_class_loss, tr_ae_loss, te_class_loss, te_acc, te_loss, te_edge_loss, te_eig_loss, te_diag_loss], loss_path)
 
     eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))
-    plot_test_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim)
+    plot_test_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim, decoder_eigvals=params['gt_eigvals'])
     ham_auto_path = os.path.join(ham_sub_path, hamiltonian_plot_name.format(f'_ep{epoch}' + '{}'))
     ham_diff_path = os.path.join(ham_sub_path, hamiltonain_diff_plot_name.format(f'_ep{epoch}'))
-    plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, decoder, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device)
+    plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, decoder, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device, decoder_eigvals=params['gt_eigvals'])
    
 plot_convergence(loss_path, convergence_path, read_label=True)

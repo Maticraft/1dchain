@@ -105,6 +105,10 @@ def reconstruct_hamiltonian(H: np.ndarray, encoder: nn.Module, decoder: nn.Modul
             num_eigvals = kwargs.get("eigvals_num", H_torch.shape[-1])
             min_eigvals, min_eigvals_id = torch.topk(torch.abs(eigvals), num_eigvals, largest=False)
             # min_eigvals = torch.stack([eigvals[i, min_eigvals_id[i]] for i in range(len(eigvals))], dim=0) # uncomment for fixed eigvals
+            if kwargs.get("shift_eigvals", False):
+                min_eigvals = min_eigvals + torch.rand_like(min_eigvals) * kwargs.get("eigvals_shift", 1.)
+            if kwargs.get("shift_latent", False):
+                latent_vec = latent_vec + torch.rand_like(latent_vec) * kwargs.get("latent_shift", 1.)
             latent_vec = (latent_vec, min_eigvals.real)
         H_torch_rec = decoder(latent_vec)
         H_rec = torch.complex(H_torch_rec[:, 0, :, :], H_torch_rec[:, 1, :, :]).squeeze().cpu().numpy()
@@ -513,6 +517,7 @@ def train_encoder_with_classifier(
     encoder_optimizer: torch.optim.Optimizer,
     decoder_optimizer: torch.optim.Optimizer,
     classifier_optimizer: torch.optim.Optimizer,
+    gt_eigvals: bool = False,
 ):
 
     class_criterion = nn.BCELoss()
@@ -529,7 +534,7 @@ def train_encoder_with_classifier(
     total_loss_ae = 0
 
     print(f'Epoch: {epoch}')
-    for (x, y), _ in tqdm(train_loader, 'Training classifier model'):
+    for (x, y), eig_dec in tqdm(train_loader, 'Training classifier model'):
         x = x.to(device)
         y = y.to(device)
         classifier_optimizer.zero_grad()
@@ -549,6 +554,8 @@ def train_encoder_with_classifier(
         if len(z_reduced) > 0:
             total_loss_class += loss_class.item()
 
+        if gt_eigvals:
+            z = (z, eig_dec[0].to(device))
         x_hat = decoder_model(z) 
         loss_ae = ae_criterion(x_hat, x)
 

@@ -13,14 +13,13 @@ from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 # Pretrained model
 pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q/100/pretrained_gt_eigvals_positional_autoencoder_fft_tf_v4'
-epoch = 33
+epoch = 30
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDist1000q_pi2delta_q'
-save_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q'
+data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPG'
+save_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
-
 
 # Reference eigvals plot params
 eigvals_sub_dir = 'eigvals'
@@ -36,7 +35,7 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'pretrained_gt_eigvals_positional_autoencoder_fft_tf_v4_det_loss'
+model_name = 'pretrained_gt_eigvals_positional_autoencoder_fft_tf_v4'
 
 # Load model
 encoder, decoder = load_ae_model(pretrained_model_dir, epoch, PositionalEncoder, EigvalsPositionalDecoder)
@@ -45,8 +44,7 @@ params, encoder_params, decoder_params = load_autoencoder_params(pretrained_mode
 # Modify params
 params['learning_rate'] = 1.e-5
 params['epochs'] = 40
-params['det_loss'] = True
-params['det_loss_weight'] = .5
+
 
 # Set the root dir
 root_dir = os.path.join(save_dir, f'{params["representation_dim"]}', model_name)
@@ -125,9 +123,9 @@ for epoch in range(1, params['epochs'] + 1):
     save_data_list([epoch, tr_loss, tr_edge_loss, tr_ev_loss, tr_eig_loss, tr_diag_loss, tr_det_loss, te_loss, te_edge_loss, te_ev_loss, te_eig_loss, te_diag_loss, te_det_loss], loss_path)
 
     eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))
-    plot_test_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim, decoder_eigvals=True)
+    plot_test_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim, decoder_eigvals=params['gt_eigvals'])
     ham_auto_path = os.path.join(ham_sub_path, hamiltonian_plot_name.format(f'_ep{epoch}' + '{}'))
     ham_diff_path = os.path.join(ham_sub_path, hamiltonain_diff_plot_name.format(f'_ep{epoch}'))
-    plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, decoder, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device, decoder_eigvals=True)
+    plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, decoder, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device, decoder_eigvals=params['gt_eigvals'])
 
 plot_convergence(loss_path, convergence_path, read_label=True)
