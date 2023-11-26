@@ -24,6 +24,7 @@ DECODER_NAME = 'decoder{}.pt'
 GENERATOR_NAME = 'generator{}.pt'
 DISCRIMINATOR_NAME = 'discriminator{}.pt'
 LATENT_DISTRIBUTION_NAME = 'latent_distribution.txt'
+COVARIANCE_MATRIX_NAME = 'covariance_matrix.txt'
 DELIMITER = '  '
 
 
@@ -110,13 +111,11 @@ def load_generator(root_dir: str, epoch: int, sub_generator_class: t.Type[nn.Mod
 
 def load_gan_submodel_state_dict(root_dir: str, epoch: int, model: t.Union[Generator, Discriminator]):
     model_path = os.path.join(root_dir, MODEL_TO_NAMES[type(model.nn)][2], MODEL_TO_NAMES[type(model.nn)][1].format(f'_ep{epoch}'))
-    model.nn.load_state_dict(torch.load(model_path))
+    model.nn.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
 
 
 def load_autoencoder_params(root_dir: str, encoder_class: t.Type[nn.Module], decoder_class: t.Type[nn.Module]):
-    params_save_path = os.path.join(root_dir, GENERAL_PARAMS_NAME)
-    general_params = load_params(params_save_path)
-
+    general_params = load_general_params(root_dir)
     encoder_params = load_model_params(root_dir, encoder_class)    
     decoder_params = load_model_params(root_dir, decoder_class)
 
@@ -124,13 +123,17 @@ def load_autoencoder_params(root_dir: str, encoder_class: t.Type[nn.Module], dec
 
 
 def load_gan_params(root_dir: str):
-    params_save_path = os.path.join(root_dir, GENERAL_PARAMS_NAME)
-    general_params = load_params(params_save_path)
-
+    general_params = load_general_params(root_dir)
     generator_params = load_model_params(root_dir, Generator)
     discriminator_params = load_model_params(root_dir, Discriminator)
 
     return general_params, generator_params, discriminator_params
+
+
+def load_general_params(root_dir: str):
+    params_save_path = os.path.join(root_dir, GENERAL_PARAMS_NAME)
+    general_params = load_params(params_save_path)
+    return general_params
 
 
 def load_model_params(root_dir: str, model_type: t.Type[nn.Module]):
@@ -162,7 +165,7 @@ def load_classifier(root_dir: str, epoch: int, **classifier_config: t.Dict[str, 
 def load_model(model_type: t.Type[nn.Module], model_params: t.Dict[str, t.Any], root_dir: str, epoch: int):
     model = model_type(**model_params)
     model_path = os.path.join(root_dir, MODEL_TO_NAMES[model_type][2], MODEL_TO_NAMES[model_type][1].format(f'_ep{epoch}'))
-    model.load_state_dict(torch.load(model_path))
+    model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
     return model
 
 
@@ -274,3 +277,24 @@ def save_latent_distribution(
     save_data_list(['mean', 'std'], latent_distribution_path, mode='w')
     for mean_i, std_i in zip(mean, std):
         save_data_list([mean_i, std_i], latent_distribution_path)
+
+
+def save_covariance_matrix(
+    covariance_matrix: torch.Tensor,
+    root_dir: str,
+    prefix: str = ''
+):
+    if not os.path.isdir(root_dir):
+        os.makedirs(root_dir)
+    covariance_matrix_path = os.path.join(root_dir, f'{prefix}{COVARIANCE_MATRIX_NAME}')
+    covariance_matrix = covariance_matrix.detach().cpu().numpy()
+    save_data_list([f'covariance matrix ({len(covariance_matrix)} x {len(covariance_matrix[0])})'], covariance_matrix_path, mode='w')
+    for row in covariance_matrix:
+        save_data_list(row, covariance_matrix_path, mode='a')
+
+
+def load_covariance_matrix(root_dir: str, prefix: str = ''):
+    covariance_matrix_path = os.path.join(root_dir, f'{prefix}{COVARIANCE_MATRIX_NAME}')
+    covariance_matrix = load_data_list(covariance_matrix_path, skip_header=True)
+    covariance_matrix = torch.tensor(covariance_matrix)
+    return covariance_matrix

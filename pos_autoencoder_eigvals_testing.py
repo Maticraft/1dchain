@@ -13,7 +13,7 @@ from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 # Pretrained model
 pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q/100/pretrained_gt_eigvals_positional_autoencoder_fft_tf_v4'
-epoch = 33
+epoch = 4
 
 # Paths
 data_path = './data/spin_ladder/70_2_RedDist1000q_pi2delta_q'

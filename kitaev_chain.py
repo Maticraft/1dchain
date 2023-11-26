@@ -187,83 +187,85 @@ class KitaevChain():
            
         return csr_matrix((data, (row, col)), shape=(2*N, 2*N), dtype=np.complex128)
 
-t = 1.
-mus = np.arange(0., 4*t, 0.1*t)
-delta = t
-N = 15
 
-for mu in mus:
-    kc = KitaevChain(t, mu, delta, N)
-    eigvals, eigvecs = np.linalg.eigh(kc.H)
-    
-    plt.figure()
-    plt.scatter(x=np.arange(2*N), y=eigvals)
-    plt.xlabel('x')
-    plt.ylabel('E')
-    plt.savefig('./plots/kitaev/spin_blocks/kitaev_chain_eigvals_mu{:.2}.png'.format(mu))
-    plt.close()
+if __name__ == '__main__':
+    t = 1.
+    mus = np.arange(0., 4*t, 0.1*t)
+    delta = t
+    N = 15
 
-    plt.figure()
-    plt.title('Eigvals: {:.2}'.format(eigvals[N - 1]))
-    plt.plot(np.power(np.abs(eigvecs[:, N-1]), 2))
-    plt.xlabel('x')
-    plt.ylabel('E')
-    plt.savefig('./plots/kitaev/spin_blocks/kitaev_chain_eigvecs_mu{:.2}.png'.format(mu))
-    plt.close()
+    for mu in mus:
+        kc = KitaevChain(t, mu, delta, N)
+        eigvals, eigvecs = np.linalg.eigh(kc.H)
+        
+        plt.figure()
+        plt.scatter(x=np.arange(2*N), y=eigvals)
+        plt.xlabel('x')
+        plt.ylabel('E')
+        plt.savefig('./plots/kitaev/spin_blocks/kitaev_chain_eigvals_mu{:.2}.png'.format(mu))
+        plt.close()
 
-    eigvals, eigvecs = np.linalg.eigh(kc.H_block)
-    
-    plt.figure()
-    plt.scatter(x=np.arange(2*N), y=eigvals)
-    plt.xlabel('x')
-    plt.ylabel('E')
-    plt.savefig('./plots/kitaev/site_blocks/kitaev_chain_eigvals_mu{:.2}.png'.format(mu))
-    plt.close()
+        plt.figure()
+        plt.title('Eigvals: {:.2}'.format(eigvals[N - 1]))
+        plt.plot(np.power(np.abs(eigvecs[:, N-1]), 2))
+        plt.xlabel('x')
+        plt.ylabel('E')
+        plt.savefig('./plots/kitaev/spin_blocks/kitaev_chain_eigvecs_mu{:.2}.png'.format(mu))
+        plt.close()
 
-    plt.figure()
-    plt.title('Eigvals: {:.2}'.format(eigvals[N - 1]))
-    plt.plot(np.power(np.abs(eigvecs[:, N-1]), 2))
-    plt.xlabel('x')
-    plt.ylabel('E')
-    plt.savefig('./plots/kitaev/site_blocks/kitaev_chain_eigvecs_mu{:.2}.png'.format(mu))
-    plt.close()
+        eigvals, eigvecs = np.linalg.eigh(kc.H_block)
+        
+        plt.figure()
+        plt.scatter(x=np.arange(2*N), y=eigvals)
+        plt.xlabel('x')
+        plt.ylabel('E')
+        plt.savefig('./plots/kitaev/site_blocks/kitaev_chain_eigvals_mu{:.2}.png'.format(mu))
+        plt.close()
 
-    k = N
-    eigvals_csr, eigvecs_csr = eigsh(kc.H_csr, k=k, which='SM', return_eigenvectors=True)
-    eigvals_csr = np.sort(eigvals_csr)
-    min_indx = np.argmin(np.abs(eigvals_csr))
+        plt.figure()
+        plt.title('Eigvals: {:.2}'.format(eigvals[N - 1]))
+        plt.plot(np.power(np.abs(eigvecs[:, N-1]), 2))
+        plt.xlabel('x')
+        plt.ylabel('E')
+        plt.savefig('./plots/kitaev/site_blocks/kitaev_chain_eigvecs_mu{:.2}.png'.format(mu))
+        plt.close()
 
-    plt.figure()
-    plt.scatter(x=np.arange(k), y=eigvals_csr)
-    plt.xlabel('x')
-    plt.ylabel('P(x)')
-    plt.savefig('./plots/kitaev/spin_blocks/kitaev_chain_eigvals_csr_mu{:.2}.png'.format(mu))
-    plt.close()
+        k = N
+        eigvals_csr, eigvecs_csr = eigsh(kc.H_csr, k=k, which='SM', return_eigenvectors=True)
+        eigvals_csr = np.sort(eigvals_csr)
+        min_indx = np.argmin(np.abs(eigvals_csr))
 
-    plt.figure()
-    plt.title('Eigvals: {:.2}'.format(eigvals_csr[min_indx]))
-    plt.plot(np.power(np.abs(eigvecs_csr[:, min_indx]), 2))
-    plt.xlabel('x')
-    plt.ylabel('p(x)')
-    plt.savefig('./plots/kitaev/spin_blocks/kitaev_chain_eigvecs_csr_mu{:.2}.png'.format(mu))
-    plt.close()
+        plt.figure()
+        plt.scatter(x=np.arange(k), y=eigvals_csr)
+        plt.xlabel('x')
+        plt.ylabel('P(x)')
+        plt.savefig('./plots/kitaev/spin_blocks/kitaev_chain_eigvals_csr_mu{:.2}.png'.format(mu))
+        plt.close()
 
-    k = N
-    eigvals_csr, eigvecs_csr = eigsh(kc.H_csr_block, k=k, which='SM', return_eigenvectors=True)
-    eigvals_csr = np.sort(eigvals_csr)
-    min_indx = np.argmin(np.abs(eigvals_csr))
+        plt.figure()
+        plt.title('Eigvals: {:.2}'.format(eigvals_csr[min_indx]))
+        plt.plot(np.power(np.abs(eigvecs_csr[:, min_indx]), 2))
+        plt.xlabel('x')
+        plt.ylabel('p(x)')
+        plt.savefig('./plots/kitaev/spin_blocks/kitaev_chain_eigvecs_csr_mu{:.2}.png'.format(mu))
+        plt.close()
 
-    plt.figure()
-    plt.scatter(x=np.arange(k), y=eigvals_csr)
-    plt.xlabel('x')
-    plt.ylabel('P(x)')
-    plt.savefig('./plots/kitaev/site_blocks/kitaev_chain_eigvals_csr_mu{:.2}.png'.format(mu))
-    plt.close()
+        k = N
+        eigvals_csr, eigvecs_csr = eigsh(kc.H_csr_block, k=k, which='SM', return_eigenvectors=True)
+        eigvals_csr = np.sort(eigvals_csr)
+        min_indx = np.argmin(np.abs(eigvals_csr))
 
-    plt.figure()
-    plt.title('Eigvals: {:.2}'.format(eigvals_csr[min_indx]))
-    plt.plot(np.power(np.abs(eigvecs_csr[:, min_indx]), 2))
-    plt.xlabel('x')
-    plt.ylabel('p(x)')
-    plt.savefig('./plots/kitaev/site_blocks/kitaev_chain_eigvecs_csr_mu{:.2}.png'.format(mu))
-    plt.close()
+        plt.figure()
+        plt.scatter(x=np.arange(k), y=eigvals_csr)
+        plt.xlabel('x')
+        plt.ylabel('P(x)')
+        plt.savefig('./plots/kitaev/site_blocks/kitaev_chain_eigvals_csr_mu{:.2}.png'.format(mu))
+        plt.close()
+
+        plt.figure()
+        plt.title('Eigvals: {:.2}'.format(eigvals_csr[min_indx]))
+        plt.plot(np.power(np.abs(eigvecs_csr[:, min_indx]), 2))
+        plt.xlabel('x')
+        plt.ylabel('p(x)')
+        plt.savefig('./plots/kitaev/site_blocks/kitaev_chain_eigvecs_csr_mu{:.2}.png'.format(mu))
+        plt.close()

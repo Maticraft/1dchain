@@ -8,7 +8,7 @@ from data_utils import HamiltionianDataset
 from helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from models import Generator, Discriminator, PositionalDecoder, PositionalEncoder
 from models_utils import train_gan
-from models_files import save_gan_params, save_gan, save_data_list, get_full_model_config, load_gan_submodel_state_dict, load_model, load_latent_distribution, save_latent_distribution
+from models_files import save_gan_params, save_gan, save_data_list, get_full_model_config, load_gan_submodel_state_dict, load_model, load_latent_distribution, save_latent_distribution, load_covariance_matrix, save_covariance_matrix
 from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals, plot_matrix
 
 # Paths
@@ -16,11 +16,13 @@ data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPG'
 save_dir = './gan/spin_ladder/70_2_RedDistSimplePeriodicPG'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
+distribution_dir_name = 'tests_majoranas_ep{}'
 
 # Load state from pretrained autoencoder
-original_autoencoder_path = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG/100/twice_pretrained_positional_autoencoder_fft_tf'
-original_autoencoder_epoch = 22
-distibution_path = os.path.join(original_autoencoder_path, 'tests_ep{}'.format(original_autoencoder_epoch))
+original_autoencoder_path = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG/100/classifier_bal_twice_pretrained_positional_autoencoder_fft_tf'
+original_autoencoder_epoch = 4
+distribution_path = os.path.join(original_autoencoder_path, distribution_dir_name.format(original_autoencoder_epoch))
+
 
 # Reference eigvals plot params
 eigvals_sub_dir = 'eigvals'
@@ -35,9 +37,8 @@ hamiltonian_sub_dir = 'hamiltonian'
 hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
-
 # Model name
-model_name = 'GAN_fft_tf_init_distrib_noise'
+model_name = 'GAN_fft_tf_class_mvn_noise_majoranas_015_dynamic_switch_no_noise_converter'
 
 # Params
 params = {
@@ -47,6 +48,8 @@ params = {
     'in_channels': 10,
     'block_size': 4,
     'representation_dim': 100,
+    'start_training_mode': 'discriminator',
+    'data_label': 1
 }
 
 # Architecture
@@ -85,6 +88,8 @@ generator_params = {
     "seq_dec_depth": 4,
     "seq_dec_hidden_size": 128,
     'lr': 1.e-5,
+    'skip_noise_converter': True,
+    'training_switch_loss_ratio': 1.2
 }
 
 
@@ -106,7 +111,7 @@ if not os.path.isdir(ham_sub_path):
 
 save_gan_params(params, generator_params, discriminator_params, root_dir)
 
-data = HamiltionianDataset(data_path, label_idx=(3, 4), format='csr')
+data = HamiltionianDataset(data_path, label_idx=(3, 4), format='csr', threshold=0.15)
 
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size
@@ -116,7 +121,7 @@ train_loader = DataLoader(train_data, params['batch_size'])
 test_loader = DataLoader(test_data, params['batch_size'])
 
 generator_config = get_full_model_config(params, generator_params)
-generator = Generator(PositionalDecoder, generator_config)
+generator = Generator(PositionalDecoder, **generator_config)
 load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, generator)
 
 discriminator_config = get_full_model_config(params, discriminator_params)
@@ -134,13 +139,18 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 generator_optimizer = torch.optim.Adam(generator.parameters(), lr=generator_params['lr'])
 discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=discriminator_params['lr'])
 
-init_distribution = load_latent_distribution(distibution_path)
+init_distribution = load_latent_distribution(distribution_path)
+cov_matrix = load_covariance_matrix(distribution_path)
+
 save_latent_distribution(init_distribution, root_dir)
+save_covariance_matrix(cov_matrix, root_dir)
 
 save_data_list(['Epoch', 'Generator loss', 'Discriminator loss'], loss_path, mode='w')
 
+training_mode = 'discriminator'
+
 for epoch in range(1, params['epochs'] + 1):
-    gen_loss, disc_loss = train_gan(
+    gen_loss, disc_loss, training_mode = train_gan(
         generator,
         discriminator,
         train_loader,
@@ -149,6 +159,10 @@ for epoch in range(1, params['epochs'] + 1):
         generator_optimizer,
         discriminator_optimizer,
         init_distribution,
+        cov_matrix=cov_matrix,
+        training_switch_loss_ratio=generator_params['training_switch_loss_ratio'],
+        start_training_mode=params['start_training_mode'],
+        data_label=params['data_label']
     )
     save_gan(generator, discriminator, root_dir, epoch)
     save_data_list([epoch, gen_loss, disc_loss], loss_path)
@@ -165,7 +179,7 @@ for epoch in range(1, params['epochs'] + 1):
     os.makedirs(test_matrix_path, exist_ok=True)
     for i in range(10):
         generator.eval()
-        z = generator.get_noise(1, device=device, noise_type='custom', mean=init_distribution[0], std=init_distribution[1])
+        z = generator.get_noise(1, device=device, noise_type='covariance', mean=init_distribution[0], covariance=cov_matrix)
         matrix = generator.nn(z).detach().cpu().numpy()[0]
         
         plot_matrix(matrix[0], os.path.join(test_matrix_path, f"random_hamiltonian_real_{i}.png"))

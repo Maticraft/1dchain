@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
 
 from data_utils import Hamiltonian
 from models import Generator
@@ -13,11 +14,14 @@ from models_utils import get_eigvals, reconstruct_hamiltonian
 from models_files import DELIMITER
 
 
-def plot_tsne_freq_block(
+def plot_dim_red_freq_block(
     encoder_model: nn.Module,
     test_loader: torch.utils.data.DataLoader, 
     device: torch.device, 
     file_path: str,
+    strategy: str = 'tsne',
+    tsne_metric: t.Union[str, t.Callable] = 'euclidean',
+    tsne_metric_params: t.Optional[t.Dict[str, t.Any]] = None,
 ):
     encoder_model.to(device)
     encoder_model.eval()
@@ -26,22 +30,31 @@ def plot_tsne_freq_block(
     z2_list = []
     y_list = []
 
-    for (x, y), _ in tqdm(test_loader, "Testing t-SNE"):
+    for (x, y), _ in tqdm(test_loader, "Testing dim-red"):
         x = x.to(device)
         z = encoder_model(x).detach().cpu().numpy()
         z1_list.append(z[:, :z.shape[1] // 2])
         z2_list.append(z[:, z.shape[1] // 2:])
         y_list.append(y.detach().cpu().numpy())
 
-    plot_tsne(file_path.format('_freq'), z1_list, y_list)
-    plot_tsne(file_path.format('_block'), z2_list, y_list)
+    if strategy == 'tsne':
+        plot_tsne(file_path.format('_freq'), z1_list, y_list, metric=tsne_metric, metric_params=tsne_metric_params)
+        plot_tsne(file_path.format('_block'), z2_list, y_list, metric=tsne_metric, metric_params=tsne_metric_params)
+    elif strategy == 'pca':
+        plot_pca(file_path.format('_freq'), z1_list, y_list)
+        plot_pca(file_path.format('_block'), z2_list, y_list)
+    else:
+        raise ValueError(f'Unknown strategy: {strategy}')
 
 
-def plot_full_space_tsne(
+def plot_dim_red_full_space(
     encoder_model: nn.Module,
     test_loader: torch.utils.data.DataLoader, 
     device: torch.device, 
     file_path: str,
+    strategy: str = 'tsne',
+    tsne_metric: t.Union[str, t.Callable] = 'euclidean',
+    tsne_metric_params: t.Optional[t.Dict[str, t.Any]] = None,
 ):
     encoder_model.to(device)
     encoder_model.eval()
@@ -49,26 +62,54 @@ def plot_full_space_tsne(
     z_list = []
     y_list = []
 
-    for (x, y), _ in tqdm(test_loader, "Testing t-SNE"):
+    for (x, y), _ in tqdm(test_loader, "Testing dim-red"):
         x = x.to(device)
         z = encoder_model(x).detach().cpu().numpy()
         z_list.append(z)
         y_list.append(y.detach().cpu().numpy())
 
-    plot_tsne(file_path, z_list, y_list)
+    if strategy == 'tsne':
+        plot_tsne(file_path, z_list, y_list, metric=tsne_metric, metric_params=tsne_metric_params)
+    elif strategy == 'pca':
+        plot_pca(file_path, z_list, y_list)
+    else:
+        raise ValueError(f'Unknown strategy: {strategy}')
 
 
-def plot_tsne(file_path, z_list, y_list):
+def plot_tsne(
+    file_path: str,
+    z_list: t.List[np.ndarray],
+    y_list: t.List[np.ndarray],
+    metric=t.Union[str, t.Callable],
+    metric_params: t.Optional[t.Dict[str, t.Any]] = None,
+):
     z = np.concatenate(z_list, axis=0)
     y = np.concatenate(y_list, axis=0)
 
-    tsne = TSNE(n_components=2, random_state=0)
+    tsne = TSNE(n_components=2, random_state=0, metric=metric, metric_params=metric_params)
     z_tsne = tsne.fit_transform(z)
 
     plt.figure(figsize=(10, 10))
-    plt.scatter(z_tsne[:, 0], z_tsne[:, 1], c=y, cmap='bwr')
+    plt.scatter(z_tsne[:, 0], z_tsne[:, 1], c=y, vmin=0, vmax=1)
+    plt.colorbar()
     plt.axis('off')
     plt.savefig(file_path)
+    plt.close()
+
+
+def plot_pca(file_path: str, z_list: t.List[np.ndarray], y_list: t.List[np.ndarray]):
+    z = np.concatenate(z_list, axis=0)
+    y = np.concatenate(y_list, axis=0)
+
+    pca = PCA(n_components=2)
+    z_pca = pca.fit_transform(z)
+    print(pca.explained_variance_ratio_)
+
+    plt.figure(figsize=(10, 10))
+    plt.scatter(z_pca[:, 0], z_pca[:, 1], c=y, vmin=0, vmax=1)
+    plt.colorbar()
+    plt.savefig(file_path)
+    plt.close()
 
 
 def plot_convergence(results_path: str, save_path: str, read_label: bool = False):

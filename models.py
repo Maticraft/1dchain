@@ -4,8 +4,9 @@ from itertools import product
 import torch
 import torch.nn as nn
 from torch.distributions.normal import Normal
+from torch.distributions.multivariate_normal import MultivariateNormal
 
-from models_utils import get_edges
+from models_utils import get_edges, generate_sample_from_mean_and_covariance
 
 class Classifier(nn.Module):
     def __init__(self, input_dim: int, output_dim: int = 1, layers: int = 2, hidden_size: int = 128):
@@ -847,19 +848,21 @@ class Discriminator(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self, model_class: t.Type[nn.Module], model_config: t.Dict[str, t.Any], **kwargs: t.Dict[str, t.Any]):
+    def __init__(self, model_class: t.Type[nn.Module], **model_config: t.Dict[str, t.Any]):
         super(Generator, self).__init__()
         self.nn_in_features = model_config['representation_dim'] if isinstance(model_config['representation_dim'], int) else int(sum(model_config['representation_dim']))
         self.nn = model_class(**model_config)
-        if 'distribution' in kwargs:
-            activation = self._create_activation_from_distribution(kwargs['distribution'])
+        if 'distribution' in model_config:
+            activation = self._create_activation_from_distribution(model_config['distribution'])
         else:
             activation = nn.LeakyReLU(negative_slope=0.01)
 
+        self.skip_noise_converter = model_config.get('skip_noise_converter', False)
         self.noise_converter = self._get_mlp(5, self.nn_in_features, self.nn_in_features, self.nn_in_features, final_activation=activation)
     
     def forward(self, x: torch.Tensor):
-        x = self.noise_converter(x)
+        if not self.skip_noise_converter:
+            x = self.noise_converter(x)
         return self.nn(x)
     
     def _create_activation_from_distribution(self, distribution: t.Tuple[torch.Tensor, torch.Tensor]):
@@ -908,6 +911,16 @@ class Generator(nn.Module):
             mean = kwargs['mean'].unsqueeze(0).expand(batch_size, -1)
             std = kwargs['std'].unsqueeze(0).expand(batch_size, -1)
             return torch.normal(mean, std).to(device)
+        elif noise_type == 'covariance':
+            mean = kwargs['mean']
+            cov = kwargs['covariance']
+            mean_freq = mean[:self.nn_in_features // 2]
+            mean_block = mean[self.nn_in_features // 2:]
+            cov_freq = cov[:self.nn_in_features // 2, :self.nn_in_features // 2]
+            cov_block = cov[self.nn_in_features // 2:, self.nn_in_features // 2:]
+            freq_noise = generate_sample_from_mean_and_covariance(mean_freq, cov_freq, batch_size)
+            block_noise = generate_sample_from_mean_and_covariance(mean_block, cov_block, batch_size)
+            return torch.cat([freq_noise, block_noise], dim=-1).to(device)
         else:
             raise ValueError('Unknown noise type')
 

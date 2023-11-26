@@ -3,9 +3,12 @@ from tqdm import tqdm
 
 import matplotlib.pyplot as plt
 import numpy as np
+from statsmodels.stats.correlation_tools import cov_nearest
+from sklearn.decomposition import PCA
 import torch
 import torch.nn as nn
 from torch.distributions.normal import Normal
+from torch.distributions.multivariate_normal import MultivariateNormal
 from torch.distributions.kl import kl_divergence
 
 from torch_utils import torch_total_polarization_loss
@@ -461,9 +464,9 @@ def train_vae(
         loss = criterion(x_hat, x)
         total_reconstruction_loss += torch.mean(loss).item()
 
-        # k1_loss = kl_divergence_loss(freq_dist).mean() + kl_divergence_loss(block_dist).mean()
-        # total_kl_loss += k1_loss.item()
-        # loss += .01 * k1_loss
+        k1_loss = kl_divergence_loss(freq_dist).mean() + kl_divergence_loss(block_dist).mean()
+        total_kl_loss += k1_loss.item()
+        loss += .01 * k1_loss
 
         if edge_loss:
             e_loss = edge_diff(x_hat, x, criterion, edge_width=8)
@@ -677,6 +680,10 @@ def train_gan(
     generator_optimizer: torch.optim.Optimizer,
     discriminator_optimizer: torch.optim.Optimizer,
     init_distribution: t.Optional[t.Tuple[torch.Tensor, torch.Tensor]] = None,
+    cov_matrix: t.Optional[torch.Tensor] = None,
+    training_switch_loss_ratio: float = 1.5,
+    start_training_mode: str = 'discriminator',
+    data_label: t.Optional[int] = None,
 ):
     
     criterion = nn.BCEWithLogitsLoss()
@@ -689,23 +696,31 @@ def train_gan(
 
     total_generator_loss = 0
     total_discriminator_loss = 0
+    generator_loss = torch.tensor(0.)
+
+    training_mode = start_training_mode
+    generator.eval()
+    generator.requires_grad_(False)
 
     print(f'Epoch: {epoch}')
-    for (x, _), _ in tqdm(train_loader, 'Training model'):
+    for (x, y), _ in tqdm(train_loader, 'Training model'):
         x = x.to(device)
         discriminator_optimizer.zero_grad()
-        # if epoch < 5:
-        #     discriminator.nn.requires_grad_(False)
-        # else:
-        #     discriminator.nn.requires_grad_(True)
 
-        if init_distribution is not None:
+        if init_distribution is not None and cov_matrix is not None:
+            z = generator.get_noise(x.shape[0], device, noise_type='covariance', mean=init_distribution[0], covariance=cov_matrix)
+        elif init_distribution is not None:
             z = generator.get_noise(x.shape[0], device, noise_type='custom', mean=init_distribution[0], std=init_distribution[1])
         else:
             z = generator.get_noise(x.shape[0], device, noise_type='hybrid')
         x_hat = generator(z)
 
-        real_prediction = discriminator(x)
+        x = x if data_label is None else x[(y == data_label).squeeze()]
+        if x.shape[0] > 1:
+            real_prediction = discriminator(x) 
+        else:
+            real_prediction = torch.tensor(1.)
+
         fake_prediction = discriminator(x_hat.detach())
 
         real_loss = criterion(real_prediction, torch.ones_like(real_prediction))
@@ -714,26 +729,39 @@ def train_gan(
 
         total_discriminator_loss += discriminator_loss.item()
 
-        discriminator_loss.backward(retain_graph=True)
-        discriminator_optimizer.step()
+        if generator_loss.item() > training_switch_loss_ratio * discriminator_loss.item():
+            generator.train()
+            generator.requires_grad_(True)
+            training_mode = 'generator'
 
+        if training_mode == 'discriminator':
+            discriminator_loss.backward(retain_graph=True)
+            discriminator_optimizer.step()
+            generator.eval()
+            generator.requires_grad_(False)
+    
         generator_optimizer.zero_grad()
-        # if epoch < 5:
-        #     generator.nn.requires_grad_(False)
-        # else:
-        #     generator.nn.requires_grad_(True)
 
-        if init_distribution is not None:
-            z2 = generator.get_noise(x.shape[0], device, noise_type='custom', mean=init_distribution[0], std=init_distribution[1])
+        if init_distribution is not None and cov_matrix is not None:
+            z2 = generator.get_noise(y.shape[0], device, noise_type='covariance', mean=init_distribution[0], covariance=cov_matrix)
+        elif init_distribution is not None:
+            z2 = generator.get_noise(y.shape[0], device, noise_type='custom', mean=init_distribution[0], std=init_distribution[1])
         else:
-            z2 = generator.get_noise(x.shape[0], device, noise_type='hybrid')
+            z2 = generator.get_noise(y.shape[0], device, noise_type='hybrid')
         x_hat2 = generator(z2)
         fake_prediction2 = discriminator(x_hat2)
         generator_loss = criterion(fake_prediction2, torch.ones_like(fake_prediction2))
         total_generator_loss += generator_loss.item()
+        
+        if discriminator_loss.item() > training_switch_loss_ratio * generator_loss.item():
+            generator.eval()
+            generator.requires_grad_(False)
+            training_mode = 'discriminator'
 
-        generator_loss.backward()
-        generator_optimizer.step()
+        if training_mode == 'generator':
+            generator_loss.backward()
+            generator_optimizer.step()
+
 
     total_generator_loss /= len(train_loader)
     total_discriminator_loss /= len(train_loader)
@@ -741,8 +769,21 @@ def train_gan(
     print(f'Generator Loss: {total_generator_loss}')
     print(f'Discriminator Loss: {total_discriminator_loss}\n')
 
-    return total_generator_loss, total_discriminator_loss
+    return total_generator_loss, total_discriminator_loss, training_mode
 
+
+def calculate_classifier_distance(
+    x1: np.array,
+    x2: np.array,
+    model: nn.Module,
+):
+    x1 = torch.from_numpy(x1)
+    x2 = torch.from_numpy(x2)
+    x1 = x1.unsqueeze(0).float()
+    x2 = x2.unsqueeze(0).float()
+    z1 = model(x1)
+    z2 = model(x2)
+    return torch.linalg.norm(z1 - z2).item()
 
 def calculate_latent_space_distribution(
     encoder: nn.Module,
@@ -757,34 +798,73 @@ def calculate_latent_space_distribution(
     (x, _), _ = next(iter(data_loader))
     x = x.to(device)
     z: torch.Tensor = encoder(x)
-    latent_space_shape = z.shape[1]
 
     # calculate latent space distribution (mean and std)
-    latent_space_mean = torch.zeros(latent_space_shape).to(device)
-    total_num_samples = 0
+    population = []
     for (x, y), _ in tqdm(data_loader, 'Calculating latent space mean'):
         x = x.to(device)
         if label is not None:
             y = y.to(device).squeeze()
             x = x[y == label]
         if x.shape[0] > 0:
-            total_num_samples += x.shape[0]
             z = encoder(x)
-            latent_space_mean += z.sum(dim=0)
+            population.append(z)
+    population = torch.cat(population, dim=0)
+    # space_dim = population.shape[1]
+    # covariance_matrix_freq = torch.cov(population.T[:space_dim//2])
+    # covariance_matrix_block = torch.cov(population.T[space_dim//2:])
+    covariance_matrix = torch.cov(population.T)
+    mean = torch.mean(population, dim=0)
+    std = torch.std(population, dim=0)
 
-    latent_space_mean /= total_num_samples
+    return mean, std, covariance_matrix
 
-    latent_space_std = torch.zeros(latent_space_shape).to(device)
-    for (x, y), _ in tqdm(data_loader, 'Calculating latent space std'):
+
+def calculate_pca(
+    encoder_model: nn.Module,
+    test_loader: torch.utils.data.DataLoader, 
+    device: torch.device, 
+    label: t.Optional[int] = None,
+    n_components: int = 2,
+):
+    encoder_model.to(device)
+    encoder_model.eval()
+
+    z_list = []
+    y_list = []
+
+    for (x, y), _ in tqdm(test_loader, "Testing dim-red"):
         x = x.to(device)
-        if label is not None:
-            y = y.to(device).squeeze()
-            x = x[y == label]
-        if x.shape[0] > 0:
-            z = encoder(x)
-            latent_space_std += ((z - latent_space_mean)**2).sum(dim=0)
+        z = encoder_model(x).detach().cpu().numpy()
+        # if label is not None:
+        #     y = y.to(device).squeeze()
+        #     z = z[y == label]
+        #     y = y[y == label]
+        z_list.append(z)
+        y_list.append(y.detach().cpu().numpy())
 
-    latent_space_std /= total_num_samples
-    latent_space_std = torch.sqrt(latent_space_std)
+    z = np.concatenate(z_list, axis=0)
+    y = np.concatenate(y_list, axis=0)
+    if label is not None:
+        z2 = z[y.squeeze() == label]
 
-    return latent_space_mean, latent_space_std
+    pca = PCA(n_components=n_components)
+    pca.fit(z)
+    pca_z2 = pca.transform(z2)
+    return pca, pca_z2, z2
+
+
+def get_near_psd(A):
+    C = (A + A.T)/2
+    eigval, eigvec = np.linalg.eig(C)
+    eigval[eigval < 0] = 0
+    return eigvec.dot(np.diag(eigval)).dot(eigvec.T)
+
+
+def is_pos_semidef(x):
+    return np.all(np.linalg.eigvals(x) >= 0)
+
+
+def generate_sample_from_mean_and_covariance(mean: torch.Tensor, covariance_matrix: torch.Tensor, batch_size: int = 1):
+    mvn = MultivariateNormal(mean, covariance_matrix)
+    return mvn.sample((batch_size,))

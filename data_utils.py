@@ -130,6 +130,69 @@ class HamiltionianDataset(Dataset):
         else:
             raise ValueError("Wrong format")
         return torch.from_numpy(data).type(torch.complex64)
+    
+
+class HamiltionianParamsDataset(Dataset):
+    def __init__(
+        self,
+        data_dir: str,
+        data_limit: t.Optional[int] = None,
+        label_key: t.Union[str, t.List[str]] = 'increase_potential_at_edges',
+        threshold: float = 1.e-5,
+        format: str = 'numpy',
+        **kwargs,
+    ):
+        dic_path = os.path.join(data_dir, PARAMS_DICTIONARY_NAME)
+        self.dictionary = self.load_dict(dic_path)
+        self.data_dir = data_dir
+        self.data_limit = data_limit
+        self.label_key = label_key
+        self.threshold = threshold
+        self.format = format
+
+    def __len__(self) -> int:
+        if self.data_limit != None:
+            return self.data_limit
+        else:
+            return len(self.dictionary)
+
+    def __getitem__(self, idx: t.Union[int, torch.Tensor]) -> t.Tuple[torch.Tensor, torch.Tensor]:
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        tensor = self.load_data(MATRICES_DIR_NAME, idx, self.format)
+        tensor = torch.stack((tensor.real, tensor.imag), dim=0)
+        label = self.parse_label(idx)
+        return (tensor, label), torch.zeros((1, tensor.shape[1]))
+
+    def load_dict(self, filepath: str) -> t.List[t.List[str]]:
+        with open(filepath, 'r') as dictionary:
+            data = dictionary.readlines()
+        parsed_data = [row.rstrip("\n").split(', ', maxsplit=1) for row in data]
+        return parsed_data
+    
+    def load_data(self, dir: str, idx: int, format: str) -> torch.Tensor:
+        if format == 'numpy':
+            data_path = os.path.join(self.data_dir, dir, self.dictionary[idx][0] + '.npy')
+            data = np.load(data_path)
+        elif format == 'csr':
+            data_path = os.path.join(self.data_dir, dir, self.dictionary[idx][0] + '.npz')
+            data = sparse.load_npz(data_path)
+            data = data.toarray()
+        else:
+            raise ValueError("Wrong format")
+        return torch.from_numpy(data).type(torch.complex64)
+    
+    def parse_label(self, idx: int) -> torch.Tensor:
+        if type(self.label_key) == str:
+            label = json.loads(self.dictionary[idx][1])[self.label_key]
+        elif type(self.label_key) == list:
+            label = 1.
+            for key in self.label_key:
+                label *= abs(json.loads(self.dictionary[idx][1])[key])
+        else:
+            raise ValueError("Wrong label_key type")
+        return torch.tensor(label)
 
   
 def generate_data(
@@ -140,7 +203,8 @@ def generate_data(
     format: str = 'numpy',
 ):
     for i, params in tqdm(enumerate(param_list), 'Generating data'):
-        filename = 'data_' + str(i)
+        idx = i + 1000000
+        filename = 'data_' + str(idx)
         model = hamiltionian(**params)
         matrix = model.get_hamiltonian()
         try:

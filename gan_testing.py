@@ -4,13 +4,13 @@ import numpy as np
 
 from helical_ladder import SpinLadder, DEFAULT_PARAMS
 from majorana_utils import plot_eigvals
-from models_files import load_gan_from_positional_autoencoder, load_positional_autoencoder
+from models_files import load_gan_from_positional_autoencoder, load_positional_autoencoder, load_covariance_matrix, load_latent_distribution
 from models_plots import plot_test_matrices, plot_test_eigvals, plot_matrix
 
 
 # Paths
-gan_dir = './gan/spin_ladder/70_2_RedDistSimplePeriodicPG/100/GAN_fft_tf_mlp_ae_frozen'
-autoencoder_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG/100/twice_pretrained_positional_autoencoder_fft_tf'
+gan_dir = './gan/spin_ladder/70_2_RedDistSimplePeriodicPG/100/GAN_fft_tf_class_mvn_noise_edge_potential_0_dynamic_switch'
+# autoencoder_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG/100/twice_pretrained_positional_autoencoder_fft_tf'
 test_dir_name = 'tests_ep{}'
 
 eigvals_gan_plot_name = 'eigvals_spectre_generator_{}.png'
@@ -23,9 +23,8 @@ hamiltonian_ref_plot_name = 'hamiltonian{}.png'
 
 random_hamiltonian_gan_plot_name = 'rand_hamiltonian{}.png'
 
-
-gan_epoch = 8
-auto_epoch = 22
+gan_epoch = 12
+# auto_epoch = 22
 
 
 # Data params
@@ -65,6 +64,9 @@ hamiltonian_diff_path = os.path.join(test_sub_path, hamiltonain_diff_plot_name)
 hamiltonian_ref_path = os.path.join(test_sub_path, hamiltonian_ref_plot_name)
 random_hamiltonian_gan_path = os.path.join(test_sub_path, random_hamiltonian_gan_plot_name)
 
+mean, std = load_latent_distribution(gan_dir)
+cov_matrix = load_covariance_matrix(gan_dir)
+
 # encoder, decoder = load_positional_autoencoder(autoencoder_dir, auto_epoch)
 generator, discriminator = load_gan_from_positional_autoencoder(gan_dir, gan_epoch)
 
@@ -74,7 +76,7 @@ generator, discriminator = load_gan_from_positional_autoencoder(gan_dir, gan_epo
 # Generate and plot random matrix from GAN
 for i in range(10):
     generator.eval()
-    z = generator.get_noise(1, device='cpu')
+    z = generator.get_noise(1, device='cpu', noise_type='covariance', mean=mean, covariance=cov_matrix)
     # matrix = generator(z).detach().numpy()[0]
     matrix = generator.nn(z).detach().numpy()[0]
     plot_matrix(matrix[0], random_hamiltonian_gan_path.format(f'{i}_real'))

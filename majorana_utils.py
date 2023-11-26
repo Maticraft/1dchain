@@ -7,9 +7,23 @@ import matplotlib.pyplot as plt
 from data_utils import Hamiltonian
 
 
-def count_mzm_states(H: np.ndarray, threshold = 1.e-5):
+def count_mzm_states(H: np.ndarray, threshold: float = 1.e-5):
     eigvals = np.linalg.eigvalsh(H)
     return np.sum(np.abs(eigvals) < threshold)
+
+
+def calculate_gap(H: np.ndarray):
+    eigvals = np.linalg.eigvalsh(H)
+    negative_eigvals = eigvals[eigvals < 0]
+    positive_eigvals = eigvals[eigvals > 0]
+    return np.min(positive_eigvals) - np.max(negative_eigvals)
+
+
+def calculate_mzm_main_bands_gap(H: np.ndarray, mzm_threshold: float = 1.e-5):
+    eigvals = np.linalg.eigvalsh(H)
+    mzms = eigvals[np.abs(eigvals) < mzm_threshold]
+    not_mzms = eigvals[np.abs(eigvals) >= mzm_threshold]
+    return np.min(np.abs(not_mzms)) - np.max(np.abs(mzms))
 
 
 def majorana_polarization(
