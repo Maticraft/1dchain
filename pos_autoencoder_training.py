@@ -125,7 +125,7 @@ decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=params['lr'])
 save_data_list(['Epoch', 'Train loss', 'Train edge loss', 'Train eigenvalues loss', 'Train eigenstates loss', 'Train diag loss', 'Test loss', 'Test edge loss', 'Test eigevalues loss', 'Test eigenstates loss', 'Test diag loss'], loss_path, mode='w')
 
 for epoch in range(1, params['epochs'] + 1):
-    tr_loss, tr_edge_loss, tr_ev_loss, tr_eig_loss, tr_diag_loss = train_autoencoder(
+    tr_loss, tr_edge_loss, tr_ev_loss, tr_eig_loss, tr_diag_loss, _ = train_autoencoder(
         encoder,
         decoder,
         train_loader,
@@ -144,7 +144,7 @@ for epoch in range(1, params['epochs'] + 1):
         log_scaled_loss=params['log_scaled_loss'],
         gt_eigvals=params['gt_eigvals']
     )
-    te_loss, te_edge_loss, te_ev_loss, te_eig_loss, te_diag_loss = test_autoencoder(
+    te_loss, te_edge_loss, te_ev_loss, te_eig_loss, te_diag_loss, _ = test_autoencoder(
         encoder,
         decoder,
         test_loader,
