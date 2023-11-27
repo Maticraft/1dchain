@@ -33,7 +33,7 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'gt_eigvals_positional_autoencoder_fft_tf_v4'
+model_name = 'pos_encoder_hamiltonian_generator_tf'
 
 # Params
 params = {
@@ -54,7 +54,7 @@ params = {
     'diag_loss': True,
     'diag_loss_weight': 0.01,
     'log_scaled_loss': False,
-    'gt_eigvals': True
+    'gt_eigvals': False
 }
 
 # Architecture
@@ -72,7 +72,7 @@ encoder_params = {
 
 
 decoder_params = {
-    'kernel_num': 64,
+    # 'kernel_num': 64,
     'activation': 'leaky_relu',
     'freq_dec_depth': 4,
     'freq_dec_hidden_size': 128,
@@ -111,7 +111,8 @@ train_loader = DataLoader(train_data, params['batch_size'])
 test_loader = DataLoader(test_data, params['batch_size'])
 
 encoder = PositionalEncoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
-decoder = EigvalsPositionalDecoder(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
+# decoder = EigvalsPositionalDecoder(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
+decoder = HamiltonianGenerator(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
 
 print(encoder)
 print(decoder)

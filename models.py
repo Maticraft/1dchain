@@ -944,7 +944,7 @@ class HamiltonianGenerator(nn.Module):
         self.freq_dec_hidden_size = kwargs.get('freq_dec_hidden_size', 128)
 
         self.block_dec_depth = kwargs.get('block_dec_depth', 4)
-        self.block_dec_hidden_size = kwargs.get('block_enc_hidden_size', 128)
+        self.block_dec_hidden_size = kwargs.get('block_dec_hidden_size', 128)
 
         self.seq_dec_depth = kwargs.get('seq_dec_depth', 4)
         self.seq_dec_hidden_size = kwargs.get('seq_dec_hidden_size', 128)
@@ -969,7 +969,7 @@ class HamiltonianGenerator(nn.Module):
         self.tf_seq_decoder_layer = nn.TransformerEncoderLayer(d_model=self.seq_num, nhead=2, dim_feedforward=128, batch_first=True)
         self.tf_seq_decoder = nn.TransformerEncoder(self.tf_seq_decoder_layer, num_layers=1)
 
-        self.lin_mixer = nn.Conv2d(3*self.seq_num, self.seq_num, kernel_size=1, stride=1)
+        self.lin_mixer = nn.Conv2d(2*self.seq_num + 1, self.seq_num, kernel_size=1, stride=1)
 
 
     def _initialize_block_pairs(self):
@@ -1044,10 +1044,10 @@ class HamiltonianGenerator(nn.Module):
 
     def forward(self, x: torch.Tensor):
         block = self.naive_block_decoder(x[:, self.freq_dim:]).unsqueeze(0)
-        block_expand = block.expand(self.strip_len, -1, -1).permute((1, 2, 0)).unsqueeze(2)
+        block_expand = block.expand(self.N, -1, -1).permute((1, 2, 0)).unsqueeze(2)
 
         freq = self.freq_decoder(x[:, :self.freq_dim])
-        freq_seq = torch.stack([self._periodic_func(self.freq_seq_constructor[i](freq), i) for i in range(self.kernel_num)], dim=-1)
+        freq_seq = torch.stack([self._periodic_func(self.freq_seq_constructor[i](freq), i) for i in range(self.seq_num)], dim=-1)
 
         tf_input = freq_seq * block_expand.squeeze(2).transpose(1, 2)
         seq = self.tf_seq_decoder(tf_input)
