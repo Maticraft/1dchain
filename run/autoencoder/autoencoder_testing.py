@@ -2,15 +2,15 @@ import os
 
 import numpy as np
 
-from helical_ladder import SpinLadder, DEFAULT_PARAMS
-from majorana_utils import plot_eigvals
-from models_files import load_autoencoder, load_positional_autoencoder
-from models_plots import plot_test_matrices, plot_test_eigvals
+from src.hamiltonian.helical_ladder import SpinLadder, DEFAULT_PARAMS
+from src.majorana_utils import plot_eigvals
+from src.models.files import load_autoencoder, load_positional_autoencoder
+from src.plots import plot_test_matrices, plot_test_eigvals
 
 
 # Paths
-autoencoder_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGDisorder/100/twice_pretrained_positional_autoencoder_fft_tf'
-test_dir_name = 'tests_ep{}'
+autoencoder_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG/100/twice_pretrained_positional_autoencoder_fft_tf'
+test_dir_name = 'tests_ep{}_v2'
 
 eigvals_auto_plot_name = 'eigvals_spectre_autoencoder_{}.png'
 eigvals_diff_plot_name = 'eigvals_spectre_diff_{}.png'
@@ -20,7 +20,7 @@ hamiltonian_auto_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff.png'
 hamiltonian_ref_plot_name = 'hamiltonian{}.png'
 
-epoch = 17
+epoch = 22
 
 
 # Data params
@@ -31,7 +31,7 @@ params['potential_before'] = 10
 params['potential_after'] = 60
 params['potential'] = 5
 params['periodic'] = True
-params['use_disorder'] = True
+params['use_disorder'] = False
 params['disorder_potential'] = 5
 params['disorder_positions'] = [{'i': 10, 'j': 0}, {'i': 30, 'j': 0}, {'i': 30, 'j': 1}, {'i': 50, 'j': 1}]
 

@@ -5,11 +5,12 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from simpleML_training import MODEL_NAME, MODEL_SAVE_DIR
-from data_utils import Hamiltonian, generate_data
-from majorana_utils import count_mzm_states, majorana_polarization, plot_eigvals, plot_eigvec, plot_majorana_polarization
+from run.simpleML_training import MODEL_NAME, MODEL_SAVE_DIR
+from src.data_utils import Hamiltonian, generate_data
+from src.majorana_utils import count_mzm_states, majorana_polarization, calculate_gap, calculate_mzm_main_bands_gap, plot_eigvals, plot_eigvec, plot_majorana_polarization
 
 DEFAULT_PARAMS = {'N': 70, 'M': 2, 'delta': 0.3, 'mu': 0.9, 'J': 1., 'delta_q': np.pi, 't': 1}
+MZM_THRESHOLD = 0.05
 
 
 class SpinLadder(Hamiltonian):
@@ -144,15 +145,21 @@ class SpinLadder(Hamiltonian):
 
     
     def get_label(self):
-        mp = majorana_polarization(self.H, threshold=0.05, axis='y', site='all')
+        mp = majorana_polarization(self.H, threshold=MZM_THRESHOLD, axis='y', site='all')
         values = list(mp.values())
         mp_y_sum_left = sum(values[:len(values)//2])
         mp_y_sum_right = sum(values[len(values)//2:])
-        mp_tot = majorana_polarization(self.H, threshold=0.05, axis='total', site='all')
+        mp_tot = majorana_polarization(self.H, threshold=MZM_THRESHOLD, axis='total', site='all')
         values_tot = list(mp_tot.values())
         mp_tot_sum_left = sum(values_tot[:len(values_tot)//2])
         mp_tot_sum_right = sum(values_tot[len(values_tot)//2:])
-        return f"{mp_tot_sum_left}, {mp_tot_sum_right}, {mp_y_sum_left}, {mp_y_sum_right}, {count_mzm_states(self.H, threshold=0.05)}"
+        band_gap = calculate_gap(self.H)
+        num_mzm = count_mzm_states(self.H, threshold=MZM_THRESHOLD)
+        if num_mzm > 0:
+            mzm_gap = calculate_mzm_main_bands_gap(self.H, mzm_threshold=MZM_THRESHOLD)
+        else:
+            mzm_gap = 0
+        return f"{mp_tot_sum_left}, {mp_tot_sum_right}, {mp_y_sum_left}, {mp_y_sum_right}, {num_mzm}, {band_gap}, {mzm_gap}"
 
 
 
@@ -230,43 +237,83 @@ def generate_params(N, M, N_samples, periodic=False, use_disorder=False, increas
 
     return params
 
-def generate_zm_params(N, M, N_samples, MLpredictor = None):
-    params = []
-    i = 0
-    while(len(params) < N_samples):
-        delta = np.random.normal(1.8, 1)
-        q = np.random.choice(np.array([np.random.normal(1.8, 0.5), np.random.normal(4.3, 0.5)]))
-        mu = np.random.normal(1.8, 1)
-        J = np.random.normal(1.8, 1)
-        delta_q = np.random.choice(np.array([np.random.normal(0.2, 0.5), np.random.normal(5.9, 0.5)]))
-        t = np.random.normal(1, 0.5)
-        theta = np.pi / 2
-        if MLpredictor is not None:
-            X = [{'N':N, 'M':M, 'delta':delta, 'q':q, 'mu':mu, 'J':J, 'delta_q':delta_q, 't':t,  'theta':theta}]
-            X = pd.DataFrame(X)
-            Y = MLpredictor.predict(X)[0]
-        else:
-            ladder = SpinLadder(N, M, mu, delta, J, q, delta_q, t, S,  theta=theta)
-            num_zm = count_mzm_states(ladder.H, threshold=1.e-5)
-            Y = num_zm > 0
-        if Y:
-            i += 1
-            if i % 100 == 0:
-                print(f'{i} zero modes generated')
-            params.append(
-                {
-                    'N': N,
-                    'M': M,
-                    'delta': delta,
-                    'q': q,
-                    'mu': mu,
-                    'J': J,
-                    'delta_q': delta_q,
-                    't': t,
-                    'theta': theta
-                }
-            )
-    return params
+def generate_bal_zm_params(N, M, N_samples, MLpredictor = None, periodic=False, use_disorder=False, increase_potential_at_edges=False):
+    all_params = []
+    num_mzms = 0
+    num_not_mzms = 0
+    with tqdm(total=N_samples, desc='Generating data params') as pbar:
+        while(len(all_params) < N_samples):
+            params = generate_random_single_hamiltonian_params(M, N, periodic=periodic, use_disorder=use_disorder, increase_potential_at_edges=increase_potential_at_edges)
+            if MLpredictor is not None:
+                ml_predictor_keys = ['N', 'M', 'delta', 'q', 'mu', 'J', 'delta_q', 't', 'theta']
+                X = [params[key] for key in ml_predictor_keys]
+                X = pd.DataFrame(X)
+                Y = MLpredictor.predict(X)[0]
+            else:
+                ladder = SpinLadder(**params)
+                num_zm = count_mzm_states(ladder.H, threshold=MZM_THRESHOLD)
+                Y = num_zm > 0
+            if Y:
+                num_mzms += 1
+                all_params.append(params)
+                pbar.update(1)
+            elif num_not_mzms < N_samples // 2:
+                num_not_mzms += 1
+                all_params.append(params)
+                pbar.update(1)
+    return all_params
+
+
+def generate_random_single_hamiltonian_params(M, N, periodic=False, use_disorder=False, increase_potential_at_edges=False):
+    delta = np.random.normal(1.8, 1)
+    q = np.random.uniform(0, 2*np.pi)
+    mu = np.random.normal(1.8, 1)
+    J = np.random.normal(1.8, 1)
+    delta_q = np.random.uniform(0, 2*np.pi)
+    t = np.random.normal(1, 0.5)
+    theta = np.pi / 2
+
+    if use_disorder:
+        use_disorder_potential = np.random.choice([True, False])
+        V_dis = np.random.normal(2, 2)
+        num_gates = np.random.randint(1, 10)
+        V_pos_i = np.random.randint(0, N*M, size= num_gates)
+    else:
+        use_disorder_potential = False
+        V_dis = 0
+        V_pos_i = []
+
+    if increase_potential_at_edges:
+        use_edge_potential = np.random.choice([True, False])
+        Vs = np.random.normal(5, 5)
+        before_site = np.random.randint(0, N//3)
+        after_site = np.random.randint(2*N//3, N)
+    else:
+        use_edge_potential = False
+        Vs = 0
+        before_site = 0
+        after_site = N
+
+    return {
+        'N': N,
+        'M': M,
+        'delta': delta,
+        'q': q,
+        'mu': mu,
+        'J': J,
+        'delta_q': delta_q,
+        't': t,
+        'theta': theta,
+        'periodic': int(periodic),
+        'use_disorder': int(use_disorder_potential),
+        'disorder_potential': V_dis,
+        'disorder_positions': [{'i': int(pos // M), 'j': int(pos % M)} for pos in V_pos_i],
+        'increase_potential_at_edges': int(use_edge_potential),
+        'potential': Vs,
+        'potential_before': int(before_site),
+        'potential_after': int(after_site)
+    }
+
 
 if __name__ == '__main__':
     N = 70
@@ -278,10 +325,10 @@ if __name__ == '__main__':
     # generate_param_data(N, M, N_samples, './data/spin_ladder/spin_ladder_70_2_red_dist.csv')
     
     # ML_predictor = pickle.load(open(os.path.join(MODEL_SAVE_DIR, MODEL_NAME + '.pkl'), 'rb'))
-    # params = generate_zm_params(N, M, N_samples // 2, ML_predictor) + generate_params(N, M, N_samples // 2)
-    params = generate_params(N, M, N_samples, periodic=True, use_disorder=True, increase_potential_at_edges=True)
+    # params = generate_bal_zm_params(N, M, N_samples, periodic=True, use_disorder=False, increase_potential_at_edges=True)
+    params = generate_params(N, M, N_samples, periodic=True, use_disorder=False, increase_potential_at_edges=True)
     #generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistFixedStd', eig_decomposition=True)
-    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistSimplePeriodicPGDisorderDiv', eig_decomposition=False, format='csr')
+    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM', eig_decomposition=False, format='csr')
 
 
     # ladder = SpinLadder(**DEFAULT_PARAMS)

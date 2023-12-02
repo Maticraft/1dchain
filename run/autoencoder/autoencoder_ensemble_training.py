@@ -4,12 +4,14 @@ import numpy as np
 from torch.utils.data import random_split, DataLoader
 import torch
 
-from data_utils import HamiltionianDataset
-from helical_ladder import  DEFAULT_PARAMS, SpinLadder
-from models import EncoderEnsemble, DecoderEnsemble
-from models_utils import train_autoencoder, test_autoencoder
-from models_files import save_autoencoder_params, save_autoencoder, save_data_list
-from models_plots import plot_convergence, plot_test_eigvals
+from src.data_utils import HamiltionianDataset
+from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
+from src.models.autoencoder import test_autoencoder
+from src.models.ensemble_autoencoder import EncoderEnsemble
+from src.models.autoencoder import train_autoencoder
+from src.models.ensemble_autoencoder import DecoderEnsemble
+from src.models.files import save_autoencoder_params, save_autoencoder, save_data_list
+from src.plots import plot_convergence, plot_test_eigvals
 
 
 # Paths

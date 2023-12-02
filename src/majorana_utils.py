@@ -4,12 +4,26 @@ import typing as t
 import numpy as np
 import matplotlib.pyplot as plt
 
-from data_utils import Hamiltonian
+from src.data_utils import Hamiltonian
 
 
-def count_mzm_states(H: np.ndarray, threshold = 1.e-5):
+def count_mzm_states(H: np.ndarray, threshold: float = 1.e-5):
     eigvals = np.linalg.eigvalsh(H)
     return np.sum(np.abs(eigvals) < threshold)
+
+
+def calculate_gap(H: np.ndarray):
+    eigvals = np.linalg.eigvalsh(H)
+    negative_eigvals = eigvals[eigvals < 0]
+    positive_eigvals = eigvals[eigvals > 0]
+    return np.min(positive_eigvals) - np.max(negative_eigvals)
+
+
+def calculate_mzm_main_bands_gap(H: np.ndarray, mzm_threshold: float = 1.e-5):
+    eigvals = np.linalg.eigvalsh(H)
+    mzms = eigvals[np.abs(eigvals) < mzm_threshold]
+    not_mzms = eigvals[np.abs(eigvals) >= mzm_threshold]
+    return np.min(np.abs(not_mzms)) - np.max(np.abs(mzms))
 
 
 def majorana_polarization(
@@ -82,6 +96,28 @@ def plot_eigvals(model: t.Type[Hamiltonian], xaxis: str, xparams: t.List[t.Any],
     plt.ylabel('Energy')
     plt.savefig(filename)
     plt.close()
+
+
+def plot_eigvals_levels(
+    model: Hamiltonian,
+    save_path: str,
+    **kwargs: t.Dict[str, t.Any],
+):
+    H = model.get_hamiltonian()
+    eigvals = np.linalg.eigvalsh(H)
+    
+    if 'ylim' in kwargs:
+        plt.ylim(kwargs['ylim'])
+   
+    xrange = [0, 10]
+    for i in range(len(eigvals)):
+        plt.plot(xrange, [eigvals[i], eigvals[i]])
+
+    plt.xticks([])
+    plt.ylabel('Energy')
+    plt.savefig(save_path)
+    plt.close()
+
 
 
 def plot_eigvec(H: np.ndarray, component: int, dirpath: str, **kwargs: t.Dict[str, t.Any]):

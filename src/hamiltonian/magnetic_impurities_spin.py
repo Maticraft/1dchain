@@ -68,21 +68,22 @@ class SpinChain():
         return spin_matrix
 
 
-N = 70
-delta = 0.3
-mu = 1.5
-J = 1
+if __name__ == '__main__':
+    N = 70
+    delta = 0.3
+    mu = 1.5
+    J = 1
 
-qs = np.linspace(0, np.pi, 100)
-energies = []
+    qs = np.linspace(0, np.pi, 100)
+    energies = []
 
-for q in qs:
-    chain = SpinChain(N, mu, delta, J, q)
-    energies.append(np.linalg.eigvalsh(chain.H))
+    for q in qs:
+        chain = SpinChain(N, mu, delta, J, q)
+        energies.append(np.linalg.eigvalsh(chain.H))
 
 
-plt.ylim(-0.3, 0.3)
-plt.plot(qs/(2*np.pi), energies)
-plt.xlabel('q/2π')
-plt.ylabel('Energy')
-plt.savefig('./plots/spin_impurities/magnetic_impurities_spin.png')
+    plt.ylim(-0.3, 0.3)
+    plt.plot(qs/(2*np.pi), energies)
+    plt.xlabel('q/2π')
+    plt.ylabel('Energy')
+    plt.savefig('./plots/spin_impurities/magnetic_impurities_spin.png')
