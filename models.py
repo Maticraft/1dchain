@@ -9,10 +9,12 @@ from torch.distributions.multivariate_normal import MultivariateNormal
 from models_utils import get_edges, generate_sample_from_mean_and_covariance
 
 class Classifier(nn.Module):
-    def __init__(self, input_dim: int, output_dim: int = 1, layers: int = 2, hidden_size: int = 128):
+    def __init__(self, input_dim: int, output_dim: int = 1, layers: int = 2, hidden_size: int = 128, classifier_output_idx: int = 0):
         super(Classifier, self).__init__()
         self.mlp = self._get_mlp(layers, input_dim, hidden_size, output_dim)
         self.sigmoid = nn.Sigmoid()
+        self.classifier_output_idx = classifier_output_idx
+        self.output_dim = output_dim
 
     def _get_mlp(self, layers: int, input_dim: int, hidden_size: int, output_dim: int):
         mlp = []
@@ -25,7 +27,9 @@ class Classifier(nn.Module):
         return nn.Sequential(*mlp)
 
     def forward(self, x: torch.Tensor):
-        return self.sigmoid(self.mlp(x))
+        output = self.mlp(x)
+        output[:, self.classifier_output_idx] = self.sigmoid(output[:, self.classifier_output_idx])
+        return output
 
 
 class Decoder(nn.Module):

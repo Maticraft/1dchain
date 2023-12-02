@@ -6,18 +6,18 @@ import torch
 
 from data_utils import HamiltionianDataset
 from helical_ladder import  DEFAULT_PARAMS, SpinLadder
-from models import PositionalEncoder, PositionalDecoder, EigvalsPositionalDecoder
+from models import PositionalEncoder, PositionalDecoder, EigvalsPositionalDecoder, HamiltonianGenerator
 from models_utils import train_autoencoder, test_autoencoder
 from models_files import save_autoencoder_params, save_autoencoder, save_data_list, load_autoencoder_params, load_positional_autoencoder, load_ae_model
 from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 # Pretrained model
-pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q/100/pretrained_gt_eigvals_positional_autoencoder_fft_tf_v4'
-epoch = 30
+pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDistFixed/100/pos_encoder_hamiltonian_generator_tf'
+epoch = 24
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPG'
-save_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG'
+data_path = './data/spin_ladder/70_2_RedDist1000q_pi2delta_q'
+save_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -35,16 +35,17 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'pretrained_gt_eigvals_positional_autoencoder_fft_tf_v4'
+model_name = 'pretrained_pos_encoder_hamiltonian_generator_tf'
 
 # Load model
-encoder, decoder = load_ae_model(pretrained_model_dir, epoch, PositionalEncoder, EigvalsPositionalDecoder)
-params, encoder_params, decoder_params = load_autoencoder_params(pretrained_model_dir, PositionalEncoder, EigvalsPositionalDecoder)
+encoder, decoder = load_ae_model(pretrained_model_dir, epoch, PositionalEncoder, HamiltonianGenerator)
+params, encoder_params, decoder_params = load_autoencoder_params(pretrained_model_dir, PositionalEncoder, HamiltonianGenerator)
 
 # Modify params
 params['learning_rate'] = 1.e-5
 params['epochs'] = 40
-
+params['det_loss'] = False
+params['det_loss_weight'] = 0.
 
 # Set the root dir
 root_dir = os.path.join(save_dir, f'{params["representation_dim"]}', model_name)

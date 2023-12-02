@@ -95,18 +95,30 @@ class HamiltionianDataset(Dataset):
         else:
             eig_dec = torch.zeros((1, tensor.shape[1])), torch.zeros((tensor.shape[0], tensor.shape[1]))
 
-        if type(self.label_idx) == int:
-            label = abs(float(self.dictionary[idx][self.label_idx]))
-            label = 1. if label > self.threshold else 0.
-        elif type(self.label_idx) == tuple:
-            label = float(self.dictionary[idx][self.label_idx[0]]) * float(self.dictionary[idx][self.label_idx[1]])
-            label = 1. if label < -self.threshold else 0.
-        else:
-            raise ValueError("Wrong label_idx type")
+        label = self.get_label(idx, self.label_idx)
         label = torch.tensor(label)
-        label = label.unsqueeze(0)
 
         return (tensor, label), eig_dec
+    
+    def get_label(self, idx: int, label_idx: t.Union[int, t.Tuple, t.List]) -> t.Union[float, t.List[float]]:
+        if type(label_idx) == int:
+            label = [float(self.dictionary[idx][label_idx])]
+        elif type(label_idx) == tuple:
+            label = float(self.dictionary[idx][label_idx[0]]) * float(self.dictionary[idx][label_idx[1]])
+            label = [1. if label < -self.threshold else 0.]
+        elif type(label_idx) == list:
+            label = [self.get_label(idx, i) for i in label_idx]
+            # make list flat if it is nested
+            flat_label = []
+            for sublist in label:
+                if type(sublist) == list:
+                    flat_label.extend(sublist)
+                else:
+                    flat_label.append(sublist)
+            label = flat_label
+        else:
+            raise ValueError("Wrong label_idx type")
+        return label
 
 
     def load_dict(self, filepath: str) -> t.List[t.List[str]]:

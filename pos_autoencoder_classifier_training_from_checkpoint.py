@@ -12,12 +12,12 @@ from models_files import save_autoencoder_params, save_autoencoder, save_model, 
 from models_plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 # Pretrained model
-pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q/100/pretrained_gt_eigvals_positional_autoencoder_fft_tf_v4'
-epoch = 30
+pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG/100/twice_pretrained_positional_autoencoder_fft_tf'
+epoch = 22
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPG'
-save_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG'
+data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM'
+save_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -35,11 +35,11 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'classifier_bal_pretrained_gt_eigvals_positional_autoencoder_fft_tf_v4'
+model_name = 'multi_classifier_twice_pretrained_positional_autoencoder_fft_tf'
 
 # Load model
-encoder, decoder = load_ae_model(pretrained_model_dir, epoch, PositionalEncoder, EigvalsPositionalDecoder)
-params, encoder_params, decoder_params = load_autoencoder_params(pretrained_model_dir, PositionalEncoder, EigvalsPositionalDecoder)
+encoder, decoder = load_ae_model(pretrained_model_dir, epoch, PositionalEncoder, PositionalDecoder)
+params, encoder_params, decoder_params = load_autoencoder_params(pretrained_model_dir, PositionalEncoder, PositionalDecoder)
 
 # Modify params
 params['learning_rate'] = 1.e-5
@@ -48,9 +48,16 @@ params['diag_loss_weight'] = 0.01
 params['log_scaled_loss'] = False
 params['eigenstates_loss'] = False
 params['eigenstates_loss_weight'] = 1.
+params['eigenvalues_loss'] = False
+params['gt_eigvals'] = False
+params['eigvals_num'] = 560
 params['epochs'] = 40
+params['mzm_threshold'] = 0.02
+params['label_idx'] = [(3, 4), 5, 6, 7] # [(pol_x, pol_y), num_zm, band_gap, mzm_gap]
+params['classifier_layers'] = 2
+params['classifier_main_idx'] = 0
 
-classifier = Classifier(params['representation_dim'], 1)
+classifier = Classifier(params['representation_dim'], len(params['label_idx']), params['classifier_layers'], classifier_output_idx=params['classifier_main_idx'])
 
 # Set the root dir
 root_dir = os.path.join(save_dir, f'{params["representation_dim"]}', model_name)
@@ -70,7 +77,7 @@ if not os.path.isdir(ham_sub_path):
 
 save_autoencoder_params(params, encoder_params, decoder_params, root_dir)
 
-data = HamiltionianDataset(data_path, label_idx=(3, 4), eigvals=(params['eigenvalues_loss'] or params['gt_eigvals']), eig_decomposition=params['eigenstates_loss'], format='csr', eigvals_num=params['eigvals_num'])
+data = HamiltionianDataset(data_path, label_idx=params['label_idx'], eigvals=(params['eigenvalues_loss'] or params['gt_eigvals']), eig_decomposition=params['eigenstates_loss'], format='csr', eigvals_num=params['eigvals_num'], threshold=params['mzm_threshold'])
 
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size
@@ -88,22 +95,22 @@ encoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(encoder_optimizer
 decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(decoder_optimizer, 'min')
 classifier_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(classifier_optimizer, 'min')
 
-save_data_list(['Epoch', 'Train_classifier_loss', 'Train_ae_loss', 'Test_classifier_loss', 'Test_classifier_acc', 'Test_ae_loss', 'Test_edge_loss', 'Test_eigenstates_loss', 'Te_diag_loss'], loss_path, mode='w')
+save_data_list(['Epoch', 'Train_classifier_loss', 'Train_ae_loss', 'Test_classifier_loss', 'Test_classifier_acc', 'Test_ae_loss', 'Test_edge_loss', 'Test_eigenstates_loss', 'Te_diag_loss', 'Te_num_zm_loss', 'Te_band_gap_loss', 'Te_mzm_gap_loss'], loss_path, mode='w')
 
 for epoch in range(1, params['epochs'] + 1):
-    tr_class_loss, tr_ae_loss = train_encoder_with_classifier(encoder, decoder, classifier, train_loader, epoch, device, encoder_optimizer, decoder_optimizer, classifier_optimizer, gt_eigvals=params['gt_eigvals']
-)
+    tr_class_loss, tr_ae_loss = train_encoder_with_classifier(encoder, decoder, classifier, train_loader, epoch, device, encoder_optimizer, decoder_optimizer, classifier_optimizer, gt_eigvals=params['gt_eigvals'])
 
-    te_class_loss, te_acc, te_cm = test_encoder_with_classifier(encoder, classifier, test_loader, device)
-    te_loss, te_edge_loss, te_ev_loss, te_eig_loss, te_diag_loss, te_det_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'], eigenstates_loss=params['eigenstates_loss'], diag_loss=params['diag_loss'], gt_eigvals=params['gt_eigvals']
-)
+    te_class_loss, te_acc, te_cm, te_reg_loss = test_encoder_with_classifier(encoder, classifier, test_loader, device)
+    te_loss, te_edge_loss, te_ev_loss, te_eig_loss, te_diag_loss, te_det_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'], eigenstates_loss=params['eigenstates_loss'], diag_loss=params['diag_loss'], gt_eigvals=params['gt_eigvals'])
     classifier_scheduler.step(te_class_loss)
     encoder_scheduler.step(te_loss)
     decoder_scheduler.step(te_loss)
 
     save_autoencoder(encoder, decoder, root_dir, epoch)
     save_model(classifier, root_dir, epoch)
-    save_data_list([epoch, tr_class_loss, tr_ae_loss, te_class_loss, te_acc, te_loss, te_edge_loss, te_eig_loss, te_diag_loss], loss_path)
+    save_data_list([epoch, tr_class_loss, tr_ae_loss, te_class_loss, te_acc, te_loss, te_edge_loss, te_eig_loss, te_diag_loss, *te_reg_loss], loss_path)
+    # save_data_list([epoch, te_class_loss, te_acc, te_loss, te_edge_loss, te_eig_loss, te_diag_loss, *te_reg_loss], loss_path)
+
 
     eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))
     plot_test_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim, decoder_eigvals=params['gt_eigvals'])

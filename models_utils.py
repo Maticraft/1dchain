@@ -163,46 +163,47 @@ def test_autoencoder(
     total_diag_loss = 0
     total_det_loss = 0
 
-    for (x, _), eig_dec in tqdm(test_loader, "Testing autoencoder model"):
-        x = x.to(device)
-        if site_permutation:
-            x = site_perm(x, encoder_model.N, encoder_model.block_size)
-        z = encoder_model(x)
-        if gt_eigvals:
-            z = (z, eig_dec[0].to(device))
-        x_hat = decoder_model(z)
-        loss = criterion(x_hat, x)
-        total_loss += loss.item()
+    with torch.no_grad():
+        for (x, _), eig_dec in tqdm(test_loader, "Testing autoencoder model"):
+            x = x.to(device)
+            if site_permutation:
+                x = site_perm(x, encoder_model.N, encoder_model.block_size)
+            z = encoder_model(x)
+            if gt_eigvals:
+                z = (z, eig_dec[0].to(device))
+            x_hat = decoder_model(z)
+            loss = criterion(x_hat, x)
+            total_loss += loss.item()
 
-        if edge_loss:
-            e_loss = edge_diff(x_hat, x, criterion, edge_width=8)
-            total_edge_loss += e_loss.item()
+            if edge_loss:
+                e_loss = edge_diff(x_hat, x, criterion, edge_width=8)
+                total_edge_loss += e_loss.item()
 
-        if eigenvalues_loss:
-            assert eig_dec is not None, "Incorrect eigen decomposition values"
-            target_eigvals = eig_dec[0].to(device)
-            if isinstance(z, tuple):
-                encoded_eigvals = z[1]
-            else:
-                encoded_eigvals = torch.linalg.eigvals(z).real
-            eigvals_loss = criterion(encoded_eigvals, target_eigvals)
-            total_eigenvalues_loss += eigvals_loss.item()
+            if eigenvalues_loss:
+                assert eig_dec is not None, "Incorrect eigen decomposition values"
+                target_eigvals = eig_dec[0].to(device)
+                if isinstance(z, tuple):
+                    encoded_eigvals = z[1]
+                else:
+                    encoded_eigvals = torch.linalg.eigvals(z).real
+                eigvals_loss = criterion(encoded_eigvals, target_eigvals)
+                total_eigenvalues_loss += eigvals_loss.item()
 
-        if det_loss:
-            assert eig_dec is not None, "Incorrect eigen decomposition values"
-            target_eigvals = eig_dec[0].to(device)
-            det_loss = determinant_loss(x_hat, target_eigvals, criterion)
-            total_det_loss += det_loss.item()
+            if det_loss:
+                assert eig_dec is not None, "Incorrect eigen decomposition values"
+                target_eigvals = eig_dec[0].to(device)
+                det_loss = determinant_loss(x_hat, target_eigvals, criterion)
+                total_det_loss += det_loss.item()
 
-        if eigenstates_loss:
-            assert eig_dec is not None, "Incorrect eigen decomposition values"
-            eig_dec = eig_dec[0].to(device), eig_dec[1].to(device)
-            eig_loss = eigenvectors_loss(x_hat, eig_dec, criterion)
-            total_eigenstates_loss += eig_loss.item()
+            if eigenstates_loss:
+                assert eig_dec is not None, "Incorrect eigen decomposition values"
+                eig_dec = eig_dec[0].to(device), eig_dec[1].to(device)
+                eig_loss = eigenvectors_loss(x_hat, eig_dec, criterion)
+                total_eigenstates_loss += eig_loss.item()
 
-        if diag_loss:
-            diag_loss = diagonal_loss(x_hat, x, criterion, block_size=4)
-            total_diag_loss += diag_loss.item()
+            if diag_loss:
+                diag_loss = diagonal_loss(x_hat, x, criterion, block_size=4)
+                total_diag_loss += diag_loss.item()
 
     total_loss /= len(test_loader)
     total_edge_loss /= len(test_loader)
@@ -227,7 +228,8 @@ def test_encoder_with_classifier(
     test_loader: torch.utils.data.DataLoader, 
     device: torch.device, 
 ):
-    criterion = nn.BCELoss()
+    class_criterion = nn.BCELoss()
+    reg_criterion = nn.MSELoss(reduction='none')
 
     encoder_model.to(device)
     classifier_model.to(device)
@@ -235,30 +237,36 @@ def test_encoder_with_classifier(
     encoder_model.eval()
     classifier_model.eval()
 
-    total_loss = 0
-    conf_matrix = np.zeros((2, 2))
+    with torch.no_grad():
+        total_class_loss = 0
+        total_reg_loss = torch.zeros(classifier_model.output_dim - 1).to(device)
+        conf_matrix = np.zeros((2, 2))
 
-    for (x, y), _ in tqdm(test_loader, "Testing classifer model"):
-        x = x.to(device)
-        y = y.to(device)
-        z = encoder_model(x)
-        output = classifier_model(z)
-        loss = criterion(output, y)
-        total_loss += loss.item()
+        for (x, y), _ in tqdm(test_loader, "Testing classifer model"):
+            x = x.to(device)
+            y = y.to(device)
+            z = encoder_model(x)
+            output = classifier_model(z)
+            all_ids = torch.arange(y.shape[1])
+            not_class_ids = all_ids[all_ids != classifier_model.classifier_output_idx]
+            prediction = classifier_model(z)
+            class_loss = class_criterion(prediction[:, classifier_model.classifier_output_idx], y[:, classifier_model.classifier_output_idx])
+            reg_loss = reg_criterion(prediction[:, not_class_ids], y[:, not_class_ids])        
+            total_class_loss += class_loss.item()
+            total_reg_loss += torch.mean(reg_loss, dim=0)
 
-        prediction = torch.round(output)              
+            for i, j in zip(y[:, classifier_model.classifier_output_idx], prediction[:, classifier_model.classifier_output_idx]):
+                conf_matrix[int(i.item()), round(j.item())] += 1
 
-        for i, j in zip(y, prediction):
-            conf_matrix[int(i), int(j)] += 1
+        total_class_loss /= len(test_loader)
+        total_reg_loss /= len(test_loader)
+        sensitivity = conf_matrix[0, 0] / (conf_matrix[0, 0] + conf_matrix[0, 1])
+        specifity = conf_matrix[1, 1] / (conf_matrix[1, 0] + conf_matrix[1, 1])
+        bal_acc = 100.* (sensitivity + specifity) / 2
 
-    total_loss /= len(test_loader)
-    sensitivity = conf_matrix[0, 0] / (conf_matrix[0, 0] + conf_matrix[0, 1])
-    specifity = conf_matrix[1, 1] / (conf_matrix[1, 0] + conf_matrix[1, 1])
-    bal_acc = 100.* (sensitivity + specifity) / 2
+    print(f'Loss: {total_class_loss}, balanced accuracy: {bal_acc}')
 
-    print(f'Loss: {total_loss}, balanced accuracy: {bal_acc}')
-
-    return total_loss, bal_acc, conf_matrix
+    return total_class_loss, bal_acc, conf_matrix, total_reg_loss.cpu().tolist()
 
 
 def test_generator_with_classifier(
@@ -547,15 +555,17 @@ def train_encoder_with_classifier(
         z = encoder_model(x)
 
         # reduce the examples so that the number of examples in each class is the same
-        y_sq = y.squeeze()
-        z_reduced = torch.cat((z[y_sq == 0][:len(z[y_sq == 1])], z[y_sq == 1]))
-        y_reduced = torch.cat((y[y_sq == 0][:len(z[y_sq == 1])], y[y_sq == 1]))
-
-        prediction = classifier_model(z_reduced)
-        loss_class = class_criterion(prediction, y_reduced)
-
-        if len(z_reduced) > 0:
-            total_loss_class += loss_class.item()
+        # y_sq = y.squeeze()
+        # z_reduced = torch.cat((z[y_sq == 0][:len(z[y_sq == 1])], z[y_sq == 1]))
+        # y_reduced = torch.cat((y[y_sq == 0][:len(z[y_sq == 1])], y[y_sq == 1]))
+        all_ids = torch.arange(y.shape[1])
+        not_class_ids = all_ids[all_ids != classifier_model.classifier_output_idx]
+        prediction = classifier_model(z)
+        loss_class = class_criterion(prediction[:, classifier_model.classifier_output_idx], y[:, classifier_model.classifier_output_idx]) +\
+                    ae_criterion(prediction[:, not_class_ids], y[:, not_class_ids])
+        total_loss_class += loss_class.item()
+        # if len(z_reduced) > 0:
+        #     total_loss_class += loss_class.item()
 
         if gt_eigvals:
             z = (z, eig_dec[0].to(device))
@@ -564,7 +574,7 @@ def train_encoder_with_classifier(
 
         total_loss_ae += loss_ae.item()
 
-        loss = 0.01*loss_class + loss_ae
+        loss = 0.001*loss_class + loss_ae
         loss.backward()
         classifier_optimizer.step()
         encoder_optimizer.step()
