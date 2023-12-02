@@ -35,7 +35,7 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'multi_classifier_twice_pretrained_positional_autoencoder_fft_tf'
+model_name = 'multi_classifier_twice_pretrained_positional_autoencoder_fft_tf_loss01'
 
 # Load model
 encoder, decoder = load_ae_model(pretrained_model_dir, epoch, PositionalEncoder, PositionalDecoder)
@@ -56,6 +56,7 @@ params['mzm_threshold'] = 0.02
 params['label_idx'] = [(3, 4), 5, 6, 7] # [(pol_x, pol_y), num_zm, band_gap, mzm_gap]
 params['classifier_layers'] = 2
 params['classifier_main_idx'] = 0
+params['classifier_loss_weight'] = 0.01
 
 classifier = Classifier(params['representation_dim'], len(params['label_idx']), params['classifier_layers'], classifier_output_idx=params['classifier_main_idx'])
 
@@ -98,7 +99,7 @@ classifier_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(classifier_opt
 save_data_list(['Epoch', 'Train_classifier_loss', 'Train_ae_loss', 'Test_classifier_loss', 'Test_classifier_acc', 'Test_ae_loss', 'Test_edge_loss', 'Test_eigenstates_loss', 'Te_diag_loss', 'Te_num_zm_loss', 'Te_band_gap_loss', 'Te_mzm_gap_loss'], loss_path, mode='w')
 
 for epoch in range(1, params['epochs'] + 1):
-    tr_class_loss, tr_ae_loss = train_encoder_with_classifier(encoder, decoder, classifier, train_loader, epoch, device, encoder_optimizer, decoder_optimizer, classifier_optimizer, gt_eigvals=params['gt_eigvals'])
+    tr_class_loss, tr_ae_loss = train_encoder_with_classifier(encoder, decoder, classifier, train_loader, epoch, device, encoder_optimizer, decoder_optimizer, classifier_optimizer, gt_eigvals=params['gt_eigvals'], class_loss_weight=params['classifier_loss_weight'])
 
     te_class_loss, te_acc, te_cm, te_reg_loss = test_encoder_with_classifier(encoder, classifier, test_loader, device)
     te_loss, te_edge_loss, te_ev_loss, te_eig_loss, te_diag_loss, te_det_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'], eigenstates_loss=params['eigenstates_loss'], diag_loss=params['diag_loss'], gt_eigvals=params['gt_eigvals'])

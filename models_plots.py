@@ -89,12 +89,17 @@ def plot_tsne(
     tsne = TSNE(n_components=2, random_state=0, metric=metric, metric_params=metric_params)
     z_tsne = tsne.fit_transform(z)
 
-    plt.figure(figsize=(10, 10))
-    plt.scatter(z_tsne[:, 0], z_tsne[:, 1], c=y, vmin=0, vmax=1)
-    plt.colorbar()
-    plt.axis('off')
-    plt.savefig(file_path)
-    plt.close()
+    if len(y.shape) == 1:
+        y = y.reshape(-1, 1)
+
+    for i in range(y.shape[1]):
+        file_path_rep = file_path.replace('.png', f'_{i}.png')
+        plt.figure(figsize=(10, 10))
+        plt.scatter(z_tsne[:, 0], z_tsne[:, 1], c=y[:, i])
+        plt.colorbar()
+        plt.axis('off')
+        plt.savefig(file_path_rep)
+        plt.close()
 
 
 def plot_pca(file_path: str, z_list: t.List[np.ndarray], y_list: t.List[np.ndarray]):
@@ -105,11 +110,16 @@ def plot_pca(file_path: str, z_list: t.List[np.ndarray], y_list: t.List[np.ndarr
     z_pca = pca.fit_transform(z)
     print(pca.explained_variance_ratio_)
 
-    plt.figure(figsize=(10, 10))
-    plt.scatter(z_pca[:, 0], z_pca[:, 1], c=y, vmin=0, vmax=1)
-    plt.colorbar()
-    plt.savefig(file_path)
-    plt.close()
+    if len(y.shape) == 1:
+        y = y.reshape(-1, 1)
+
+    for i in range(len(y.shape[1])):
+        file_path_rep = file_path.replace('.png', f'_{i}.png')
+        plt.figure(figsize=(10, 10))
+        plt.scatter(z_pca[:, 0], z_pca[:, 1], c=y[:, i])
+        plt.colorbar()
+        plt.savefig(file_path_rep)
+        plt.close()
 
 
 def plot_convergence(results_path: str, save_path: str, read_label: bool = False):

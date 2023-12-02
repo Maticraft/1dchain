@@ -529,6 +529,7 @@ def train_encoder_with_classifier(
     decoder_optimizer: torch.optim.Optimizer,
     classifier_optimizer: torch.optim.Optimizer,
     gt_eigvals: bool = False,
+    class_loss_weight: float = 0.01
 ):
 
     class_criterion = nn.BCELoss()
@@ -574,7 +575,7 @@ def train_encoder_with_classifier(
 
         total_loss_ae += loss_ae.item()
 
-        loss = 0.001*loss_class + loss_ae
+        loss =class_loss_weight*loss_class + loss_ae
         loss.backward()
         classifier_optimizer.step()
         encoder_optimizer.step()
