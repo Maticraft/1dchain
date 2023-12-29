@@ -193,15 +193,72 @@ def plot_majorana_polarization(
         site_plot(P_m_summed[:, j], f'{dirpath}/polarization_summed_string_{j}.png', 'Summed over eigenvalues', 'Majorana polarization', **kwargs)
 
 
+def plot_site_matrix_elements(model: Hamiltonian, property_name: str, dirpath: str):
+    # matrix structure
+    # mu + B                   | S/2*(cos(phi)-isin(phi)) | 0                                | delta 
+    # S/2*(cos(phi)+isin(phi)) | mu -B                    | -delta                           | 0
+    # 0                        | -delta*                  | -mu -B*                          | -S/2*(cos(phi)+isin(phi))
+    # delta*                   | 0                        |  -S/2*(cos(phi)-isin(phi))       |-mu +B*
+    
+    property_to_element_ids = {
+        'potential': [(0, 0), (1, 1), (2, 2), (3, 3)],
+        'magnetic_field': [(0, 0), (1, 1), (2, 2), (3, 3)],
+        'spin': [(0, 1), (1, 0), (2, 3), (3, 2)],
+        'delta': [(0, 3), (1, 2), (2, 1), (3, 0)],
+        'interaction_i_j': [(0, 0), (1, 1), (2, 2), (3, 3)],
+        'interaction_j_i': [(0, 0), (1, 1), (2, 2), (3, 3)],
+    }
+    property_to_sign = {
+        'potential': [1, 1, -1, -1],
+        'magnetic_field': [1, -1, -1, 1],
+        'spin': [1, 1, -1, -1],
+        'delta': [1, -1, -1, 1],
+        'interaction_i_j': [1, 1, -1, -1],
+        'interaction_j_i': [1, 1, -1, -1],
+    }
+    if property_name == 'interaction_i_j':
+        site_shift = (0, 1)
+    elif property_name == 'interaction_j_i':
+        site_shift = (1, 0)
+    else:
+        site_shift = (0, 0)
+
+    site_elements = []
+    for element_ids, sign in zip(property_to_element_ids[property_name], property_to_sign[property_name]):
+        matrix_elements = extract_matrix_elements(model, element_ids, site_shift)
+        matrix_array = np.array(matrix_elements) * sign
+        site_elements.append(np.abs(matrix_array))
+    site_elements = np.stack(site_elements, axis=1)
+    site_elements_mean = np.mean(site_elements, axis=1)
+    site_elements_std = np.std(site_elements, axis=1)
+    site_plot(site_elements_mean, f'{dirpath}/{property_name}.png', f'Averaged {property_name}', f'{property_name}', errorbar=site_elements_std)
+
+
+def extract_matrix_elements(model: Hamiltonian, element_ids: t.Tuple[int, int], site_shift: t.Tuple[int, int] = (0, 0)):
+    # element ids are (row, column) of the 4 x 4 matrix
+    H = model.get_hamiltonian()
+    sites_num = H.shape[0] // 4
+    matrix_elements = [
+        H[(4*(site_id + site_shift[0]) + element_ids[0]) % H.shape[0], (4*(site_id + site_shift[1]) + element_ids[1]) % H.shape[1]]
+        for site_id in range(sites_num)
+    ]
+    return matrix_elements
+
+
 def site_plot(values: np.ndarray, filename: str, title: str, ylabel: str, **kwargs: t.Dict[str, t.Any]):
     if 'ylim' in kwargs:
         plt.ylim(kwargs['ylim'])
     if 'xlim' in kwargs:
         plt.xlim(kwargs['xlim'])
 
-    plt.plot(values)
+    if 'errorbar' in kwargs:
+        plt.errorbar(range(len(values)), values, yerr=kwargs['errorbar'], ecolor='red')
+    else:
+        plt.plot(values)
     plt.title(title)
     plt.xlabel('Site')
     plt.ylabel(ylabel)
     plt.savefig(filename)
     plt.close()
+
+

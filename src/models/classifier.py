@@ -4,6 +4,38 @@ import torch.nn as nn
 from tqdm import tqdm
 
 
+class MultiClassifier(nn.Module):
+    def __init__(self, input_dim: int, output_dim: int = 1, layers: int = 2, hidden_size: int = 128, classifier_output_idx: int = 0):
+        super(MultiClassifier, self).__init__()
+        assert input_dim % 2 == 0, f'Input dimension must be even, got {input_dim}'
+        self.mlps = nn.ModuleList([self._get_mlp(layers, input_dim, hidden_size, 1) for _ in range(output_dim)])
+        self.sigmoid = nn.Sigmoid()
+        self.classifier_output_idx = classifier_output_idx
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+
+    def _get_mlp(self, layers: int, input_dim: int, hidden_size: int, output_dim: int):
+        mlp = []
+        mlp.append(nn.Linear(input_dim, hidden_size))
+        mlp.append(nn.ReLU())
+        for i in range(layers - 1):
+            mlp.append(nn.Linear(hidden_size, hidden_size))
+            mlp.append(nn.ReLU())
+        mlp.append(nn.Linear(hidden_size, output_dim))
+        return nn.Sequential(*mlp)
+
+    def forward(self, x: torch.Tensor):
+        x_freq = x[:, :x.shape[1]//2][:, :(self.input_dim * self.output_dim) // 2]
+        x_block = x[:, x.shape[1]//2:][:, :(self.input_dim * self.output_dim) // 2]
+        # split x into separate parts for each output
+        xs_freq = torch.split(x_freq, self.input_dim // 2, dim=1)
+        xs_block = torch.split(x_block, self.input_dim // 2, dim=1)
+        xs = [torch.cat((x1, x2), dim=1) for x1, x2 in zip(xs_freq, xs_block)]
+        output = torch.cat([mlp(x) for mlp, x in zip(self.mlps, xs)], dim=1)
+        output[:, self.classifier_output_idx] = self.sigmoid(output[:, self.classifier_output_idx])
+        return output
+
+
 class Classifier(nn.Module):
     def __init__(self, input_dim: int, output_dim: int = 1, layers: int = 2, hidden_size: int = 128, classifier_output_idx: int = 0):
         super(Classifier, self).__init__()

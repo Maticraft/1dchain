@@ -148,6 +148,8 @@ def calculate_latent_space_distribution(
     data_loader: torch.utils.data.DataLoader,
     device: torch.device,
     label: t.Optional[int] = None,
+    label_idx: t.Optional[int] = None,
+    latent_space_ids: t.Optional[t.List[int]] = None,
 ):
     encoder.to(device)
     encoder.eval()
@@ -156,11 +158,13 @@ def calculate_latent_space_distribution(
     population = []
     for (x, y), _ in tqdm(data_loader, 'Calculating latent space mean'):
         x = x.to(device)
-        if label is not None:
-            y = y.to(device).squeeze()
+        if label is not None and label_idx is not None:
+            y = y.to(device)[:, label_idx]
             x = x[y == label]
         if x.shape[0] > 0:
             z = encoder(x)
+            if latent_space_ids is not None:
+                z = z[:, latent_space_ids]
             population.append(z)
     population = torch.cat(population, dim=0)
     # space_dim = population.shape[1]

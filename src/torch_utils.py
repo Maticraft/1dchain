@@ -4,7 +4,7 @@ import torch
 import numpy as np
 
 from src.data_utils import Hamiltonian
-from src.majorana_utils import count_mzm_states, majorana_polarization
+from src.hamiltonian.utils import count_mzm_states, majorana_polarization
 
 
 class TorchHamiltonian(Hamiltonian):

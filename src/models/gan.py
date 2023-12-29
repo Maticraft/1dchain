@@ -35,7 +35,7 @@ class Discriminator(nn.Module):
 
 
 class Generator(nn.Module):
-    def __init__(self, model_class: t.Type[nn.Module], **model_config: t.Dict[str, t.Any]):
+    def __init__(self, model_class: t.Type[nn.Module], model_config: t.Dict[str, t.Any]):
         super(Generator, self).__init__()
         self.nn_in_features = model_config['representation_dim'] if isinstance(model_config['representation_dim'], int) else int(sum(model_config['representation_dim']))
         self.nn = model_class(**model_config)

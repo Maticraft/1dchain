@@ -3,11 +3,12 @@ from tqdm import tqdm
 import numpy as np
 
 from src.data_utils import HamiltionianDataset
-from src.majorana_utils import plot_majorana_polarization, plot_eigvals_levels
+from src.hamiltonian.utils import plot_majorana_polarization, plot_eigvals_levels
 from src.models.gan import Generator
 from src.models.files import load_generator, load_latent_distribution, load_autoencoder_params, get_full_model_config, load_gan_submodel_state_dict, load_covariance_matrix, load_positional_autoencoder
 from src.plots import plot_generator_eigvals, plot_matrix
 from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
+from src.models.hamiltonian_generator import HamiltonianGenerator
 from src.torch_utils import TorchHamiltonian
 from src.models.utils import calculate_pca
 
@@ -16,18 +17,17 @@ from torch.distributions.multivariate_normal import MultivariateNormal
 from torch.utils.data import DataLoader
 
 
-
 # Model params
-ae_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG/100/classifier_bal_twice_pretrained_positional_autoencoder_fft_tf'
-test_dir_name = 'generation_majoranas_015_ep{}'
-latent_distrib_dir = 'tests_majoranas_015_latent_pca_ep{}'
+ae_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM/100/multi_classifier_twice_pretrained_pos_encoder_hamiltonian_generator_tf'
+test_dir_name = 'generation_majoranas_ep{}'
+latent_distrib_dir = 'tests_latent_majoranas_ep{}'
 polarization_sub_dir = 'polarization_{}'
-gen_epoch = 4
+gen_epoch = 12
 
 eigvals_gen_plot_name = 'eigvals_spectre_generator_{}.png'
 hamiltonian_plot_name = 'hamiltonian_{}.png'
 
-data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPG'
+data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM'
 batch_size = 128
 
 
@@ -47,7 +47,7 @@ if not os.path.isdir(test_sub_path):
 params, encoder_params, decoder_params = load_autoencoder_params(ae_dir, PositionalEncoder, PositionalDecoder)
 generator_config = get_full_model_config(params, decoder_params)
 generator_config['skip_noise_converter'] = True
-generator = Generator(PositionalDecoder, **generator_config)
+generator = Generator(HamiltonianGenerator, **generator_config)
 load_gan_submodel_state_dict(ae_dir, gen_epoch, generator)
 
 latent_space_sub_path = os.path.join(ae_dir, latent_distrib_dir.format(gen_epoch))

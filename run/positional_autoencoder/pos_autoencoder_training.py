@@ -36,7 +36,7 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'pos_encoder_hamiltonian_generator_tf'
+model_name = 'pos_encoder_hamiltonian_generator_reduced_tf'
 
 # Params
 params = {
@@ -83,6 +83,7 @@ decoder_params = {
     'block_dec_hidden_size': 128,
     'seq_dec_depth': 4,
     'seq_dec_hidden_size': 128,
+    'reduce_blocks': True,
 }
 
 

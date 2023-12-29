@@ -7,6 +7,7 @@ import torch
 from src.data_utils import HamiltionianDataset
 from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from src.models.gan import Generator
+from src.models.hamiltonian_generator import HamiltonianGenerator
 from src.models.gan import train_gan
 from src.models.files import save_gan_params, save_gan, save_data_list, get_full_model_config, load_gan_submodel_state_dict, load_model, load_latent_distribution, save_latent_distribution, load_covariance_matrix, save_covariance_matrix
 from src.models.gan import Discriminator
@@ -14,15 +15,15 @@ from src.plots import plot_convergence, plot_test_matrices, plot_test_eigvals, p
 from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPG'
-save_dir = './gan/spin_ladder/70_2_RedDistSimplePeriodicPG'
+data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM'
+save_dir = './gan/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
-distribution_dir_name = 'tests_majoranas_ep{}'
+distribution_dir_name = 'tests_latent_ep{}'
 
 # Load state from pretrained autoencoder
-original_autoencoder_path = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG/100/classifier_bal_twice_pretrained_positional_autoencoder_fft_tf'
-original_autoencoder_epoch = 4
+original_autoencoder_path = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM/100/twice_pretrained_pos_encoder_hamiltonian_generator_tf'
+original_autoencoder_epoch = 22
 distribution_path = os.path.join(original_autoencoder_path, distribution_dir_name.format(original_autoencoder_epoch))
 
 
@@ -40,7 +41,7 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # Model name
-model_name = 'GAN_fft_tf_class_mvn_noise_majoranas_015_dynamic_switch_no_noise_converter'
+model_name = 'Hamiltonian_GAN_fft_tf_dynamic_switch_no_noise_converter'
 
 # Params
 params = {
@@ -79,9 +80,8 @@ discriminator_params = {
     'lr': 1.e-6,
 }
 
-
 generator_params = {
-    "kernel_num": 64,
+    # "kernel_num": 64,
     "activation": "leaky_relu",
     "freq_dec_depth": 4,
     "freq_dec_hidden_size": 128,
@@ -123,7 +123,7 @@ train_loader = DataLoader(train_data, params['batch_size'])
 test_loader = DataLoader(test_data, params['batch_size'])
 
 generator_config = get_full_model_config(params, generator_params)
-generator = Generator(PositionalDecoder, **generator_config)
+generator = Generator(HamiltonianGenerator, **generator_config)
 load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, generator)
 
 discriminator_config = get_full_model_config(params, discriminator_params)

@@ -5,17 +5,18 @@ from torch.utils.data import random_split, DataLoader
 import torch
 
 from src.models.autoencoder import test_autoencoder, train_autoencoder
-from src.models.classifier import Classifier, test_encoder_with_classifier
+from src.models.classifier import Classifier, MultiClassifier, test_encoder_with_classifier
 from src.data_utils import HamiltionianDataset
 from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from src.models.eigvals_autoencoder import EigvalsPositionalDecoder
 from src.models.classifier import train_encoder_with_classifier
+from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
+from src.models.hamiltonian_generator import HamiltonianGenerator
 from src.models.files import save_autoencoder_params, save_autoencoder, save_model, save_data_list, load_autoencoder_params, load_positional_autoencoder, load_ae_model
 from src.plots import plot_convergence, plot_test_matrices, plot_test_eigvals
-from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
 
 # Pretrained model
-pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPG/100/twice_pretrained_positional_autoencoder_fft_tf'
+pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM/100/twice_pretrained_pos_encoder_hamiltonian_generator_tf'
 epoch = 22
 
 # Paths
@@ -38,11 +39,11 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'multi_classifier_twice_pretrained_positional_autoencoder_fft_tf_loss01'
+model_name = 'separate_shallow_multi_classifier_twice_pretrained_pos_encoder_hamiltonian_generator_tf'
 
 # Load model
-encoder, decoder = load_ae_model(pretrained_model_dir, epoch, PositionalEncoder, PositionalDecoder)
-params, encoder_params, decoder_params = load_autoencoder_params(pretrained_model_dir, PositionalEncoder, PositionalDecoder)
+encoder, decoder = load_ae_model(pretrained_model_dir, epoch, PositionalEncoder, HamiltonianGenerator)
+params, encoder_params, decoder_params = load_autoencoder_params(pretrained_model_dir, PositionalEncoder, HamiltonianGenerator)
 
 # Modify params
 params['learning_rate'] = 1.e-5
@@ -57,11 +58,12 @@ params['eigvals_num'] = 560
 params['epochs'] = 40
 params['mzm_threshold'] = 0.02
 params['label_idx'] = [(3, 4), 5, 6, 7] # [(pol_x, pol_y), num_zm, band_gap, mzm_gap]
-params['classifier_layers'] = 2
+params['classifier_layers'] = 1
 params['classifier_main_idx'] = 0
-params['classifier_loss_weight'] = 0.01
+params['classifier_loss_weight'] = 0.1
+params['classifier_input_dim'] = 20 #params['representation_dim']
 
-classifier = Classifier(params['representation_dim'], len(params['label_idx']), params['classifier_layers'], classifier_output_idx=params['classifier_main_idx'])
+classifier = MultiClassifier(params['classifier_input_dim'], len(params['label_idx']), params['classifier_layers'], classifier_output_idx=params['classifier_main_idx'])
 
 # Set the root dir
 root_dir = os.path.join(save_dir, f'{params["representation_dim"]}', model_name)

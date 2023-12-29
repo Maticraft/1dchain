@@ -22,6 +22,7 @@ def plot_dim_red_freq_block(
     strategy: str = 'tsne',
     tsne_metric: t.Union[str, t.Callable] = 'euclidean',
     tsne_metric_params: t.Optional[t.Dict[str, t.Any]] = None,
+    latent_space_ids: t.Optional[t.List[int]] = None,
 ):
     encoder_model.to(device)
     encoder_model.eval()
@@ -33,6 +34,8 @@ def plot_dim_red_freq_block(
     for (x, y), _ in tqdm(test_loader, "Testing dim-red"):
         x = x.to(device)
         z = encoder_model(x).detach().cpu().numpy()
+        if latent_space_ids is not None:
+            z = z[:, latent_space_ids]
         z1_list.append(z[:, :z.shape[1] // 2])
         z2_list.append(z[:, z.shape[1] // 2:])
         y_list.append(y.detach().cpu().numpy())
@@ -55,6 +58,7 @@ def plot_dim_red_full_space(
     strategy: str = 'tsne',
     tsne_metric: t.Union[str, t.Callable] = 'euclidean',
     tsne_metric_params: t.Optional[t.Dict[str, t.Any]] = None,
+    latent_space_ids: t.Optional[t.List[int]] = None,
 ):
     encoder_model.to(device)
     encoder_model.eval()
@@ -65,6 +69,8 @@ def plot_dim_red_full_space(
     for (x, y), _ in tqdm(test_loader, "Testing dim-red"):
         x = x.to(device)
         z = encoder_model(x).detach().cpu().numpy()
+        if latent_space_ids is not None:
+            z = z[:, latent_space_ids]
         z_list.append(z)
         y_list.append(y.detach().cpu().numpy())
 

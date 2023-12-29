@@ -5,7 +5,7 @@ import os
 import torch
 import torch.nn as nn
 from src.models.autoencoder import Decoder, Encoder
-from src.models.classifier import Classifier
+from src.models.classifier import Classifier, MultiClassifier
 
 from src.models.hamiltonian_generator import HamiltonianGenerator
 from src.models.eigvals_autoencoder import EigvalsPositionalDecoder, EigvalsPositionalEncoder
@@ -37,6 +37,7 @@ DELIMITER = '  '
 
 MODEL_TO_NAMES = {
     Classifier: (CLASSIFIER_PARAMS_NAME, CLASSIFIER_NAME, CLASSIFIER_DIR),
+    MultiClassifier: (CLASSIFIER_PARAMS_NAME, CLASSIFIER_NAME, CLASSIFIER_DIR),
     Decoder: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
     DecoderEnsemble: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
     Encoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),

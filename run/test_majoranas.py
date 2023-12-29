@@ -1,6 +1,6 @@
 import numpy as np
 from src.hamiltonian.helical_ladder import DEFAULT_PARAMS, SpinLadder
-from src.majorana_utils import plot_eigvals, plot_majorana_polarization
+from src.hamiltonian.utils import plot_eigvals, plot_majorana_polarization
 
 params = DEFAULT_PARAMS.copy()
 params['q'] = np.pi

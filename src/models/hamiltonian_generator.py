@@ -33,8 +33,16 @@ class HamiltonianGenerator(nn.Module):
 
         self.blocks, self.block_pairs = self._initialize_block_pairs()
         self.block_pair_idx_map = self._initialize_block_pair_idx_map()
+        self.reduced_block_pairs = self.block_pairs
+        if kwargs.get('reduce_blocks', False):
+            self.reduced_block_pairs = [
+                self.block_pairs[self.block_pair_idx_map['yy']],
+                self.block_pairs[self.block_pair_idx_map['z1']],
+                self.block_pairs[self.block_pair_idx_map['zx']],
+                self.block_pairs[self.block_pair_idx_map['zy']],
+            ]
 
-        self.seq_num = 2*len(self.block_pairs) + self.channel_num - 2
+        self.seq_num = 2*len(self.reduced_block_pairs) + self.channel_num - 2
 
         self.freq_decoder = self._get_mlp(self.freq_dec_depth, self.freq_dim, self.freq_dec_hidden_size, self.freq_dec_hidden_size)
         self.freq_seq_constructor = nn.ModuleList([
@@ -142,7 +150,8 @@ class HamiltonianGenerator(nn.Module):
         on_site_block_seq = block_seq[:, self.channel_num - 2:]
 
         H_interaction = torch.stack([self._interaction_block_generator(interaction_block_seq[:, i]) for i in range(self.channel_num - 2)], dim=1)
-        H_on_site = torch.stack([self._on_site_block_generator(on_site_block_seq[:, :16]), self._on_site_block_generator(on_site_block_seq[:, 16:])], dim=1)
+        num_blocks = len(self.reduced_block_pairs)
+        H_on_site = torch.stack([self._on_site_block_generator(on_site_block_seq[:, :num_blocks]), self._on_site_block_generator(on_site_block_seq[:, num_blocks:])], dim=1)
         strips = torch.cat([H_interaction[:, :(self.channel_num // 2 - 1)], H_on_site, H_interaction[:, (self.channel_num // 2 - 1):]], dim=1)
         matrix = self._get_matrix_from_strips(strips)
         return matrix
@@ -160,8 +169,8 @@ class HamiltonianGenerator(nn.Module):
         '''
         assumes param_vec.shape = (batch_size, 16, seq_size)
         '''
-        assert param_vec.shape[1] == 16
-        all_blocks = torch.stack([self._block_generator(param_vec[:, i, :], self.blocks[pair[0]], self.blocks[pair[1]]) for i, pair in enumerate(self.block_pairs)], dim=1)
+        assert param_vec.shape[1] == len(self.reduced_block_pairs)
+        all_blocks = torch.stack([self._block_generator(param_vec[:, i, :], self.blocks[pair[0]], self.blocks[pair[1]]) for i, pair in enumerate(self.reduced_block_pairs)], dim=1)
         return torch.sum(all_blocks, dim=1)
 
 
