@@ -39,10 +39,12 @@ class HamiltonianGenerator(nn.Module):
                 self.block_pairs[self.block_pair_idx_map['yy']],
                 self.block_pairs[self.block_pair_idx_map['z1']],
                 self.block_pairs[self.block_pair_idx_map['zx']],
-                self.block_pairs[self.block_pair_idx_map['zy']],
+                self.block_pairs[self.block_pair_idx_map['1y']],
             ]
 
         self.seq_num = 2*len(self.reduced_block_pairs) + self.channel_num - 2
+        if kwargs.get('seq_num', None) is not None:
+            self.seq_num = kwargs.get('seq_num')
 
         self.freq_decoder = self._get_mlp(self.freq_dec_depth, self.freq_dim, self.freq_dec_hidden_size, self.freq_dec_hidden_size)
         self.freq_seq_constructor = nn.ModuleList([
@@ -57,7 +59,8 @@ class HamiltonianGenerator(nn.Module):
         self.tf_seq_decoder_layer = nn.TransformerEncoderLayer(d_model=self.seq_num, nhead=2, dim_feedforward=128, batch_first=True)
         self.tf_seq_decoder = nn.TransformerEncoder(self.tf_seq_decoder_layer, num_layers=1)
 
-        self.lin_mixer = nn.Conv2d(2*self.seq_num + 1, self.seq_num, kernel_size=1, stride=1)
+        output_channels_num = 2*len(self.reduced_block_pairs) + self.channel_num - 2
+        self.lin_mixer = nn.Conv2d(2*self.seq_num + 1, output_channels_num, kernel_size=1, stride=1)
 
 
     def _initialize_block_pairs(self):
@@ -161,13 +164,13 @@ class HamiltonianGenerator(nn.Module):
         '''
         assumes t.shape = (batch_size, seq_size)
         '''
-        zz_pair = self.block_pairs[self.block_pair_idx_map['z1']]
-        return self._block_generator(t, self.blocks[zz_pair[0]], self.blocks[zz_pair[1]])
+        z1_pair = self.block_pairs[self.block_pair_idx_map['z1']]
+        return self._block_generator(t, self.blocks[z1_pair[0]], self.blocks[z1_pair[1]])
 
 
     def _on_site_block_generator(self, param_vec: torch.Tensor):
         '''
-        assumes param_vec.shape = (batch_size, 16, seq_size)
+        assumes param_vec.shape = (batch_size, blocks_num, seq_size)
         '''
         assert param_vec.shape[1] == len(self.reduced_block_pairs)
         all_blocks = torch.stack([self._block_generator(param_vec[:, i, :], self.blocks[pair[0]], self.blocks[pair[1]]) for i, pair in enumerate(self.reduced_block_pairs)], dim=1)
@@ -180,6 +183,8 @@ class HamiltonianGenerator(nn.Module):
           x.shape = (batch_size, seq_size)
           block_a.shape = (2, 2)
           block_b.shape = (2, 2)
+        returns:
+          torch.Tensor of shape (batch_size, 4, 4, seq_size)
         '''
         x_broadcast = x.unsqueeze(-1).unsqueeze(-1)
         block = torch.kron(block_a.to(x.device), block_b.to(x.device))
@@ -203,3 +208,63 @@ class HamiltonianGenerator(nn.Module):
                 else:
                     matrix[:, :, idx0 + matrix_off: idx1 + matrix_off, idx0: idx1] = strip[:, :, :, idx0 + strip_off: idx1 + strip_off]
         return matrix
+    
+
+class HamiltonianGeneratorV2(HamiltonianGenerator):
+    def __init__(self, representation_dim: t.Union[int, t.Tuple[int, int]], output_size: t.Tuple[int, int, int], **kwargs: t.Dict[str, t.Any]):
+        super().__init__(representation_dim, output_size, **kwargs)
+        num_on_site_varying_params = 2
+        num_site_varying_params = num_on_site_varying_params + self.channel_num - 2
+        self.varying_block_mixer = nn.Conv1d(self.seq_num + 1, num_site_varying_params, kernel_size=1, stride=1)
+        num_site_constant_params = 2
+        self.constant_block_mixer = nn.Conv1d(self.seq_num, num_site_constant_params, kernel_size=1, stride=1)
+
+    def forward(self, x: torch.Tensor):
+        block = self.naive_block_decoder(x[:, self.freq_dim:]).unsqueeze(0)
+        block_expand = block.expand(self.N, -1, -1).transpose(0, 1) # site constant blocks
+
+        freq = self.freq_decoder(x[:, :self.freq_dim])
+        freq_seq = torch.stack([self._periodic_func(self.freq_seq_constructor[i](freq), i) for i in range(self.seq_num)], dim=-1)
+
+        tf_input = freq_seq * block_expand
+        seq = self.tf_seq_decoder(tf_input)
+        seq = seq.transpose(1, 2) #.unsqueeze(2)
+
+        naive_seq = self.naive_seq_decoder(x).unsqueeze(1) #.unsqueeze(1)
+
+        block_seq = torch.cat([seq, naive_seq], dim=1)
+        block_seq = self.varying_block_mixer(block_seq) # site varying blocks
+
+        interaction_block_seq = block_seq[:, :self.channel_num - 2]
+        on_site_block_seq = block_seq[:, self.channel_num - 2:]
+
+        block_expand = block_expand.transpose(1, 2)
+        constant_blocks = self.constant_block_mixer(block_expand)
+
+        H_interaction = torch.stack([self._interaction_block_generator(interaction_block_seq[:, i]) for i in range(self.channel_num - 2)], dim=1)
+        real_blocks = self._on_site_real_block_generator(on_site_block_seq, constant_blocks)
+        imaginary_blocks = self._on_site_imag_block_generator(on_site_block_seq, constant_blocks)
+
+        H_on_site = torch.stack([real_blocks, imaginary_blocks], dim=1)
+        strips = torch.cat([H_interaction[:, :(self.channel_num // 2 - 1)], H_on_site, H_interaction[:, (self.channel_num // 2 - 1):]], dim=1)
+        matrix = self._get_matrix_from_strips(strips)
+        return matrix
+    
+
+    def _on_site_real_block_generator(self, varying_blocks: torch.Tensor, constant_blocks: torch.Tensor):
+        z1_pair = self.block_pairs[self.block_pair_idx_map['z1']] # for chemical potential
+        zx_pair = self.block_pairs[self.block_pair_idx_map['zx']] # for spin real part
+        yy_pair = self.block_pairs[self.block_pair_idx_map['yy']] # for superconductivity
+
+        chemical_potential_block = self._block_generator(constant_blocks[:, 0, :], self.blocks[z1_pair[0]], self.blocks[z1_pair[1]])
+        delta_block = self._block_generator(constant_blocks[:, 1, :], self.blocks[yy_pair[0]], self.blocks[yy_pair[1]])
+        spin_block = self._block_generator(varying_blocks[:, 0, :], self.blocks[zx_pair[0]], self.blocks[zx_pair[1]])
+
+        all_blocks = torch.stack([chemical_potential_block, delta_block, spin_block], dim=1)
+        return torch.sum(all_blocks, dim=1)
+    
+
+    def _on_site_imag_block_generator(self, varying_blocks: torch.Tensor, constant_blocks: torch.Tensor):
+        zy_pair = self.block_pairs[self.block_pair_idx_map['1y']] # for spin imaginary part
+        spin_block = self._block_generator(varying_blocks[:, 1, :], self.blocks[zy_pair[0]], self.blocks[zy_pair[1]])
+        return spin_block

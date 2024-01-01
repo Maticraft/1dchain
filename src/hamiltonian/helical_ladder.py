@@ -111,7 +111,7 @@ class SpinLadder(Hamiltonian):
         spin_block = self._get_spin_matrix(theta, phi, S, B)
 
         block[0:2, 0:2] += spin_block
-        block[2:4, 2:4] += -spin_block.T
+        block[2:4, 2:4] += -spin_block.T # not sure about transpose (seems ok after verification)
 
         return block
 

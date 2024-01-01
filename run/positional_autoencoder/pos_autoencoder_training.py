@@ -6,7 +6,7 @@ import torch
 
 from src.data_utils import HamiltionianDataset
 from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
-from src.models.hamiltonian_generator import HamiltonianGenerator
+from src.models.hamiltonian_generator import HamiltonianGenerator, HamiltonianGeneratorV2
 from src.models.autoencoder import train_autoencoder
 from src.models.autoencoder import Decoder, Encoder, test_autoencoder
 from src.models.eigvals_autoencoder import EigvalsPositionalDecoder, EigvalsPositionalEncoder
@@ -36,7 +36,7 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'pos_encoder_hamiltonian_generator_reduced_tf'
+model_name = 'pos_encoder_hamiltonian_generator_v2_tf'
 
 # Params
 params = {
@@ -83,7 +83,8 @@ decoder_params = {
     'block_dec_hidden_size': 128,
     'seq_dec_depth': 4,
     'seq_dec_hidden_size': 128,
-    'reduce_blocks': True,
+    'reduce_blocks': False,
+    'seq_num': 32,
 }
 
 
@@ -116,7 +117,7 @@ test_loader = DataLoader(test_data, params['batch_size'])
 
 encoder = PositionalEncoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
 # decoder = EigvalsPositionalDecoder(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
-decoder = HamiltonianGenerator(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
+decoder = HamiltonianGeneratorV2(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
 
 print(encoder)
 print(decoder)

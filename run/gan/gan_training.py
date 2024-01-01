@@ -7,7 +7,7 @@ import torch
 from src.data_utils import HamiltionianDataset
 from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from src.models.gan import Generator
-from src.models.hamiltonian_generator import HamiltonianGenerator
+from src.models.hamiltonian_generator import HamiltonianGenerator, HamiltonianGeneratorV2
 from src.models.gan import train_gan
 from src.models.files import save_gan_params, save_gan, save_data_list, get_full_model_config, load_gan_submodel_state_dict, load_model, load_latent_distribution, save_latent_distribution, load_covariance_matrix, save_covariance_matrix
 from src.models.gan import Discriminator
@@ -41,7 +41,7 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # Model name
-model_name = 'Hamiltonian_GAN_fft_tf_dynamic_switch_no_noise_converter'
+model_name = 'Hamiltonian_GAN_V2_fft_tf_dynamic_switch_no_noise_converter'
 
 # Params
 params = {
@@ -91,7 +91,9 @@ generator_params = {
     "seq_dec_hidden_size": 128,
     'lr': 1.e-5,
     'skip_noise_converter': True,
-    'training_switch_loss_ratio': 1.2
+    'training_switch_loss_ratio': 1.2,
+    'reduce_blocks': False,
+    'seq_num': 32,
 }
 
 
@@ -123,8 +125,8 @@ train_loader = DataLoader(train_data, params['batch_size'])
 test_loader = DataLoader(test_data, params['batch_size'])
 
 generator_config = get_full_model_config(params, generator_params)
-generator = Generator(HamiltonianGenerator, **generator_config)
-load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, generator)
+generator = Generator(HamiltonianGeneratorV2, generator_config)
+# load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, generator)
 
 discriminator_config = get_full_model_config(params, discriminator_params)
 discriminator = Discriminator(PositionalEncoder, discriminator_config)

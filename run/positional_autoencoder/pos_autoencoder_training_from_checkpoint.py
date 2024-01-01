@@ -10,7 +10,7 @@ import torch
 from src.data_utils import HamiltionianDataset
 from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from src.models.autoencoder import test_autoencoder
-from src.models.hamiltonian_generator import HamiltonianGenerator
+from src.models.hamiltonian_generator import HamiltonianGeneratorV2, HamiltonianGenerator
 from src.models.autoencoder import train_autoencoder
 from src.models.eigvals_autoencoder import EigvalsPositionalDecoder
 from src.models.files import save_autoencoder_params, save_autoencoder, save_data_list, load_autoencoder_params, load_positional_autoencoder, load_ae_model
@@ -18,12 +18,12 @@ from src.plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
 
 # Pretrained model
-pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q/100/pretrained_pos_encoder_hamiltonian_generator_tf'
-epoch = 10
+pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDistFixed/100/pos_encoder_hamiltonian_generator_v2_tf'
+epoch = 21
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM'
-save_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM'
+data_path = './data/spin_ladder/70_2_RedDist1000q_pi2delta_q'
+save_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -41,11 +41,11 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'twice_pretrained_pos_encoder_hamiltonian_generator_tf'
+model_name = 'pretrained_pos_encoder_hamiltonian_generator_v2_tf'
 
 # Load model
-encoder, decoder = load_ae_model(pretrained_model_dir, epoch, PositionalEncoder, HamiltonianGenerator)
-params, encoder_params, decoder_params = load_autoencoder_params(pretrained_model_dir, PositionalEncoder, HamiltonianGenerator)
+encoder, decoder = load_ae_model(pretrained_model_dir, epoch, PositionalEncoder, HamiltonianGeneratorV2)
+params, encoder_params, decoder_params = load_autoencoder_params(pretrained_model_dir, PositionalEncoder, HamiltonianGeneratorV2)
 
 # Modify params
 params['learning_rate'] = 1.e-5

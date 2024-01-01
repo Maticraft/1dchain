@@ -7,7 +7,7 @@ import torch.nn as nn
 from src.models.autoencoder import Decoder, Encoder
 from src.models.classifier import Classifier, MultiClassifier
 
-from src.models.hamiltonian_generator import HamiltonianGenerator
+from src.models.hamiltonian_generator import HamiltonianGenerator, HamiltonianGeneratorV2
 from src.models.eigvals_autoencoder import EigvalsPositionalDecoder, EigvalsPositionalEncoder
 from src.models.ensemble_autoencoder import DecoderEnsemble, EncoderEnsemble
 from src.models.gan import Discriminator, Generator
@@ -50,6 +50,7 @@ MODEL_TO_NAMES = {
     EigvalsPositionalEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),
     EigvalsPositionalDecoder: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
     HamiltonianGenerator: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
+    HamiltonianGeneratorV2: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
 }
 
 def load_autoencoder(root_dir: str, epoch: int) -> t.Tuple[Encoder, Decoder]:
