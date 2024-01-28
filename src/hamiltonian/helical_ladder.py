@@ -7,10 +7,10 @@ from tqdm import tqdm
 
 from run.simpleML_training import MODEL_NAME, MODEL_SAVE_DIR
 from src.data_utils import Hamiltonian, generate_data
-from src.hamiltonian.utils import count_mzm_states, majorana_polarization, calculate_gap, calculate_mzm_main_bands_gap, plot_eigvals, plot_eigvec, plot_majorana_polarization
+from src.hamiltonian.utils import count_mzm_states, majorana_polarization, calculate_gap, calculate_mzm_main_bands_gap, are_majoranas_in_hamiltonian
 
 DEFAULT_PARAMS = {'N': 70, 'M': 2, 'delta': 0.3, 'mu': 0.9, 'J': 1., 'delta_q': np.pi, 't': 1}
-MZM_THRESHOLD = 0.05
+MZM_THRESHOLD = 0.02
 
 
 class SpinLadder(Hamiltonian):
@@ -237,7 +237,7 @@ def generate_params(N, M, N_samples, periodic=False, use_disorder=False, increas
 
     return params
 
-def generate_bal_zm_params(N, M, N_samples, MLpredictor = None, periodic=False, use_disorder=False, increase_potential_at_edges=False):
+def generate_bal_zm_params(N, M, N_samples, MLpredictor = None, periodic=False, use_disorder=False, increase_potential_at_edges=False, max_nmzm_ratio=0.5):
     all_params = []
     num_mzms = 0
     num_not_mzms = 0
@@ -251,13 +251,12 @@ def generate_bal_zm_params(N, M, N_samples, MLpredictor = None, periodic=False, 
                 Y = MLpredictor.predict(X)[0]
             else:
                 ladder = SpinLadder(**params)
-                num_zm = count_mzm_states(ladder.H, threshold=MZM_THRESHOLD)
-                Y = num_zm > 0
+                Y = are_majoranas_in_hamiltonian(ladder.H, zm_threshold=MZM_THRESHOLD, gap_ratio_threshold=0.1)
             if Y:
                 num_mzms += 1
                 all_params.append(params)
                 pbar.update(1)
-            elif num_not_mzms < N_samples // 2:
+            elif num_not_mzms < max_nmzm_ratio * N_samples:
                 num_not_mzms += 1
                 all_params.append(params)
                 pbar.update(1)
@@ -319,19 +318,15 @@ if __name__ == '__main__':
     N = 70
     M = 2
 
-    N_samples = 1000000
+    N_samples = 100000
     N_qs = 100
 
     # generate_param_data(N, M, N_samples, './data/spin_ladder/spin_ladder_70_2_red_dist.csv')
     
     # ML_predictor = pickle.load(open(os.path.join(MODEL_SAVE_DIR, MODEL_NAME + '.pkl'), 'rb'))
-    # params = generate_bal_zm_params(N, M, N_samples, periodic=True, use_disorder=False, increase_potential_at_edges=True)
-    params = generate_params(N, M, N_samples, periodic=True, use_disorder=False, increase_potential_at_edges=True)
+    params = generate_bal_zm_params(N, M, N_samples, periodic=True, use_disorder=False, increase_potential_at_edges=True, max_nmzm_ratio=0.)
+    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistSimplePeriodicPGOnlyMajoranas', eig_decomposition=False, format='csr')
+
+    # params = generate_params(N, M, N_samples, periodic=True, use_disorder=False, increase_potential_at_edges=True)
     #generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistFixedStd', eig_decomposition=True)
-    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM', eig_decomposition=False, format='csr')
-
-
-    # ladder = SpinLadder(**DEFAULT_PARAMS)
-    # plot_majorana_polarization(ladder, './plots/spin_ladder/polarization_total', polaxis='total', string_num=2)
-    # for c in range(4):
-    #     plot_eigvec(ladder.get_hamiltonian(), c, f'./plots/spin_ladder/eigvec_{c}', threshold=1.e-5, string_num=2)
+    # generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM', eig_decomposition=False, format='csr')

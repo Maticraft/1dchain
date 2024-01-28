@@ -39,7 +39,7 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'separate_shallow_multi_classifier_twice_pretrained_pos_encoder_hamiltonian_generator_tf'
+model_name = 'triple_label_classifier_twice_pretrained_pos_encoder_hamiltonian_generator_tf'
 
 # Load model
 encoder, decoder = load_ae_model(pretrained_model_dir, epoch, PositionalEncoder, HamiltonianGenerator)
@@ -56,14 +56,15 @@ params['eigenvalues_loss'] = False
 params['gt_eigvals'] = False
 params['eigvals_num'] = 560
 params['epochs'] = 40
-params['mzm_threshold'] = 0.02
-params['label_idx'] = [(3, 4), 5, 6, 7] # [(pol_x, pol_y), num_zm, band_gap, mzm_gap]
+params['mzm_threshold'] = 0.012
+params['label_idx'] = (3, 4, 7) #((3, 4, 7), 5, 6, 7) # [(pol_x, pol_y), num_zm, band_gap, mzm_gap]
 params['classifier_layers'] = 1
 params['classifier_main_idx'] = 0
-params['classifier_loss_weight'] = 0.1
+params['classifier_loss_weight'] = 0.05
 params['classifier_input_dim'] = 20 #params['representation_dim']
 
-classifier = MultiClassifier(params['classifier_input_dim'], len(params['label_idx']), params['classifier_layers'], classifier_output_idx=params['classifier_main_idx'])
+# classifier = MultiClassifier(params['classifier_input_dim'], len(params['label_idx']), params['classifier_layers'], classifier_output_idx=params['classifier_main_idx'])
+classifier = Classifier(params['representation_dim'], 1, params['classifier_layers'], classifier_output_idx=params['classifier_main_idx'])
 
 # Set the root dir
 root_dir = os.path.join(save_dir, f'{params["representation_dim"]}', model_name)

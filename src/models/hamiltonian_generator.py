@@ -213,11 +213,13 @@ class HamiltonianGenerator(nn.Module):
 class HamiltonianGeneratorV2(HamiltonianGenerator):
     def __init__(self, representation_dim: t.Union[int, t.Tuple[int, int]], output_size: t.Tuple[int, int, int], **kwargs: t.Dict[str, t.Any]):
         super().__init__(representation_dim, output_size, **kwargs)
-        num_on_site_varying_params = 2
+        self.varying_potential = kwargs.get('varying_potential', False)
+        num_on_site_varying_params = 3 if self.varying_potential else 2
         num_site_varying_params = num_on_site_varying_params + self.channel_num - 2
         self.varying_block_mixer = nn.Conv1d(self.seq_num + 1, num_site_varying_params, kernel_size=1, stride=1)
         num_site_constant_params = 2
         self.constant_block_mixer = nn.Conv1d(self.seq_num, num_site_constant_params, kernel_size=1, stride=1)
+        self.smoothing = kwargs.get('smoothing', False)
 
     def forward(self, x: torch.Tensor):
         block = self.naive_block_decoder(x[:, self.freq_dim:]).unsqueeze(0)
@@ -237,6 +239,8 @@ class HamiltonianGeneratorV2(HamiltonianGenerator):
 
         interaction_block_seq = block_seq[:, :self.channel_num - 2]
         on_site_block_seq = block_seq[:, self.channel_num - 2:]
+        # smooth on site blocks by calculating the average of N neighboring sites
+        on_site_block_seq = self._calculate_running_mean(on_site_block_seq) if self.smoothing else on_site_block_seq
 
         block_expand = block_expand.transpose(1, 2)
         constant_blocks = self.constant_block_mixer(block_expand)
@@ -251,12 +255,24 @@ class HamiltonianGeneratorV2(HamiltonianGenerator):
         return matrix
     
 
+    def _calculate_running_mean(self, x: torch.Tensor):
+        '''
+        x.shape = (batch_size, num_blocks, seq_size)
+        '''
+        neighbors_to_average = [x[..., list(filter(lambda k: k>=0 and k<x.shape[-1], [i-2, i, i+2, i+1-2*(i%2)]))] for i in range(x.shape[-1])]
+        x_averaged = torch.stack([torch.mean(neighbors, dim=-1) for neighbors in neighbors_to_average], dim=-1)
+        return x_averaged
+    
+
     def _on_site_real_block_generator(self, varying_blocks: torch.Tensor, constant_blocks: torch.Tensor):
         z1_pair = self.block_pairs[self.block_pair_idx_map['z1']] # for chemical potential
         zx_pair = self.block_pairs[self.block_pair_idx_map['zx']] # for spin real part
         yy_pair = self.block_pairs[self.block_pair_idx_map['yy']] # for superconductivity
 
         chemical_potential_block = self._block_generator(constant_blocks[:, 0, :], self.blocks[z1_pair[0]], self.blocks[z1_pair[1]])
+        if self.varying_potential:
+            varying_chemical_potential_block = self._block_generator(varying_blocks[:, 2, :], self.blocks[z1_pair[0]], self.blocks[z1_pair[1]])
+            chemical_potential_block += varying_chemical_potential_block
         delta_block = self._block_generator(constant_blocks[:, 1, :], self.blocks[yy_pair[0]], self.blocks[yy_pair[1]])
         spin_block = self._block_generator(varying_blocks[:, 0, :], self.blocks[zx_pair[0]], self.blocks[zx_pair[1]])
 

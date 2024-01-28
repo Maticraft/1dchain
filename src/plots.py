@@ -1,3 +1,4 @@
+import os
 import typing as t
 
 from tqdm import tqdm
@@ -8,10 +9,35 @@ import torch.nn as nn
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 
-from src.data_utils import Hamiltonian
+from src.hamiltonian.utils import plot_eigvals_levels
+from src.data_utils import Hamiltonian, HamiltionianDataset
 from src.models.gan import Generator
 from src.models.utils import get_eigvals, reconstruct_hamiltonian
 from src.models.files import DELIMITER
+from src.torch_utils import TorchHamiltonian
+
+
+def plot_dataset_samples(
+    dataset: HamiltionianDataset,
+    save_dir: str,
+    num_samples: int = 10,
+    **kwargs: t.Dict[str, t.Any],
+):
+    if num_samples > len(dataset):
+        raise ValueError(f'Number of samples ({num_samples}) is larger than the dataset size ({len(dataset)})')
+
+    indices = np.random.choice(len(dataset), size=num_samples, replace=False)
+    for i, idx in enumerate(indices):
+        (tensor, _), _ = dataset[idx]
+        save_path = os.path.join(save_dir, 'sample_{}.png')
+        H = TorchHamiltonian.from_2channel_tensor(tensor)
+        plot_eigvals_levels(H, save_path.format(i), **kwargs)
+
+        if kwargs.get('plot_reconstructed_eigvals', False):
+            assert 'encoder' in kwargs and 'decoder' in kwargs, 'Encoder and decoder must be provided for reconstruction'
+            H_rec = reconstruct_hamiltonian(H.get_hamiltonian(), **kwargs)
+            H_rec = TorchHamiltonian(torch.from_numpy(H_rec))
+            plot_eigvals_levels(H_rec, save_path.format(f'{i}_rec'), **kwargs)
 
 
 def plot_dim_red_freq_block(
@@ -59,16 +85,23 @@ def plot_dim_red_full_space(
     tsne_metric: t.Union[str, t.Callable] = 'euclidean',
     tsne_metric_params: t.Optional[t.Dict[str, t.Any]] = None,
     latent_space_ids: t.Optional[t.List[int]] = None,
+    predictor: t.Optional[nn.Module] = None,
 ):
     encoder_model.to(device)
     encoder_model.eval()
+    if predictor is not None:
+        predictor.to(device)
+        predictor.eval()
 
     z_list = []
     y_list = []
 
     for (x, y), _ in tqdm(test_loader, "Testing dim-red"):
         x = x.to(device)
-        z = encoder_model(x).detach().cpu().numpy()
+        z = encoder_model(x)
+        if predictor is not None:
+            y = predictor(z).squeeze()
+        z = z.detach().cpu().numpy()
         if latent_space_ids is not None:
             z = z[:, latent_space_ids]
         z_list.append(z)

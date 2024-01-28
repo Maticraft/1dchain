@@ -197,8 +197,9 @@ def train_encoder_with_classifier(
         all_ids = torch.arange(y.shape[1])
         not_class_ids = all_ids[all_ids != classifier_model.classifier_output_idx]
         prediction = classifier_model(z)
-        loss_class = class_criterion(prediction[:, classifier_model.classifier_output_idx], y[:, classifier_model.classifier_output_idx]) +\
-                    ae_criterion(prediction[:, not_class_ids], y[:, not_class_ids])
+        loss_class = class_criterion(prediction[:, classifier_model.classifier_output_idx], y[:, classifier_model.classifier_output_idx]) 
+        if len(not_class_ids) > 0:
+            loss_class += ae_criterion(prediction[:, not_class_ids], y[:, not_class_ids])
         total_loss_class += loss_class.item()
         # if len(z_reduced) > 0:
         #     total_loss_class += loss_class.item()

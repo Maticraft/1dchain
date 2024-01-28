@@ -15,15 +15,15 @@ from src.plots import plot_convergence, plot_test_matrices, plot_test_eigvals, p
 from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM'
-save_dir = './gan/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM'
+data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPGOnlyMajoranas'
+save_dir = './gan/spin_ladder/70_2_RedDistSimplePeriodicPGOnlyMajoranas'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
-distribution_dir_name = 'tests_latent_ep{}'
+distribution_dir_name = 'tests_latent_majoranas_ep_{}'
 
 # Load state from pretrained autoencoder
-original_autoencoder_path = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM/100/twice_pretrained_pos_encoder_hamiltonian_generator_tf'
-original_autoencoder_epoch = 22
+original_autoencoder_path = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGOnlyMajoranas/100/twice_pretrained_pos_encoder_hamiltonian_generator_v2_varying_potential_tf'
+original_autoencoder_epoch = 40
 distribution_path = os.path.join(original_autoencoder_path, distribution_dir_name.format(original_autoencoder_epoch))
 
 
@@ -41,11 +41,11 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # Model name
-model_name = 'Hamiltonian_GAN_V2_fft_tf_dynamic_switch_no_noise_converter'
+model_name = 'Majoranas_LR_Decreased_Hamiltonian_GAN_V2_varying_potential_fft_tf_dynamic_switch_no_noise_converter'
 
 # Params
 params = {
-    'epochs': 40,
+    'epochs': 200,
     'batch_size': 64,
     'N': 140,
     'in_channels': 10,
@@ -77,7 +77,7 @@ discriminator_params = {
     'block_enc_depth': 4,
     'block_enc_hidden_size': 128,
     'padding_mode': 'zeros',
-    'lr': 1.e-6,
+    'lr': 1.e-8,
 }
 
 generator_params = {
@@ -89,7 +89,9 @@ generator_params = {
     "block_dec_hidden_size": 128,
     "seq_dec_depth": 4,
     "seq_dec_hidden_size": 128,
-    'lr': 1.e-5,
+    'smoothing': False,
+    'varying_potential': True,
+    'lr': 1.e-7,
     'skip_noise_converter': True,
     'training_switch_loss_ratio': 1.2,
     'reduce_blocks': False,

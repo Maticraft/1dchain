@@ -18,11 +18,11 @@ from torch.utils.data import DataLoader
 
 
 # Model params
-ae_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM/100/multi_classifier_twice_pretrained_pos_encoder_hamiltonian_generator_tf'
-test_dir_name = 'generation_majoranas_ep{}'
-latent_distrib_dir = 'tests_latent_majoranas_ep{}'
+ae_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM/100/twice_pretrained_pos_encoder_hamiltonian_generator_tf'
+test_dir_name = 'generation_tests_ep{}'
+latent_distrib_dir = 'tests_latent_ep{}'
 polarization_sub_dir = 'polarization_{}'
-gen_epoch = 12
+gen_epoch = 22
 
 eigvals_gen_plot_name = 'eigvals_spectre_generator_{}.png'
 hamiltonian_plot_name = 'hamiltonian_{}.png'
@@ -47,7 +47,7 @@ if not os.path.isdir(test_sub_path):
 params, encoder_params, decoder_params = load_autoencoder_params(ae_dir, PositionalEncoder, PositionalDecoder)
 generator_config = get_full_model_config(params, decoder_params)
 generator_config['skip_noise_converter'] = True
-generator = Generator(HamiltonianGenerator, **generator_config)
+generator = Generator(HamiltonianGenerator, generator_config)
 load_gan_submodel_state_dict(ae_dir, gen_epoch, generator)
 
 latent_space_sub_path = os.path.join(ae_dir, latent_distrib_dir.format(gen_epoch))

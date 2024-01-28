@@ -1,4 +1,5 @@
 import abc
+from functools import reduce
 import json
 import os
 import typing as t
@@ -104,7 +105,8 @@ class HamiltionianDataset(Dataset):
         if type(label_idx) == int:
             label = [float(self.dictionary[idx][label_idx])]
         elif type(label_idx) == tuple:
-            label = float(self.dictionary[idx][label_idx[0]]) * float(self.dictionary[idx][label_idx[1]])
+            label = reduce(lambda x, y: x * y, [l for i in label_idx for l in self.get_label(idx, i)])
+            # label = float(self.dictionary[idx][label_idx[0]]) * float(self.dictionary[idx][label_idx[1]])
             label = [1. if label < -self.threshold else 0.]
         elif type(label_idx) == list:
             label = [self.get_label(idx, i) for i in label_idx]
@@ -215,7 +217,7 @@ def generate_data(
     format: str = 'numpy',
 ):
     for i, params in tqdm(enumerate(param_list), 'Generating data'):
-        idx = i + 1000000
+        idx = i
         filename = 'data_' + str(idx)
         model = hamiltionian(**params)
         matrix = model.get_hamiltonian()

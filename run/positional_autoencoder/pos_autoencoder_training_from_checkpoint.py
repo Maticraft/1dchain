@@ -18,12 +18,12 @@ from src.plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
 
 # Pretrained model
-pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDistFixed/100/pos_encoder_hamiltonian_generator_v2_tf'
-epoch = 21
+pretrained_model_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGBalancedZM/100/twice_pretrained_pos_encoder_hamiltonian_generator_v2_varying_potential_tf'
+epoch = 9
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDist1000q_pi2delta_q'
-save_dir = './autoencoder/spin_ladder/70_2_RedDist1000q_pi2delta_q'
+data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPGOnlyMajoranas'
+save_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGOnlyMajoranas'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -41,7 +41,7 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # New model name
-model_name = 'pretrained_pos_encoder_hamiltonian_generator_v2_tf'
+model_name = 'twice_pretrained_pos_encoder_hamiltonian_generator_v2_varying_potential_tf'
 
 # Load model
 encoder, decoder = load_ae_model(pretrained_model_dir, epoch, PositionalEncoder, HamiltonianGeneratorV2)

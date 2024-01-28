@@ -36,7 +36,7 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'pos_encoder_hamiltonian_generator_v2_tf'
+model_name = 'pos_encoder_hamiltonian_generator_v2_varying_potential_tf'
 
 # Params
 params = {
@@ -85,6 +85,8 @@ decoder_params = {
     'seq_dec_hidden_size': 128,
     'reduce_blocks': False,
     'seq_num': 32,
+    'smoothing': False,
+    'varying_potential': True,
 }
 
 
