@@ -26,18 +26,66 @@ def plot_dataset_samples(
     if num_samples > len(dataset):
         raise ValueError(f'Number of samples ({num_samples}) is larger than the dataset size ({len(dataset)})')
 
-    indices = np.random.choice(len(dataset), size=num_samples, replace=False)
-    for i, idx in enumerate(indices):
-        (tensor, _), _ = dataset[idx]
+    plotted_ids = []
+    for i in range(num_samples):
+        idx = np.random.randint(len(dataset))
+        while idx in plotted_ids:
+            idx = np.random.randint(len(dataset))
+        (tensor, y), _ = dataset[idx]
+        if kwargs.get('label', None) is not None:
+            while y.item() != kwargs['label'] or idx in plotted_ids:
+                idx = np.random.randint(len(dataset))
+                (tensor, y), _ = dataset[idx]
         save_path = os.path.join(save_dir, 'sample_{}.png')
         H = TorchHamiltonian.from_2channel_tensor(tensor)
         plot_eigvals_levels(H, save_path.format(i), **kwargs)
+        plotted_ids.append(idx)
 
         if kwargs.get('plot_reconstructed_eigvals', False):
             assert 'encoder' in kwargs and 'decoder' in kwargs, 'Encoder and decoder must be provided for reconstruction'
             H_rec = reconstruct_hamiltonian(H.get_hamiltonian(), **kwargs)
             H_rec = TorchHamiltonian(torch.from_numpy(H_rec))
             plot_eigvals_levels(H_rec, save_path.format(f'{i}_rec'), **kwargs)
+
+
+def plot_dataset_continous_samples(
+    dataset: HamiltionianDataset,
+    save_dir: str,
+    num_samples: int = 10,
+    **kwargs: t.Dict[str, t.Any],
+):
+    if num_samples > len(dataset):
+        raise ValueError(f'Number of samples ({num_samples}) is larger than the dataset size ({len(dataset)})')
+
+    plotted_ids = []
+    num_hamiltonians = kwargs.get('num_hamiltonians', 2)
+    num_steps = kwargs.get('num_steps', 10)
+    eps = np.linspace(0, 1, num_steps)
+    for i in tqdm(range(num_samples), desc='Plotting samples'):
+        hamiltonians = []
+        for _ in range(num_hamiltonians):
+            idx = np.random.randint(len(dataset))
+            while idx in plotted_ids:
+                idx = np.random.randint(len(dataset))
+            (tensor, y), _ = dataset[idx]
+            if kwargs.get('label', None) is not None:
+                while y.item() != kwargs['label'] or idx in plotted_ids:
+                    idx = np.random.randint(len(dataset))
+                    (tensor, y), _ = dataset[idx]
+            H = TorchHamiltonian.from_2channel_tensor(tensor)
+            hamiltonians.append(H)
+
+        total_eigvals = []
+        for j in range(num_hamiltonians - 1):
+            H1 = hamiltonians[j]
+            H2 = hamiltonians[j + 1]
+            for eps_k in eps:
+                H_k = (1 - eps_k) * H1.get_hamiltonian() + eps_k * H2.get_hamiltonian()
+                eigvals = np.linalg.eigvalsh(H_k)
+                total_eigvals.append(eigvals)
+            
+        save_path = os.path.join(save_dir, f'continous_egivals_spectre_{i}.png')
+        simple_plot(f'{num_hamiltonians} hamiltonians transition', range(len(total_eigvals)), 'Eigen energy', total_eigvals, save_path, **kwargs)
 
 
 def plot_dim_red_freq_block(
