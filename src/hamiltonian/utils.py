@@ -26,19 +26,16 @@ def calculate_mzm_main_bands_gap(H: np.ndarray, mzm_threshold: float = 1.e-5):
     return np.min(np.abs(not_mzms)) - np.max(np.abs(mzms))
 
 
-def are_majoranas_in_hamiltonian(H: np.ndarray, zm_threshold: float = 1.e-5, gap_ratio_threshold: float = 0.01):
+def are_majoranas_in_hamiltonian(H: np.ndarray, zm_threshold: float = 1.e-5, mzm_gap_threshold: float = 0.08):
     eigvals = np.linalg.eigvalsh(H)
     num_zm = np.sum(np.abs(eigvals) < zm_threshold)
     if num_zm == 0:
         return False
-    negative_eigvals = eigvals[eigvals < 0]
-    positive_eigvals = eigvals[eigvals > 0]
-    gap = np.min(positive_eigvals) - np.max(negative_eigvals)
 
     mzms = eigvals[np.abs(eigvals) < zm_threshold]
     not_mzms = eigvals[np.abs(eigvals) >= zm_threshold]
     mzm_gap = np.min(np.abs(not_mzms)) - np.max(np.abs(mzms))
-    if gap / mzm_gap > gap_ratio_threshold:
+    if mzm_gap < mzm_gap_threshold:
         return False 
     return True    
 

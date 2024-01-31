@@ -10,7 +10,7 @@ from src.data_utils import Hamiltonian, generate_data
 from src.hamiltonian.utils import count_mzm_states, majorana_polarization, calculate_gap, calculate_mzm_main_bands_gap, are_majoranas_in_hamiltonian
 
 DEFAULT_PARAMS = {'N': 70, 'M': 2, 'delta': 0.3, 'mu': 0.9, 'J': 1., 'delta_q': np.pi, 't': 1}
-MZM_THRESHOLD = 0.02
+MZM_THRESHOLD = 0.015
 
 
 class SpinLadder(Hamiltonian):
@@ -251,7 +251,7 @@ def generate_bal_zm_params(N, M, N_samples, MLpredictor = None, periodic=False, 
                 Y = MLpredictor.predict(X)[0]
             else:
                 ladder = SpinLadder(**params)
-                Y = are_majoranas_in_hamiltonian(ladder.H, zm_threshold=MZM_THRESHOLD, gap_ratio_threshold=0.1)
+                Y = are_majoranas_in_hamiltonian(ladder.H, zm_threshold=MZM_THRESHOLD, mzm_gap_threshold=0.05)
             if Y:
                 num_mzms += 1
                 all_params.append(params)
@@ -325,7 +325,7 @@ if __name__ == '__main__':
     
     # ML_predictor = pickle.load(open(os.path.join(MODEL_SAVE_DIR, MODEL_NAME + '.pkl'), 'rb'))
     params = generate_bal_zm_params(N, M, N_samples, periodic=True, use_disorder=False, increase_potential_at_edges=True, max_nmzm_ratio=0.)
-    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistSimplePeriodicPGOnlyMajoranas', eig_decomposition=False, format='csr')
+    generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistSimplePeriodicPGSeparatedMajoranas', eig_decomposition=False, format='csr')
 
     # params = generate_params(N, M, N_samples, periodic=True, use_disorder=False, increase_potential_at_edges=True)
     #generate_data(SpinLadder, params, './data/spin_ladder/70_2_RedDistFixedStd', eig_decomposition=True)
