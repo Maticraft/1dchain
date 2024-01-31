@@ -87,7 +87,7 @@ decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=params['lr'])
 encoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(encoder_optimizer, 'min')
 decoder_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(decoder_optimizer, 'min')
 
-save_data_list(['Epoch', 'Train loss', 'Train edge loss', 'Train eigenvalues loss', 'Train eigenstates loss', 'Train diag loss', 'Test loss', 'Test edge loss', 'Test eigevalues loss', 'Test eigenstates loss', 'Test diag loss'], loss_path, mode='w')
+save_data_list(['Epoch', 'Train loss', 'Train edge loss', 'Train eigenvalues loss', 'Train eigenstates loss', 'Train diag loss', 'Train determinant loss', 'Test loss', 'Test edge loss', 'Test eigevalues loss', 'Test eigenstates loss', 'Test diag loss', 'Test determinant loss'], loss_path, mode='w')
 
 for epoch in range(1, params['epochs'] + 1):
     tr_loss, tr_edge_loss, tr_ev_loss, tr_eig_loss, tr_diag_loss, tr_det_loss = train_autoencoder(
