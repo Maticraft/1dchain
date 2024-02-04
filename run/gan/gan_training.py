@@ -15,8 +15,8 @@ from src.plots import plot_convergence, plot_test_matrices, plot_test_eigvals, p
 from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPGOnlyMajoranas'
-save_dir = './gan/spin_ladder/70_2_RedDistSimplePeriodicPGOnlyMajoranas'
+data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPGSeparatedMajoranas'
+save_dir = './gan/spin_ladder/70_2_RedDistSimplePeriodicPGSeparatedMajoranas'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 distribution_dir_name = 'tests_latent_majoranas_ep_{}'
@@ -41,7 +41,7 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # Model name
-model_name = 'Majoranas_LR_Decreased_Hamiltonian_GAN_V2_varying_potential_fft_tf_dynamic_switch_no_noise_converter'
+model_name = 'Symmetric_Hamiltonian_GAN_V2_varying_potential_and_delta_fft_tf_dynamic_switch_no_noise_converter'
 
 # Params
 params = {
@@ -77,7 +77,7 @@ discriminator_params = {
     'block_enc_depth': 4,
     'block_enc_hidden_size': 128,
     'padding_mode': 'zeros',
-    'lr': 1.e-8,
+    'lr': 1.e-6,
 }
 
 generator_params = {
@@ -91,7 +91,8 @@ generator_params = {
     "seq_dec_hidden_size": 128,
     'smoothing': False,
     'varying_potential': True,
-    'lr': 1.e-7,
+    'varying_delta': True,
+    'lr': 1.e-5,
     'skip_noise_converter': True,
     'training_switch_loss_ratio': 1.2,
     'reduce_blocks': False,
@@ -132,7 +133,7 @@ generator = Generator(HamiltonianGeneratorV2, generator_config)
 
 discriminator_config = get_full_model_config(params, discriminator_params)
 discriminator = Discriminator(PositionalEncoder, discriminator_config)
-load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, discriminator)
+# load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, discriminator)
 
 encoder_config = get_full_model_config(params, encoder_params)
 encoder = load_model(PositionalEncoder, encoder_config, original_autoencoder_path, original_autoencoder_epoch)
@@ -153,7 +154,7 @@ save_covariance_matrix(cov_matrix, root_dir)
 
 save_data_list(['Epoch', 'Generator loss', 'Discriminator loss'], loss_path, mode='w')
 
-training_mode = 'discriminator'
+training_mode = params['start_training_mode']
 
 for epoch in range(1, params['epochs'] + 1):
     gen_loss, disc_loss, training_mode = train_gan(
@@ -167,7 +168,7 @@ for epoch in range(1, params['epochs'] + 1):
         init_distribution,
         cov_matrix=cov_matrix,
         training_switch_loss_ratio=generator_params['training_switch_loss_ratio'],
-        start_training_mode=params['start_training_mode'],
+        start_training_mode=training_mode,
         data_label=params['data_label']
     )
     save_gan(generator, discriminator, root_dir, epoch)

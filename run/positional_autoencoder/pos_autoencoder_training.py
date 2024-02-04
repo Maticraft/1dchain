@@ -36,7 +36,7 @@ hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 
 # Model name
-model_name = 'pos_encoder_hamiltonian_generator_v2_varying_potential_tf'
+model_name = 'pos_encoder_symmetric_hamiltonian_generator_v2_varying_potential_and_delta_tf'
 
 # Params
 params = {

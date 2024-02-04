@@ -3,6 +3,7 @@ from itertools import product
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class HamiltonianGenerator(nn.Module):
@@ -59,7 +60,7 @@ class HamiltonianGenerator(nn.Module):
         self.tf_seq_decoder_layer = nn.TransformerEncoderLayer(d_model=self.seq_num, nhead=2, dim_feedforward=128, batch_first=True)
         self.tf_seq_decoder = nn.TransformerEncoder(self.tf_seq_decoder_layer, num_layers=1)
 
-        output_channels_num = 2*len(self.reduced_block_pairs) + self.channel_num - 2
+        output_channels_num = 2*len(self.reduced_block_pairs) + self.channel_num - 2 # same as seq_num?
         self.lin_mixer = nn.Conv2d(2*self.seq_num + 1, output_channels_num, kernel_size=1, stride=1)
 
 
@@ -184,7 +185,7 @@ class HamiltonianGenerator(nn.Module):
           block_a.shape = (2, 2)
           block_b.shape = (2, 2)
         returns:
-          torch.Tensor of shape (batch_size, 4, 4, seq_size)
+          torch.Tensor of shape (batch_size, 4, 4*seq_size)
         '''
         x_broadcast = x.unsqueeze(-1).unsqueeze(-1)
         block = torch.kron(block_a.to(x.device), block_b.to(x.device))
@@ -198,15 +199,17 @@ class HamiltonianGenerator(nn.Module):
         strips_split = torch.tensor_split(strips, self.channel_num // 2, dim=1)
         for i, strip in enumerate(strips_split):
             offset = i - (len(strips_split) // 2)
-            strip_off = max(0, -offset)*self.block_size
             matrix_off = abs(offset)*self.block_size
-            for j in range(self.N - abs(offset)):
+            for j in range(self.N):
                 idx0 =  j*self.block_size
                 idx1 = (j+1)*self.block_size
                 if offset >= 0:
-                    matrix[:, :, idx0: idx1, idx0 + matrix_off: idx1 + matrix_off] = strip[:, :, :, idx0 + strip_off: idx1 + strip_off]
+                    matrix_idx0 = (idx0 + matrix_off) % (self.N*self.block_size)
+                    matrix_idx1 = matrix_idx0 + self.block_size
                 else:
-                    matrix[:, :, idx0 + matrix_off: idx1 + matrix_off, idx0: idx1] = strip[:, :, :, idx0 + strip_off: idx1 + strip_off]
+                    matrix_idx0 = (idx0 - matrix_off) % (self.N*self.block_size)
+                    matrix_idx1 = matrix_idx0 + self.block_size
+                matrix[:, :, idx0: idx1, matrix_idx0: matrix_idx1] = strip[:, :, :, idx0: idx1]
         return matrix
     
 
@@ -214,11 +217,18 @@ class HamiltonianGeneratorV2(HamiltonianGenerator):
     def __init__(self, representation_dim: t.Union[int, t.Tuple[int, int]], output_size: t.Tuple[int, int, int], **kwargs: t.Dict[str, t.Any]):
         super().__init__(representation_dim, output_size, **kwargs)
         self.varying_potential = kwargs.get('varying_potential', False)
-        num_on_site_varying_params = 3 if self.varying_potential else 2
+        self.varying_delta = kwargs.get('varying_delta', False)
+        num_on_site_varying_params = 2
+        if self.varying_potential:
+            num_on_site_varying_params += 1
+        if self.varying_delta:
+            num_on_site_varying_params += 1
         num_site_varying_params = num_on_site_varying_params + self.channel_num - 2
         self.varying_block_mixer = nn.Conv1d(self.seq_num + 1, num_site_varying_params, kernel_size=1, stride=1)
         num_site_constant_params = 2
         self.constant_block_mixer = nn.Conv1d(self.seq_num, num_site_constant_params, kernel_size=1, stride=1)
+        self.strip_longitude_interaction_conv = nn.Conv1d(self.channel_num - 2, 2, kernel_size=2, stride=1, dilation=2, bias=False)
+        self.strip_latitude_interaction_conv = nn.Conv1d(self.channel_num - 2, 2, kernel_size=2, stride=2, dilation=1, bias=False)
         self.smoothing = kwargs.get('smoothing', False)
 
     def forward(self, x: torch.Tensor):
@@ -238,21 +248,42 @@ class HamiltonianGeneratorV2(HamiltonianGenerator):
         block_seq = self.varying_block_mixer(block_seq) # site varying blocks
 
         interaction_block_seq = block_seq[:, :self.channel_num - 2]
+        latitude_interactions = self.strip_latitude_interaction_conv(interaction_block_seq) # of shape (batch_size, 2, N/2)
+        longitude_interactions = self.strip_longitude_interaction_conv(F.pad(interaction_block_seq, pad=(0, 2), mode='circular')) # of shape (batch_size, 2, N)
+        H_interaction_lower, H_interaction_upper = self._construct_interactions(latitude_interactions, longitude_interactions)
+
         on_site_block_seq = block_seq[:, self.channel_num - 2:]
         # smooth on site blocks by calculating the average of N neighboring sites
         on_site_block_seq = self._calculate_running_mean(on_site_block_seq) if self.smoothing else on_site_block_seq
 
         block_expand = block_expand.transpose(1, 2)
         constant_blocks = self.constant_block_mixer(block_expand)
-
-        H_interaction = torch.stack([self._interaction_block_generator(interaction_block_seq[:, i]) for i in range(self.channel_num - 2)], dim=1)
+        
         real_blocks = self._on_site_real_block_generator(on_site_block_seq, constant_blocks)
         imaginary_blocks = self._on_site_imag_block_generator(on_site_block_seq, constant_blocks)
-
         H_on_site = torch.stack([real_blocks, imaginary_blocks], dim=1)
-        strips = torch.cat([H_interaction[:, :(self.channel_num // 2 - 1)], H_on_site, H_interaction[:, (self.channel_num // 2 - 1):]], dim=1)
+
+        strips = torch.cat([H_interaction_lower, H_on_site, H_interaction_upper], dim=1)
         matrix = self._get_matrix_from_strips(strips)
         return matrix
+    
+
+    def _construct_interactions(self, latitude_interactions: torch.Tensor, longitude_interactions: torch.Tensor):
+        '''
+        latitude_interactions.shape = (batch_size, 2, N/2)
+        longitude_interactions.shape = (batch_size, 2, N)
+        '''
+        # insert 0s every 2nd element (in last dimension) in latitude_interactions
+        latitude_interactions = torch.flatten(torch.stack((latitude_interactions, torch.zeros_like(latitude_interactions)), dim=-1), start_dim=-2)
+        interactions = torch.cat((latitude_interactions, longitude_interactions), dim=1)
+        H_interaction = torch.stack([self._interaction_block_generator(interactions[:, i]) for i in range(4)], dim=1)
+        
+        H_latitude_interactions_lower = torch.cat([H_interaction[:, :2, :, (self.N-1)*self.block_size:], H_interaction[:, :2, :, :(self.N-1)*self.block_size]], dim=-1)
+        H_longitude_interactions_lower = torch.cat([H_interaction[:, 2:, :, (self.N-2)*self.block_size:], H_interaction[:, 2:, :, :(self.N-2)*self.block_size]], dim=-1)
+        H_interaction_lower = torch.cat([H_longitude_interactions_lower, H_latitude_interactions_lower], dim=1) # order of latitude and longitude must be inverted in lower part of hamiltonian
+        H_interaction_lower[:, 1::2] *= -1 # conjugation of imaginary part
+
+        return H_interaction_lower, H_interaction
     
 
     def _calculate_running_mean(self, x: torch.Tensor):
@@ -274,6 +305,9 @@ class HamiltonianGeneratorV2(HamiltonianGenerator):
             varying_chemical_potential_block = self._block_generator(varying_blocks[:, 2, :], self.blocks[z1_pair[0]], self.blocks[z1_pair[1]])
             chemical_potential_block += varying_chemical_potential_block
         delta_block = self._block_generator(constant_blocks[:, 1, :], self.blocks[yy_pair[0]], self.blocks[yy_pair[1]])
+        if self.varying_delta:
+            varying_delta_block = self._block_generator(varying_blocks[:, 3, :], self.blocks[yy_pair[0]], self.blocks[yy_pair[1]])
+            delta_block += varying_delta_block
         spin_block = self._block_generator(varying_blocks[:, 0, :], self.blocks[zx_pair[0]], self.blocks[zx_pair[1]])
 
         all_blocks = torch.stack([chemical_potential_block, delta_block, spin_block], dim=1)

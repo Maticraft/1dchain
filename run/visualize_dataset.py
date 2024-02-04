@@ -15,7 +15,7 @@ mzm_threshold = 0.02
 num_samples = 10
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPGOnlyMajoranas'
+data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPGSeparatedMajoranas'
 
 # test_dir_name = 'tests_subspace_{}_latent_ep{}'
 test_dir_name = 'tests_dataset_samples_{}'
@@ -34,5 +34,5 @@ params = load_general_params(model_dir)
 encoder, decoder = load_ae_model(model_dir, epoch, PositionalEncoder, HamiltonianGeneratorV2)
 
 data = HamiltionianDataset(data_path, data_limit=100, label_idx=label_idx, eig_decomposition=False, format='csr', threshold=mzm_threshold)
-# plot_dataset_samples(data, save_path, num_samples=num_samples, plot_reconstructed_eigvals=True, encoder=encoder, decoder=decoder, device=device, ylim=(-0.5, 0.5))
+plot_dataset_samples(data, save_path, num_samples=num_samples, plot_reconstructed_eigvals=False, encoder=encoder, decoder=decoder, device=device, ylim=(-0.5, 0.5))
 plot_dataset_continous_samples(data, save_path, num_samples=num_samples, ylim=(-0.5, 0.5))
