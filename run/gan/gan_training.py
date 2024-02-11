@@ -22,8 +22,8 @@ convergence_file = 'convergence.png'
 distribution_dir_name = 'tests_latent_majoranas_ep_{}'
 
 # Load state from pretrained autoencoder
-original_autoencoder_path = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGOnlyMajoranas/100/twice_pretrained_pos_encoder_hamiltonian_generator_v2_varying_potential_tf'
-original_autoencoder_epoch = 40
+original_autoencoder_path = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGSeparatedMajoranas/100/twice_pretrained_pos_encoder_symmetric_hamiltonian_generator_v2_varying_potential_and_delta_tf'
+original_autoencoder_epoch = 20
 distribution_path = os.path.join(original_autoencoder_path, distribution_dir_name.format(original_autoencoder_epoch))
 
 
@@ -41,7 +41,7 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # Model name
-model_name = 'Symmetric_Hamiltonian_GAN_V2_varying_potential_and_delta_fft_tf_dynamic_switch_no_noise_converter'
+model_name = 'Symmetric_Hamiltonian_WGAN-GP_V2_varying_potential_and_delta_fft_tf_dynamic_switch_no_noise_converter_from_pretrained_autoencoder'
 
 # Params
 params = {
@@ -51,8 +51,12 @@ params = {
     'in_channels': 10,
     'block_size': 4,
     'representation_dim': 100,
+    'strategy': 'wgan-gp',
+    'gp_weight': 1.e-4,
+    'discriminator_iters': 5,
     'start_training_mode': 'discriminator',
-    'data_label': 1
+    'data_label': 1,
+    'use_feature_matching': False,
 }
 
 # Architecture
@@ -91,7 +95,7 @@ generator_params = {
     "seq_dec_hidden_size": 128,
     'smoothing': False,
     'varying_potential': True,
-    'varying_delta': True,
+    'varying_delta': False,
     'lr': 1.e-5,
     'skip_noise_converter': True,
     'training_switch_loss_ratio': 1.2,
@@ -129,11 +133,11 @@ test_loader = DataLoader(test_data, params['batch_size'])
 
 generator_config = get_full_model_config(params, generator_params)
 generator = Generator(HamiltonianGeneratorV2, generator_config)
-# load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, generator)
+load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, generator)
 
 discriminator_config = get_full_model_config(params, discriminator_params)
 discriminator = Discriminator(PositionalEncoder, discriminator_config)
-# load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, discriminator)
+load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, discriminator)
 
 encoder_config = get_full_model_config(params, encoder_params)
 encoder = load_model(PositionalEncoder, encoder_config, original_autoencoder_path, original_autoencoder_epoch)
@@ -167,9 +171,13 @@ for epoch in range(1, params['epochs'] + 1):
         discriminator_optimizer,
         init_distribution,
         cov_matrix=cov_matrix,
+        data_label=params['data_label'],
+        strategy=params['strategy'],
+        gradient_penalty_weight=params['gp_weight'],
+        discriminator_repeats=params['discriminator_iters'],
         training_switch_loss_ratio=generator_params['training_switch_loss_ratio'],
         start_training_mode=training_mode,
-        data_label=params['data_label']
+        use_feature_matching=params['use_feature_matching'],
     )
     save_gan(generator, discriminator, root_dir, epoch)
     save_data_list([epoch, gen_loss, disc_loss], loss_path)

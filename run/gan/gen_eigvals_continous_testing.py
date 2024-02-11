@@ -11,12 +11,12 @@ from src.torch_utils import TorchHamiltonian
 
 
 # Model params
-gen_dir = './gan/spin_ladder/70_2_RedDistSimplePeriodicPGOnlyMajoranas/100/Hamiltonian_GAN_V2_varying_potential_fft_tf_dynamic_switch_no_noise_converter'
+gen_dir = './gan/spin_ladder/70_2_RedDistSimplePeriodicPGSeparatedMajoranas/100/Symmetric_Hamiltonian_GAN_V2_varying_potential_and_delta_fft_tf_dynamic_switch_no_noise_converter'
 test_dir_name = 'generation_tests_ep{}'
 latent_distrib_dir = 'tests_majoranas_ep{}'
 polarization_sub_dir = 'polarization_{}'
 hamiltonian_elements_sub_dir = 'hamiltonian_{}'
-gen_epoch = 200
+gen_epoch = 65
 
 eigvals_gen_plot_name = 'eigvals_spectre_generator_{}.png'
 

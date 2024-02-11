@@ -12,13 +12,13 @@ from src.plots import plot_dim_red_full_space, plot_dim_red_freq_block, plot_lat
 from src.models.positional_autoencoder import PositionalEncoder
 from src.models.hamiltonian_generator import HamiltonianGenerator, HamiltonianGeneratorV2
 
-model_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGOnlyMajoranas/100/twice_pretrained_pos_encoder_hamiltonian_generator_v2_varying_potential_tf'
-epoch = 40
+model_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGSeparatedMajoranas/100/twice_pretrained_pos_encoder_symmetric_hamiltonian_generator_v2_varying_potential_and_delta_tf'
+epoch = 20
 batch_size = 128
 mzm_threshold = 0.012
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPGOnlyMajoranas'
+data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPGSeparatedMajoranas'
 
 for i in range(1):  # 10
     print(i)
