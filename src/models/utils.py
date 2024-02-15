@@ -32,11 +32,13 @@ def kl_divergence_loss(q_dist):
         q_dist, Normal(torch.zeros_like(q_dist.mean), torch.ones_like(q_dist.stddev))
     )
 
+
 def distribution_loss(x_hat: torch.Tensor, distribution: t.Tuple[torch.Tensor, torch.Tensor]):
     mean, stddev = distribution
     distance_from_distribution = torch.abs(x_hat - mean) - stddev
     loss = torch.maximum(distance_from_distribution, torch.zeros_like(distance_from_distribution))
     return torch.mean(loss)
+
 
 def edge_diff(x_hat: torch.Tensor, x: torch.Tensor, criterion: t.Callable, edge_width: int = 4):
     x_hat_edges = get_edges(x_hat, edge_width)
