@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 
-from src.models.utils import generate_sample_from_mean_and_covariance
+from src.models.utils import generate_sample_from_mean_and_covariance, majorana_eigvals_feature_matching
 from src.torch_utils import torch_total_polarization_loss
 
 
@@ -221,7 +221,7 @@ def train_gan(
     criterion: nn.Module = nn.BCEWithLogitsLoss(), # param effective for standard GAN
     gradient_penalty_weight: float = 1.e-4, # param effective for WGAN-GP
     discriminator_repeats: int = 5, # param effective for WGAN-GP
-    use_feature_matching: bool = False,
+    use_majoranas_feature_matching: bool = False,
     feature_matching_loss_weight: float = 1, 
 ):
     generator.to(device)
@@ -235,8 +235,9 @@ def train_gan(
     generator_loss = torch.tensor(0.)
 
     training_mode = start_training_mode
-    generator.eval()
-    generator.requires_grad_(False)
+    if start_training_mode == 'discriminator':
+        generator.eval()
+        generator.requires_grad_(False)
 
     print(f'Epoch: {epoch}')
     for (x, y), _ in tqdm(train_loader, 'Training model'):
@@ -247,7 +248,11 @@ def train_gan(
             discriminator_loss, training_mode = train_discriminator_standard(x, y, generator, discriminator, device, discriminator_optimizer, init_distribution, cov_matrix, training_switch_loss_ratio, data_label, criterion, generator_loss, training_mode)
         if strategy == 'wgan-gp':
             # for WGAN with critic and gradient penalty
+            generator.eval()
+            generator.requires_grad_(False)
             discriminator_loss = train_discriminator_wgan_gp(x, y, generator, discriminator, device, discriminator_optimizer, init_distribution, cov_matrix, data_label, gradient_penalty_weight, discriminator_repeats)
+        if strategy == 'no-discriminator':
+            discriminator_loss = 0.
 
         total_discriminator_loss += discriminator_loss
 
@@ -257,11 +262,9 @@ def train_gan(
         fake_prediction = discriminator(x_hat)
 
         feature_matching_loss = 0
-        if use_feature_matching:
+        if use_majoranas_feature_matching:
             # feature matching
-            real_features = discriminator.nn(x)
-            fake_features = discriminator.nn(x_hat)
-            feature_matching_loss = torch.mean((real_features - fake_features)**2)
+            feature_matching_loss = majorana_eigvals_feature_matching(x_hat, zero_eigvals_threshold= 0.015)
 
         if strategy == 'standard':
             generator_loss = criterion(fake_prediction, torch.ones_like(fake_prediction)) + feature_matching_loss_weight * feature_matching_loss # for standard GAN with discriminator
@@ -275,7 +278,15 @@ def train_gan(
                 generator_optimizer.step()
 
         if strategy == 'wgan-gp':
+            generator.train()
+            generator.requires_grad_(True)
             generator_loss = -fake_prediction.mean() + feature_matching_loss_weight * feature_matching_loss # for WGAN with critic
+            generator_loss.backward()
+            generator_optimizer.step()
+
+        if strategy == 'no-discriminator':
+            assert use_majoranas_feature_matching, 'Feature matching is required for this strategy'
+            generator_loss = feature_matching_loss
             generator_loss.backward()
             generator_optimizer.step()
 

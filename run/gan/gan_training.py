@@ -41,7 +41,8 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
 
 # Model name
-model_name = 'Symmetric_Hamiltonian_WGAN-GP_V2_varying_potential_and_delta_fft_tf_dynamic_switch_no_noise_converter_from_pretrained_autoencoder'
+model_name = 'Symmetric_Hamiltonian_WGAN-GP_V2_varying_potential_and_delta_fft_tf_feature_matching_nonzero_increased_no_noise_converter'
+# model_name = 'Symmetric_Hamiltonian_no_discriminator_varying_potential_and_delta_fft_tf_feature_matching_std_no_noise_converter'
 
 # Params
 params = {
@@ -54,9 +55,9 @@ params = {
     'strategy': 'wgan-gp',
     'gp_weight': 1.e-4,
     'discriminator_iters': 5,
-    'start_training_mode': 'discriminator',
+    'start_training_mode': 'generator',
     'data_label': 1,
-    'use_feature_matching': False,
+    'use_feature_matching': True,
 }
 
 # Architecture
@@ -95,7 +96,7 @@ generator_params = {
     "seq_dec_hidden_size": 128,
     'smoothing': False,
     'varying_potential': True,
-    'varying_delta': False,
+    'varying_delta': True,
     'lr': 1.e-5,
     'skip_noise_converter': True,
     'training_switch_loss_ratio': 1.2,
@@ -133,11 +134,11 @@ test_loader = DataLoader(test_data, params['batch_size'])
 
 generator_config = get_full_model_config(params, generator_params)
 generator = Generator(HamiltonianGeneratorV2, generator_config)
-load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, generator)
+# load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, generator)
 
 discriminator_config = get_full_model_config(params, discriminator_params)
 discriminator = Discriminator(PositionalEncoder, discriminator_config)
-load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, discriminator)
+# load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, discriminator)
 
 encoder_config = get_full_model_config(params, encoder_params)
 encoder = load_model(PositionalEncoder, encoder_config, original_autoencoder_path, original_autoencoder_epoch)
@@ -177,7 +178,7 @@ for epoch in range(1, params['epochs'] + 1):
         discriminator_repeats=params['discriminator_iters'],
         training_switch_loss_ratio=generator_params['training_switch_loss_ratio'],
         start_training_mode=training_mode,
-        use_feature_matching=params['use_feature_matching'],
+        use_majoranas_feature_matching=params['use_feature_matching'],
     )
     save_gan(generator, discriminator, root_dir, epoch)
     save_data_list([epoch, gen_loss, disc_loss], loss_path)

@@ -1,5 +1,6 @@
 import typing as t
 from tqdm import tqdm
+import math
 
 import numpy as np
 from sklearn.decomposition import PCA
@@ -8,6 +9,18 @@ import torch.nn as nn
 from torch.distributions.normal import Normal
 from torch.distributions.multivariate_normal import MultivariateNormal
 from torch.distributions.kl import kl_divergence
+
+
+def majorana_eigvals_feature_matching(x_hat: torch.Tensor, zero_eigvals_threshold: float = 0.015):
+    x_hat_complex = torch.complex(x_hat[:, 0, :, :], x_hat[:, 1, :, :])
+    eigvals = torch.abs(torch.linalg.eigvalsh(x_hat_complex))
+    min_eigvals, _ = torch.min(eigvals, dim=-1, keepdim=True)
+    eigvals_threshold = (min_eigvals + zero_eigvals_threshold).detach()
+    zero_eigvals = eigvals[eigvals < eigvals_threshold]
+    zero_eigvals_loss = torch.exp(zero_eigvals - zero_eigvals_threshold) # normalized to 1 at the threshold
+    non_zero_eigvals = eigvals[eigvals >= eigvals_threshold]
+    non_zero_eigvals_loss = -torch.log(non_zero_eigvals/(100*zero_eigvals_threshold*math.e)) # normalized to 0 at the 10*threshold
+    return zero_eigvals_loss.mean() + non_zero_eigvals_loss.mean() + non_zero_eigvals.std()
 
 
 def diagonal_loss(x_hat: torch.Tensor, x: torch.Tensor, criterion: t.Callable, block_size: int = 4):
