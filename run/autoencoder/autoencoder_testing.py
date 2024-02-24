@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 from src.hamiltonian.helical_ladder import SpinLadder, DEFAULT_PARAMS
-from src.hamiltonian.utils import plot_eigvals, plot_site_matrix_elements
+from src.hamiltonian.utils import plot_site_matrix_elements
 from src.models.positional_autoencoder import PositionalEncoder
 from src.models.hamiltonian_generator import HamiltonianGenerator
 from src.models.files import load_autoencoder, load_positional_autoencoder, load_ae_model
@@ -68,7 +68,8 @@ hamiltonian_ref_path = os.path.join(test_sub_path, hamiltonian_ref_plot_name)
 
 encoder, decoder = load_ae_model(autoencoder_dir, epoch, PositionalEncoder, HamiltonianGenerator)
 
-# plot_test_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, params, eigvals_auto_path, eigvals_ref_path, eigvals_diff_path, xnorm=xnorm, ylim=ylim)
+# test_hamiltonian = SpinLadder(**params)
+# plot_test_eigvals(test_hamiltonian, encoder, decoder, x_axis, x_values, eigvals_auto_path, eigvals_ref_path, eigvals_diff_path, xnorm=xnorm, ylim=ylim)
 
 hamiltonian = SpinLadder(**params)
 hamiltonian_matrix = hamiltonian.get_hamiltonian()

@@ -1,3 +1,4 @@
+from copy import deepcopy
 import os
 import typing as t
 
@@ -235,12 +236,11 @@ def plot_convergence(results_path: str, save_path: str, read_label: bool = False
 
 
 def plot_test_eigvals(
-    model: t.Type[Hamiltonian],
+    model: Hamiltonian,
     encoder: torch.nn.Module,
     decoder: torch.nn.Module,
     xaxis: str,
     xparams: t.List[t.Any],
-    params: t.Dict[str, t.Any],
     save_path_rec: str,
     save_path_org: t.Optional[str] = None,
     save_path_diff: t.Optional[str] = None,
@@ -250,14 +250,13 @@ def plot_test_eigvals(
     energies_auto = []
     energies_diff = []
     for x in xparams:
-        model_params = params.copy()
+        new_model = deepcopy(model)
         if xaxis == 'q_delta_q':
-            model_params['q'] = x
-            model_params['delta_q'] = x
+            new_model.set_parameter('q', x)
+            new_model.set_parameter('delta_q', x)
         else:
-            model_params[xaxis] = x
-        param_model = model(**model_params)
-        H = param_model.get_hamiltonian()
+            new_model.set_parameter(xaxis, x)
+        H = new_model.get_hamiltonian()
 
         auto_eigvals, eigvals = get_eigvals(H, encoder, decoder, return_ref_eigvals=True, **kwargs)
         eigvals_diff = np.mean(np.abs(eigvals - auto_eigvals))

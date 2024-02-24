@@ -10,7 +10,7 @@ from matplotlib import colors
 from src.data_utils import Hamiltonian
 from src.hamiltonian.utils import count_mzm_states, majorana_polarization, calculate_gap, calculate_mzm_main_bands_gap
 
-MZM_THRESHOLD = 0.015 # to adjust
+MZM_THRESHOLD = 1.e-5 # to adjust?
 
 
 def abs2(c: np.ndarray): return c.real**2 + c.imag**2
@@ -166,6 +166,10 @@ class QuantumDotsHamiltonian(Hamiltonian):
         hamiltonian += np.conjugate(np.triu(hamiltonian, k=1)).T
         return hamiltonian
     
+    def set_parameter(self, parameter_name: str, value: float):
+        setattr(self.parameters, parameter_name, np.ones(self.parameters.no_dots)*value)
+        self.H = self.full_hamiltonian()
+    
     def parameter_sweeping(self, parameter_name: str, start: float, stop: float, num: int = 101):
         values = np.linspace(start/AtomicUnits.Eh, stop/AtomicUnits.Eh, num=num)
         eigenvalues = []
@@ -186,7 +190,7 @@ class QuantumDotsHamiltonian(Hamiltonian):
         return self.H
     
     def get_label(self):
-        mp = majorana_polarization(self.H, threshold=MZM_THRESHOLD, axis='y', site='all')
+        mp = majorana_polarization(self.H, threshold=MZM_THRESHOLD, axis='x', site='all')
         values = list(mp.values())
         mp_y_sum_left = sum(values[:len(values)//2])
         mp_y_sum_right = sum(values[len(values)//2:])

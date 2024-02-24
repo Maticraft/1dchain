@@ -251,6 +251,8 @@ def train_gan(
             generator.eval()
             generator.requires_grad_(False)
             discriminator_loss = train_discriminator_wgan_gp(x, y, generator, discriminator, device, discriminator_optimizer, init_distribution, cov_matrix, data_label, gradient_penalty_weight, discriminator_repeats)
+            generator.train()
+            generator.requires_grad_(True)
         if strategy == 'no-discriminator':
             discriminator_loss = 0.
 
@@ -278,8 +280,6 @@ def train_gan(
                 generator_optimizer.step()
 
         if strategy == 'wgan-gp':
-            generator.train()
-            generator.requires_grad_(True)
             generator_loss = -fake_prediction.mean() + feature_matching_loss_weight * feature_matching_loss # for WGAN with critic
             generator_loss.backward()
             generator_optimizer.step()

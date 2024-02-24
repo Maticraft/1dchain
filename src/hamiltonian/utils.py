@@ -1,3 +1,4 @@
+from copy import deepcopy
 import os
 import typing as t
 
@@ -82,12 +83,11 @@ def majorana_polarization_site(zero_mode: np.ndarray, axis: str = 'total'):
         return 2*np.mean(np.imag(zero_mode[1, :] * zero_mode[2, :].conj() + zero_mode[0, :] * zero_mode[3, :].conj()))
 
 
-def plot_eigvals(model: t.Type[Hamiltonian], xaxis: str, xparams: t.List[t.Any], params: t.Dict[str, t.Any], filename: str, **kwargs: t.Dict[str, t.Any]):
+def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: np.ndarray, filename: str, **kwargs: t.Dict[str, t.Any]):
     energies = []
     for x in xparams:
-        model_params = params.copy()
-        model_params[xaxis] = x
-        ladder = model(**model_params)
+        ladder = deepcopy(model)
+        ladder.set_parameter(xaxis, x)
         energies.append(np.linalg.eigvalsh(ladder.get_hamiltonian()))
 
     xnorm = None

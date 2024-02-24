@@ -27,19 +27,26 @@ class SpinLadder(Hamiltonian):
         self.S = S
         self.theta = theta
         self.B = B
-        self.H = self._construct_open_boundary_hamiltonian(self.N, self.M)
-        if periodic:
-            self.H = self._add_N_periodic_boundary(self.H)
-        if use_disorder:
-            V_dis = kwargs.get('disorder_potential', 1.)
-            V_pos = kwargs.get('disorder_positions', [{'i': 0, 'j': 0}, {'i': N-1, 'j': M-1}])
-            for pos in V_pos:
-                self.H = self._add_potential_gate(self.H, pos['i'], pos['j'], V_dis)
-        if increase_potential_at_edges:
-            V = kwargs.get('potential', 1.)
-            before = kwargs.get('potential_before', 0)
-            after = kwargs.get('potential_after', self.N)
-            self._increase_potential(V, before, after)
+        self.V_dis = kwargs.get('disorder_potential', 1.)
+        self.V_pos = kwargs.get('disorder_positions', [{'i': 0, 'j': 0}, {'i': N-1, 'j': M-1}])
+        self.V = kwargs.get('potential', 1.)
+        self.before = kwargs.get('potential_before', 0)
+        self.after = kwargs.get('potential_after', self.N)
+        self.periodic = periodic
+        self.use_disorder = use_disorder
+        self._increase_potential_at_edges = increase_potential_at_edges
+        self.H = self.generate_hamiltonian()
+
+    def generate_hamiltonian(self):
+        H = self._construct_open_boundary_hamiltonian(self.N, self.M)
+        if self.periodic:
+            H = self._add_N_periodic_boundary(H)
+        if self.use_disorder:
+            for pos in self.V_pos:
+                H = self._add_potential_gate(H, pos['i'], pos['j'], self.V_dis)
+        if self.increase_potential_at_edges:
+                H = self._increase_potential(H, self.V, self.before, self.after)
+        return H
 
     def _construct_open_boundary_hamiltonian(self, N, M):
         sigma_z = np.array([[1, 0], [0, -1]], dtype=np.complex128)
@@ -64,42 +71,40 @@ class SpinLadder(Hamiltonian):
 
         return H
     
-
     def _add_N_periodic_boundary(self, H):
+        H_new = H.copy()
         sigma_z = np.array([[1, 0], [0, -1]], dtype=np.complex128)
         N = self.N
         M = self.M
         for j in range(M):
-            H[self._idx(N-1, j) : self._idx(N-1, j) + self.block_size, self._idx(0, j) : self._idx(0, j) + self.block_size] = np.kron(sigma_z, self._interaction_block_ij_cdagger_c(self.t))
-            H[self._idx(0, j) : self._idx(0, j) + self.block_size, self._idx(N-1, j) : self._idx(N-1, j) + self.block_size] = np.conjugate(np.kron(sigma_z, self._interaction_block_ij_cdagger_c(self.t))).T
-        return H
+            H_new[self._idx(N-1, j) : self._idx(N-1, j) + self.block_size, self._idx(0, j) : self._idx(0, j) + self.block_size] = np.kron(sigma_z, self._interaction_block_ij_cdagger_c(self.t))
+            H_new[self._idx(0, j) : self._idx(0, j) + self.block_size, self._idx(N-1, j) : self._idx(N-1, j) + self.block_size] = np.conjugate(np.kron(sigma_z, self._interaction_block_ij_cdagger_c(self.t))).T
+        return H_new
     
-
-    def _increase_potential(self, V, before=None, after=None):
+    def _increase_potential(self, H, V, before=None, after=None):
         if before is None:
             before = 0
         if after is None:
             after = self.N
-
+        H_new = H.copy()
         positions_before = [{'i': i, 'j': j} for i in range(0, before) for j in range(self.M)]
         positions_after = [{'i': i, 'j': j} for i in range(after, self.N) for j in range(self.M)]
         for pos in positions_before:
-            self.H = self._add_potential_gate(self.H, pos['i'], pos['j'], V)
+            H_new = self._add_potential_gate(H_new, pos['i'], pos['j'], V)
         for pos in positions_after:
-            self.H = self._add_potential_gate(self.H, pos['i'], pos['j'], V)
-    
+            H_new = self._add_potential_gate(H_new, pos['i'], pos['j'], V)
+        return H_new
 
     def _add_potential_gate(self, H, i, j, V):
+        H_new = H.copy()
         sigma_z = np.array([[1, 0], [0, -1]], dtype=np.complex128)
         eye = np.eye(2, dtype=np.complex128)
         block = np.kron(sigma_z, eye)
-        H[self._idx(i, j) : self._idx(i, j) + self.block_size, self._idx(i, j) : self._idx(i, j) + self.block_size] += V*block
-        return H
-
+        H_new[self._idx(i, j) : self._idx(i, j) + self.block_size, self._idx(i, j) : self._idx(i, j) + self.block_size] += V*block
+        return H_new
 
     def _idx(self, i, j):
         return (i*self.M + j)*self.block_size
-
 
     def _spin_block_i_cdagger_c(self, mu, i, j, theta, delta_q, q, S, B):
         sigma_z = np.array([[1, 0], [0, -1]], dtype=np.complex128)
@@ -115,17 +120,14 @@ class SpinLadder(Hamiltonian):
 
         return block
 
-
     def _delta_block_i_cdagger_cdagger(self, delta):
         sigma_y = np.array([[0, -1j], [1j, 0]], dtype=np.complex128)
         delta_block = 1j*sigma_y*delta
         return delta_block
-
     
     def _interaction_block_ij_cdagger_c(self, t):
         interaction_block = -t*np.eye(2, dtype=np.complex128)
         return interaction_block
-
 
     def _get_spin_matrix(self, theta, phi, S, B=1.e-7):
         pauli_x = np.array([[0, 1], [1, 0]], dtype=np.complex128)
@@ -139,10 +141,12 @@ class SpinLadder(Hamiltonian):
 
         return spin_matrix
 
+    def set_parameter(self, parameter_name: str, value: os.Any):
+        setattr(self, parameter_name, value)
+        self.H = self.generate_hamiltonian()
 
     def get_hamiltonian(self):
         return self.H
-
     
     def get_label(self):
         mp = majorana_polarization(self.H, threshold=MZM_THRESHOLD, axis='y', site='all')

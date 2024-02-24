@@ -118,11 +118,11 @@ for epoch in range(1, params['epochs'] + 1):
     save_data_list([epoch, tr_class_loss, tr_ae_loss, te_class_loss, te_acc, te_loss, te_edge_loss, te_eig_loss, te_diag_loss, *te_reg_loss], loss_path)
     # save_data_list([epoch, te_class_loss, te_acc, te_loss, te_edge_loss, te_eig_loss, te_diag_loss, *te_reg_loss], loss_path)
 
-
+    test_hamiltonian = SpinLadder(**DEFAULT_PARAMS)
     eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))
-    plot_test_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim, decoder_eigvals=params['gt_eigvals'])
+    plot_test_eigvals(test_hamiltonian, encoder, decoder, x_axis, x_values, eigvals_path, device=device, xnorm=xnorm, ylim=ylim, decoder_eigvals=params['gt_eigvals'])
     ham_auto_path = os.path.join(ham_sub_path, hamiltonian_plot_name.format(f'_ep{epoch}' + '{}'))
     ham_diff_path = os.path.join(ham_sub_path, hamiltonain_diff_plot_name.format(f'_ep{epoch}'))
-    plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, decoder, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device, decoder_eigvals=params['gt_eigvals'])
+    plot_test_matrices(test_hamiltonian.get_hamiltonian(), encoder, decoder, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device, decoder_eigvals=params['gt_eigvals'])
    
 plot_convergence(loss_path, convergence_path, read_label=True)

@@ -26,6 +26,10 @@ class Hamiltonian(abc.ABC):
     def get_label(self) -> str:
         pass
 
+    @abc.abstractmethod
+    def set_parameter(self, parameter_name: str, value: t.Any):
+        pass
+
 
 class HamiltionianDataset(Dataset):
 

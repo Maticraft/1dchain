@@ -56,8 +56,9 @@ ham_sub_path = os.path.join(root_dir, hamiltonian_sub_dir)
 if not os.path.isdir(ham_sub_path):
     os.makedirs(ham_sub_path)
 
+test_hamiltonian = SpinLadder(**DEFAULT_PARAMS)
 eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))
-plot_test_eigvals(SpinLadder, encoder, decoder, x_axis, x_values, DEFAULT_PARAMS, eigvals_path, device=device, xnorm=xnorm, ylim=ylim, decoder_eigvals=True, shift_latent=True, latent_shift=0.1)
+plot_test_eigvals(test_hamiltonian, encoder, decoder, x_axis, x_values, eigvals_path, device=device, xnorm=xnorm, ylim=ylim, decoder_eigvals=True, shift_latent=True, latent_shift=0.1)
 ham_auto_path = os.path.join(ham_sub_path, hamiltonian_plot_name.format(f'_ep{epoch}' + '{}'))
 ham_diff_path = os.path.join(ham_sub_path, hamiltonain_diff_plot_name.format(f'_ep{epoch}'))
-plot_test_matrices(SpinLadder(**DEFAULT_PARAMS).get_hamiltonian(), encoder, decoder, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device, decoder_eigvals=True, shift_latent=True, latent_shift=0.1)
+plot_test_matrices(test_hamiltonian.get_hamiltonian(), encoder, decoder, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device, decoder_eigvals=True, shift_latent=True, latent_shift=0.1)

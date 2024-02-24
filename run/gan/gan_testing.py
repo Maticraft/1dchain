@@ -3,9 +3,8 @@ import os
 import numpy as np
 
 from src.hamiltonian.helical_ladder import SpinLadder, DEFAULT_PARAMS
-from src.hamiltonian.utils import plot_eigvals
 from src.models.files import load_gan_from_positional_autoencoder, load_positional_autoencoder, load_covariance_matrix, load_latent_distribution
-from src.plots import plot_test_matrices, plot_test_eigvals, plot_matrix
+from src.plots import plot_test_matrices, plot_matrix
 
 
 # Paths

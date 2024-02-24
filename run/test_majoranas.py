@@ -19,4 +19,4 @@ x_values = np.concatenate((np.arange(0., np.pi, 2*np.pi / 100), np.arange(np.pi,
 h = SpinLadder(**params)
 print(h.get_label())
 plot_majorana_polarization(h, './test_majoranas', string_num=2, polaxis='y', threshold=0.05)
-plot_eigvals(SpinLadder, x_axis, x_values, params, './test_majoranas/eigvals.png', xnorm=np.pi, ylim=(-2, 2))
+plot_eigvals(h, x_axis, x_values, './test_majoranas/eigvals.png', xnorm=np.pi, ylim=(-2, 2))
