@@ -1,23 +1,22 @@
 import os
 import typing as t
 from dataclasses import dataclass
+from copy import deepcopy
 
+import json
 import numpy as np
 from scipy.linalg import eigh
 import matplotlib.pyplot as plt
 from matplotlib import colors
 
-from src.data_utils import Hamiltonian
+from src.data_utils import Hamiltonian, generate_data
 from src.hamiltonian.utils import count_mzm_states, majorana_polarization, calculate_gap, calculate_mzm_main_bands_gap
-
-MZM_THRESHOLD = 1.e-5 # to adjust?
-
 
 def abs2(c: np.ndarray): return c.real**2 + c.imag**2
 
 
 def rand_sample(length: t.Optional[int] = None, range: t.Tuple[int, int] = (0.,1.)):
-    if length in None:
+    if length is None:
         return np.random.random()*(range[1]-range[0])+range[0]
     else:
         return np.random.rand(length)*(range[1]-range[0])+range[0]
@@ -45,6 +44,9 @@ class AtomicUnits:
     Ah=0.05292 # nm
     Th=2.41888e-5 # ps
     Bh=235051.76 # Teslas
+
+
+MZM_THRESHOLD = 0.1/ AtomicUnits.Eh # to adjust?
 
 
 class DefaultParameters:
@@ -75,13 +77,28 @@ class DefaultParameters:
         self.l_rho_range = [0., np.pi]
         self.l_ksi_default = 0.
         self.l_ksi_range = [0., np.pi*2.]
+
+    def to_dict(self):
+        return {k: v.tolist() if isinstance(v, np.ndarray) else v for k, v in self.__dict__.items()}
+    
+    @classmethod
+    def from_dict(cls, d):
+        new_params = cls()
+        new_params.__dict__ = d
+        for k, v in new_params.__dict__.items():
+            if isinstance(v, list):
+                new_params.__dict__[k] = np.array(v)
+        return new_params
  
     
 class QuantumDotsHamiltonianParameters:
-    def __init__(self, no_dots: int, no_levels: int, default_parameters: DefaultParameters):
+    def __init__(self, no_dots: int, no_levels: int, default_parameters: t.Union[DefaultParameters, t.Dict]):
         self.no_dots = no_dots
         self.no_levels = no_levels
-        self.def_par = default_parameters
+        if isinstance(default_parameters, dict):
+            self.def_par = DefaultParameters.from_dict(default_parameters)
+        else:
+            self.def_par = default_parameters
         self.mu = np.ones(self.no_dots)*self.def_par.mu_default
         self.t = np.ones(self.no_dots)*self.def_par.t_default
         self.b = np.ones(self.no_dots)*self.def_par.b_default
@@ -110,11 +127,40 @@ class QuantumDotsHamiltonianParameters:
         self.l = rand_sample(self.no_dots, self.def_par.l_range)
         self.l_rho = rand_sample(self.no_dots, self.def_par.l_rho_range)
         self.l_ksi = rand_sample(self.no_dots, self.def_par.l_ksi_range)
+    
+    def to_dict(self):
+        # apply recursively to all nested objects
+        d = {}
+        for k, v in self.__dict__.items():
+            if hasattr(v, 'to_dict'):
+                d[k] = v.to_dict()
+            elif isinstance(v, np.ndarray):
+                d[k] = v.tolist()
+            else:
+                d[k] = v
+        return d
+    
+    @classmethod
+    def from_dict(cls, d):
+        tmp_d = deepcopy(d)
+        new_params = cls(tmp_d['no_dots'], tmp_d['no_levels'], tmp_d['def_par'])
+        del tmp_d['no_dots']
+        del tmp_d['no_levels']
+        del tmp_d['def_par']
+        new_params.__dict__.update(tmp_d)
+        # replace all lists with np.arrays
+        for k, v in new_params.__dict__.items():
+            if isinstance(v, list):
+                new_params.__dict__[k] = np.array(v)
+        return new_params
 
 
 class QuantumDotsHamiltonian(Hamiltonian):
-    def __init__(self, parameters: QuantumDotsHamiltonianParameters):
-        self.parameters = parameters
+    def __init__(self, parameters: t.Union[QuantumDotsHamiltonianParameters, t.Dict]):
+        if isinstance(parameters, dict):
+            self.parameters = QuantumDotsHamiltonianParameters.from_dict(parameters)
+        else:
+            self.parameters = parameters
         self.dimB = 4  # Bogoliubov block
         self.dim0 =  self.parameters.no_levels*self.dimB  # single dot block
         self.dim = self.dim0*self.parameters.no_dots
@@ -244,3 +290,17 @@ class Plotting:
         axs[1].imshow(hamiltonian.imag)
         plt.savefig('hamiltonian.png')
         plt.close()
+
+
+def generate_parameters(n_samples: int):
+    default_params = DefaultParameters(mu_max=100., t_max=100, b_max=2, d_max=5, lambda_max=2)
+    params = QuantumDotsHamiltonianParameters(no_dots=7, no_levels=2, default_parameters=default_params)
+    for _ in range(n_samples):
+        params.set_random_parameters_const()
+        yield {'parameters': params.to_dict()}
+    return parameters
+
+if __name__ == '__main__':
+    N = 100000
+    parameters = generate_parameters(N)
+    generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/7dots2levels_defaults', eig_decomposition=False, format='csr')
