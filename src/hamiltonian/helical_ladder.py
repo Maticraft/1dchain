@@ -1,6 +1,3 @@
-import os
-import pickle
-
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -34,7 +31,7 @@ class SpinLadder(Hamiltonian):
         self.after = kwargs.get('potential_after', self.N)
         self.periodic = periodic
         self.use_disorder = use_disorder
-        self._increase_potential_at_edges = increase_potential_at_edges
+        self.increase_potential_at_edges = increase_potential_at_edges
         self.H = self.generate_hamiltonian()
 
     def generate_hamiltonian(self):
@@ -141,7 +138,7 @@ class SpinLadder(Hamiltonian):
 
         return spin_matrix
 
-    def set_parameter(self, parameter_name: str, value: os.Any):
+    def set_parameter(self, parameter_name, value):
         setattr(self, parameter_name, value)
         self.H = self.generate_hamiltonian()
 

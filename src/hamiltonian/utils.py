@@ -89,8 +89,10 @@ def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: np.ndarray, filename: 
         ladder = deepcopy(model)
         ladder.set_parameter(xaxis, x)
         energies.append(np.linalg.eigvalsh(ladder.get_hamiltonian()))
+    energies = np.array(energies)
 
     xnorm = None
+    ynorm = None
     if 'ylim' in kwargs:
         plt.ylim(kwargs['ylim'])
     if 'xlim' in kwargs:
@@ -101,13 +103,22 @@ def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: np.ndarray, filename: 
             xnorm = 'π'
         else:
             xnorm = kwargs['xnorm']
+    if 'ynorm' in kwargs:
+        energies = energies / kwargs['ynorm']
+        if kwargs['ynorm'] == np.pi:
+            ynorm = 'π'
+        else:
+            ynorm = kwargs['ynorm']
 
     plt.plot(xparams, energies)
     if xnorm:
         plt.xlabel(f'{xaxis}/{xnorm}')
     else:
         plt.xlabel(f'{xaxis}')
-    plt.ylabel('Energy')
+    if ynorm:
+        plt.ylabel(f'Energy/{ynorm}')
+    else:
+        plt.ylabel('Energy')
     plt.savefig(filename)
     plt.close()
 

@@ -55,13 +55,13 @@ class DefaultParameters:
         # energy level separation within the dot (meV)
         self.dot_split = 1./AtomicUnits.Eh
         # hopping amplitude (meV)
-        self.t_default = .1/AtomicUnits.Eh
+        self.t_default = .2/AtomicUnits.Eh
         self.t_range = [0., t_max/AtomicUnits.Eh]
         # local Zeeman field (meV)
         self.b_default = .5/AtomicUnits.Eh
         self.b_range = [-b_max/AtomicUnits.Eh, b_max/AtomicUnits.Eh]
         # superconducting gap (meV)
-        self.d_default = .25/AtomicUnits.Eh
+        self.d_default = .5/AtomicUnits.Eh
         self.d_range = [0., d_max/AtomicUnits.Eh]
         # superconducting phase step
         self.ph_d_default = 0.
@@ -134,8 +134,11 @@ class QuantumDotsHamiltonian(Hamiltonian):
         onsite[3,0] =  par.d[i]*np.exp(-1.j*par.ph_d*i)/2.
         if par.no_levels > 1:
             onsite = np.kron(np.eye(par.no_levels), onsite)
+            diagonal = np.diag(onsite).copy()
             for l in range(par.no_levels):
-                onsite[l*self.dimB:(l+1)*self.dimB, l*self.dimB:(l+1)*self.dimB] += par.def_par.dot_split*l
+                diagonal[l*self.dimB:int((l+1/2)*self.dimB)] -= par.def_par.dot_split*l
+                diagonal[int((l+1/2)*self.dimB):(l+1)*self.dimB] += par.def_par.dot_split*l
+            np.fill_diagonal(onsite, diagonal)
         return onsite
         
     def hopping_matrix(self, i: int):
@@ -163,7 +166,7 @@ class QuantumDotsHamiltonian(Hamiltonian):
             hamiltonian[i*self.dim0:(i+1)*self.dim0, (i+1)*self.dim0:(i+2)*self.dim0] += self.hopping_matrix(i)
         for i in range(self.parameters.no_dots):
             hamiltonian[i*self.dim0:(i+1)*self.dim0, i*self.dim0:(i+1)*self.dim0] += self.onsite_matrix(i) 
-        hamiltonian += np.conjugate(np.triu(hamiltonian, k=1)).T
+        hamiltonian += np.conjugate(np.triu(hamiltonian, k=self.dimB)).T
         return hamiltonian
     
     def set_parameter(self, parameter_name: str, value: float):

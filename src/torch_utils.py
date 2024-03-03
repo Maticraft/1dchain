@@ -1,3 +1,4 @@
+from __future__ import annotations
 import typing as t
 
 import torch
@@ -9,11 +10,15 @@ from src.hamiltonian.utils import count_mzm_states, majorana_polarization
 
 class TorchHamiltonian(Hamiltonian):
     def __init__(self, hamiltonian: torch.Tensor):
-        self.hamiltonian = hamiltonian.detach().cpu()    
+        self.hamiltonian = hamiltonian.detach().cpu()
 
-    def from_2channel_tensor(hamiltonian: torch.Tensor) -> 'TorchHamiltonian':
+    def set_parameter(self, parameter_name: str, value: t.Any):
+        raise NotImplementedError('TorchHamiltonian does not support setting parameters')
+
+    @classmethod
+    def from_2channel_tensor(cls, hamiltonian: torch.Tensor) -> TorchHamiltonian:
         hamiltonian = hamiltonian[0] + 1j*hamiltonian[1]
-        return TorchHamiltonian(hamiltonian)
+        return cls(hamiltonian)
 
     def get_hamiltonian(self) -> np.ndarray:
         return self.hamiltonian.numpy()
