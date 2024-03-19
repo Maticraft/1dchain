@@ -26,15 +26,14 @@ distribution_dir_name = 'tests_latent_majoranas_ep_{}'
 
 # Reference eigvals plot params
 eigvals_sub_dir = 'eigvals'
-eigvals_plot_name = 'eigvals_spectre_autoencoder{}.png'
 x_axis = 'q'
 x_values = np.arange(0., np.pi, 0.1)
 xnorm = np.pi
 ylim = (-0.5, 0.5)
-
-# Reference hamiltonian params
 eigvals_gen_plot_name = 'eigvals_spectre_generator_{}.png'
 
+# Device
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Model name
 model_name = 'QuantumDotsHamiltonian_WGAN-GP'
@@ -43,7 +42,7 @@ model_name = 'QuantumDotsHamiltonian_WGAN-GP'
 params = {
     'epochs': 200,
     'batch_size': 64,
-    'N': 140,
+    'N': 14,
     'in_channels': 10,
     'block_size': 4,
     'representation_dim': 100,
@@ -121,9 +120,12 @@ try:
 except:
     data = HamiltionianDataset(data_path, label_idx=(3, 4), format='csr', threshold=0.15)
     data_loader = DataLoader(data, params['batch_size'])
-    mean, std = calculate_mean_and_std(data_loader)
+    mean, std = calculate_mean_and_std(data_loader, device=device)
     with open(data_mean_std_path, 'wb') as f:
         pickle.dump((mean, std), f)
+
+print('Data mean:', mean)
+print('Data std:', std)
 
 data = HamiltionianDataset(data_path, label_idx=(3, 4), format='csr', threshold=0.15, normalization_mean=mean, normalization_std=std)
 train_size = int(0.99*len(data))
@@ -141,8 +143,6 @@ discriminator = Discriminator(PositionalEncoder, discriminator_config)
 
 print(generator)
 print(discriminator)
-
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 generator_optimizer = torch.optim.Adam(generator.parameters(), lr=generator_params['lr'])
 discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=discriminator_params['lr'])

@@ -104,9 +104,9 @@ class HamiltonianGenerator(nn.Module):
                 layers.append(nn.BatchNorm1d(hidden_size))  # batchnorm location fixed
             elif i == layers_num - 1:
                 layers.append(nn.Linear(hidden_size, output_size))
-                layers.append(nn.BatchNorm1d(hidden_size))  # batchnorm location fixed
             else:
                 layers.append(nn.Linear(hidden_size, hidden_size))
+                layers.append(nn.BatchNorm1d(hidden_size))  # batchnorm location fixed
         if final_activation == 'self':
             layers.append(self._get_activation())
         elif final_activation == 'sigmoid':

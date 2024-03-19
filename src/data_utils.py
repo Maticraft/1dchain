@@ -297,7 +297,7 @@ def calculate_mean_and_std(
     # calculate latent space distribution (mean and std)
     mean = defaultdict(float)
     std = defaultdict(float)
-    for data, _ in tqdm(data_loader, 'Collecting data statistics...'):
+    for (data, _), _ in tqdm(data_loader, 'Collecting data statistics...'):
         data = data.to(device)
         if callable is not None:
             data = callable(data)

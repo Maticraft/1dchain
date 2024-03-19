@@ -101,10 +101,10 @@ class PositionalDecoder(nn.Module):
             elif i == layers_num - 1:
                 # layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, output_size))
-                layers.append(nn.BatchNorm1d(hidden_size))  # batchnorm location fixed
             else:
                 # layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, hidden_size))
+                layers.append(nn.BatchNorm1d(hidden_size))  # batchnorm location fixed
 
             if i != layers_num - 1:
                 layers.append(self._get_activation())
@@ -246,6 +246,7 @@ class PositionalEncoder(nn.Module):
     def _get_convs_output_size(self, dim):
         return (self.site_size[dim]*self.block_size - self.dilation*(self.block_size-1) - 1) // self.stride + 1
 
+
     def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int):
         layers = []
         for i in range(layers_num):
@@ -255,10 +256,11 @@ class PositionalEncoder(nn.Module):
             elif i == layers_num - 1:
                 # layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, output_size))
-                layers.append(nn.BatchNorm1d(hidden_size))  # batchnorm location fixed
             else:
                 # layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, hidden_size))
+                layers.append(nn.BatchNorm1d(hidden_size))  # batchnorm location fixed
+
             layers.append(self._get_activation())
         return nn.Sequential(*layers)
 
