@@ -97,11 +97,13 @@ class PositionalDecoder(nn.Module):
         for i in range(layers_num):
             if i == 0:
                 layers.append(nn.Linear(input_size, hidden_size))
+                layers.append(nn.BatchNorm1d(hidden_size))  # batchnorm location fixed
             elif i == layers_num - 1:
-                layers.append(nn.BatchNorm1d(hidden_size))
+                # layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, output_size))
+                layers.append(nn.BatchNorm1d(hidden_size))  # batchnorm location fixed
             else:
-                layers.append(nn.BatchNorm1d(hidden_size))
+                # layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, hidden_size))
 
             if i != layers_num - 1:
@@ -249,11 +251,13 @@ class PositionalEncoder(nn.Module):
         for i in range(layers_num):
             if i == 0:
                 layers.append(nn.Linear(input_size, hidden_size))
+                layers.append(nn.BatchNorm1d(hidden_size))  # batchnorm location fixed
             elif i == layers_num - 1:
-                layers.append(nn.BatchNorm1d(hidden_size))
+                # layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, output_size))
+                layers.append(nn.BatchNorm1d(hidden_size))  # batchnorm location fixed
             else:
-                layers.append(nn.BatchNorm1d(hidden_size))
+                # layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, hidden_size))
             layers.append(self._get_activation())
         return nn.Sequential(*layers)

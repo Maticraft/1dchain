@@ -82,7 +82,7 @@ class DefaultParameters:
         return {k: v.tolist() if isinstance(v, np.ndarray) else v for k, v in self.__dict__.items()}
     
     @classmethod
-    def from_dict(cls, d):
+    def from_dict(cls, d: t.Dict):
         new_params = cls()
         new_params.__dict__ = d
         for k, v in new_params.__dict__.items():
@@ -141,7 +141,7 @@ class QuantumDotsHamiltonianParameters:
         return d
     
     @classmethod
-    def from_dict(cls, d):
+    def from_dict(cls, d: t.Dict):
         tmp_d = deepcopy(d)
         new_params = cls(tmp_d['no_dots'], tmp_d['no_levels'], tmp_d['def_par'])
         del tmp_d['no_dots']

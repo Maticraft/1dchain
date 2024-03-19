@@ -101,11 +101,11 @@ class HamiltonianGenerator(nn.Module):
         for i in range(layers_num):
             if i == 0:
                 layers.append(nn.Linear(input_size, hidden_size))
+                layers.append(nn.BatchNorm1d(hidden_size))  # batchnorm location fixed
             elif i == layers_num - 1:
-                layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, output_size))
+                layers.append(nn.BatchNorm1d(hidden_size))  # batchnorm location fixed
             else:
-                layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, hidden_size))
         if final_activation == 'self':
             layers.append(self._get_activation())
@@ -318,3 +318,103 @@ class HamiltonianGeneratorV2(HamiltonianGenerator):
         zy_pair = self.block_pairs[self.block_pair_idx_map['1y']] # for spin imaginary part
         spin_block = self._block_generator(varying_blocks[:, 1, :], self.blocks[zy_pair[0]], self.blocks[zy_pair[1]])
         return spin_block
+    
+
+class QuantumDotsHamiltonianGenerator(HamiltonianGeneratorV2):
+    def __init__(self, representation_dim: t.Union[int, t.Tuple[int, int]], output_size: t.Tuple[int, int, int], **kwargs: t.Dict[str, t.Any]):
+        super().__init__(representation_dim, output_size, **kwargs)
+        # assuming all params can vary between sites (quantum dots and levels)
+        self.num_levels = (self.channel_num // 2 - 1) // 2
+        num_on_site_varying_params = 4
+        num_site_varying_params = num_on_site_varying_params + self.channel_num - 2
+        self.varying_block_mixer = nn.Conv1d(self.seq_num + 1, num_site_varying_params, kernel_size=1, stride=1)
+        num_site_constant_params = 4
+        self.constant_block_mixer = nn.Conv1d(self.seq_num, num_site_constant_params, kernel_size=1, stride=1)
+        self.num_interaction_params = 4
+        self.strip_longitude_interaction_conv = nn.Conv1d(self.channel_num - 2, self.num_interaction_params, kernel_size=2, stride=1, dilation=self.num_levels, bias=False)
+        # in case of quantum dots latitute interactions are interactions between different levels (assumed only neighboring levels interact with each other)
+        self.strip_latitude_interaction_conv = nn.Conv1d(self.channel_num - 2, self.num_interaction_params*(self.num_levels - 1), kernel_size=self.num_levels, stride=self.num_levels, dilation=1, bias=False)
+
+
+    def _construct_interactions(self, latitude_interactions: torch.Tensor, longitude_interactions: torch.Tensor):
+        '''
+        latitude_interactions.shape = (batch_size, num_interaction_params*(num_levels - 1), N/num_levels)
+        longitude_interactions.shape = (batch_size, num_interaction_params, N)
+        '''
+        latitude_interactions = torch.cat((latitude_interactions, torch.zeros((latitude_interactions.shape[0], self.num_interaction_params, self.N//self.num_levels), device=latitude_interactions.device)), dim=1)
+        latitude_interactions = latitude_interactions.view(-1, self.num_interaction_params, self.N)
+        num_interaction_params_per_block = self.num_interaction_params // 2 # separate for real and imaginary part
+
+        # since only nearest levels interactions are considers we must to fill the missing interactions with 0s
+        if self.num_levels == 1:
+            interactions = longitude_interactions
+            H_interaction = torch.stack([self._interaction_block_generator(interactions[:, num_interaction_params_per_block*i:num_interaction_params_per_block*(i+1)], is_real=i%2==0) for i in range(interactions.shape[1] // num_interaction_params_per_block)], dim=1)
+            H_longitude_lower = torch.cat([H_interaction[:, :, :, (self.N-self.num_levels)*self.block_size:], H_interaction[:, :, :, :(self.N-self.num_levels)*self.block_size]], dim=-1)
+            H_interaction_lower[:, 1::2] *= -1 # conjugation of imaginary part
+            return H_longitude_lower, H_interaction
+
+        skipped_levels = self.num_levels - 2
+        missing_latitude_interactions = torch.zeros((latitude_interactions.shape[0], skipped_levels*self.num_interaction_params, self.N), device=latitude_interactions.device)
+
+        interactions = torch.cat((latitude_interactions, missing_latitude_interactions, longitude_interactions), dim=1) # shape = (batch_size, 2*num_interaction_params, N)
+        H_interaction = torch.stack([self._interaction_block_generator(interactions[:, num_interaction_params_per_block*i:num_interaction_params_per_block*(i+1)], is_real=i%2==0) for i in range(interactions.shape[1] // num_interaction_params_per_block)], dim=1)
+        
+        H_latitude_interactions_lower = torch.cat([H_interaction[:, :2, :, (self.N-1)*self.block_size:], H_interaction[:, :2, :, :(self.N-1)*self.block_size]], dim=-1)
+        # dummy interactions for missing levels can be considered either as latitute or longitude (they are neglecitble due to their 0 value)
+        H_longitude_interactions_lower = torch.cat([H_interaction[:, (skipped_levels + 1)*2:, :, (self.N-self.num_levels)*self.block_size:], H_interaction[:, (skipped_levels + 1)*2:, :, :(self.N-self.num_levels)*self.block_size]], dim=-1)
+        H_missing_interactions = H_interaction[:, 2:2*(skipped_levels + 1), :, :]
+        H_interaction_lower = torch.cat([H_longitude_interactions_lower, H_missing_interactions, H_latitude_interactions_lower], dim=1) # order of latitude and longitude must be inverted in lower part of hamiltonian
+        H_interaction_lower[:, 1::2] *= -1 # conjugation of imaginary part
+        
+        # switch the order of the interactions in the lower part of the hamiltonian
+        right_upper_coeff = H_interaction_lower[:, :, 0, 1::4].clone()
+        left_upper_coeff = H_interaction_lower[:, :, 1, 0::4].clone()
+        H_interaction_lower[:, :, 0, 1::4] = left_upper_coeff
+        H_interaction_lower[:, :, 1, 0::4] = right_upper_coeff
+
+        right_lower_coeff = H_interaction_lower[:, :, 2, 3::4].clone()
+        left_lower_coeff = H_interaction_lower[:, :, 3, 2::4].clone()
+        H_interaction_lower[:, :, 2, 3::4] = left_lower_coeff
+        H_interaction_lower[:, :, 3, 2::4] = right_lower_coeff
+
+        return H_interaction_lower, H_interaction
+    
+
+    def _interaction_block_generator(self, t: torch.Tensor, is_real: bool):
+        '''
+        assumes t.shape = (batch_size, seq_size)
+        '''
+        if is_real:
+            z1_pair = self.block_pairs[self.block_pair_idx_map['z1']]
+            _1y_pair = self.block_pairs[self.block_pair_idx_map['1y']]
+            z1_block = self._block_generator(t[:, 0], self.blocks[z1_pair[0]], self.blocks[z1_pair[1]])
+            _1y_block = self._block_generator(t[:, 1], self.blocks[_1y_pair[0]], self.blocks[_1y_pair[1]])
+            return z1_block + _1y_block
+        _1z_pair = self.block_pairs[self.block_pair_idx_map['1z']]
+        _1x_pair = self.block_pairs[self.block_pair_idx_map['1x']]
+        _1z_block = self._block_generator(t[:, 0], self.blocks[_1z_pair[0]], self.blocks[_1z_pair[1]])
+        _1x_block = self._block_generator(t[:, 1], self.blocks[_1x_pair[0]], self.blocks[_1x_pair[1]])
+        return _1z_block + _1x_block
+
+
+    def _on_site_real_block_generator(self, varying_blocks: torch.Tensor, constant_blocks: torch.Tensor):
+        z1_pair = self.block_pairs[self.block_pair_idx_map['z1']]
+        zz_pair = self.block_pairs[self.block_pair_idx_map['zz']]
+        yy_pair = self.block_pairs[self.block_pair_idx_map['yy']]
+
+        z1_block = self._block_generator(constant_blocks[:, 0, :], self.blocks[z1_pair[0]], self.blocks[z1_pair[1]])
+        z1_block += self._block_generator(varying_blocks[:, 0, :], self.blocks[z1_pair[0]], self.blocks[z1_pair[1]])
+        
+        zz_block = self._block_generator(constant_blocks[:, 1, :], self.blocks[zz_pair[0]], self.blocks[zz_pair[1]])
+        zz_block += self._block_generator(varying_blocks[:, 1, :], self.blocks[zz_pair[0]], self.blocks[zz_pair[1]])
+        
+        yy_block = self._block_generator(constant_blocks[:, 2, :], self.blocks[yy_pair[0]], self.blocks[yy_pair[1]])
+        yy_block += self._block_generator(varying_blocks[:, 2, :], self.blocks[yy_pair[0]], self.blocks[yy_pair[1]])
+        return z1_block + zz_block + yy_block
+
+
+    def _on_site_imag_block_generator(self, varying_blocks: torch.Tensor, constant_blocks: torch.Tensor):
+        xy_pair = self.block_pairs[self.block_pair_idx_map['xy']]
+        xy_block = self._block_generator(constant_blocks[:, 3, :], self.blocks[xy_pair[0]], self.blocks[xy_pair[1]])
+        xy_block += self._block_generator(varying_blocks[:, 3, :], self.blocks[xy_pair[0]], self.blocks[xy_pair[1]])
+        return xy_block

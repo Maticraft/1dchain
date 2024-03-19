@@ -1,31 +1,28 @@
 import os
+import pickle
 
 import numpy as np
 from torch.utils.data import random_split, DataLoader
 import torch
 
-from src.data_utils import HamiltionianDataset
+from src.data_utils import HamiltionianDataset, calculate_mean_and_std
 from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from src.models.gan import Generator
-from src.models.hamiltonian_generator import HamiltonianGenerator, HamiltonianGeneratorV2
+from src.models.hamiltonian_generator import QuantumDotsHamiltonianGenerator
 from src.models.gan import train_gan
 from src.models.files import save_gan_params, save_gan, save_data_list, get_full_model_config, load_gan_submodel_state_dict, load_model, load_latent_distribution, save_latent_distribution, load_covariance_matrix, save_covariance_matrix
 from src.models.gan import Discriminator
-from src.plots import plot_convergence, plot_test_matrices, plot_test_eigvals, plot_matrix
+from src.plots import plot_convergence, plot_test_matrices, plot_test_eigvals, plot_matrix, plot_generator_eigvals
+
 from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPGSeparatedMajoranas'
-save_dir = './gan/spin_ladder/70_2_RedDistSimplePeriodicPGSeparatedMajoranas'
+data_path = './data/quantum_dots/7dots2levels_defaults'
+data_mean_std_path = f'{data_path}/mean_std.pkl'
+save_dir = './gan/quantum_dots/7dots2levels_defaults'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 distribution_dir_name = 'tests_latent_majoranas_ep_{}'
-
-# Load state from pretrained autoencoder
-original_autoencoder_path = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGSeparatedMajoranas/100/twice_pretrained_pos_encoder_symmetric_hamiltonian_generator_v2_varying_potential_and_delta_tf'
-original_autoencoder_epoch = 20
-distribution_path = os.path.join(original_autoencoder_path, distribution_dir_name.format(original_autoencoder_epoch))
-
 
 # Reference eigvals plot params
 eigvals_sub_dir = 'eigvals'
@@ -36,13 +33,11 @@ xnorm = np.pi
 ylim = (-0.5, 0.5)
 
 # Reference hamiltonian params
-hamiltonian_sub_dir = 'hamiltonian'
-hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
-hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
+eigvals_gen_plot_name = 'eigvals_spectre_generator_{}.png'
+
 
 # Model name
-model_name = 'Symmetric_Hamiltonian_WGAN-GP_V2_varying_potential_fft_tf_feature_matching_nonzero_no_noise_converter_from_decoder'
-# model_name = 'Symmetric_Hamiltonian_no_discriminator_varying_potential_and_delta_fft_tf_feature_matching_std_no_noise_converter'
+model_name = 'QuantumDotsHamiltonian_WGAN-GP'
 
 # Params
 params = {
@@ -56,8 +51,8 @@ params = {
     'gp_weight': 1.e-4,
     'discriminator_iters': 5,
     'start_training_mode': 'generator',
-    'data_label': 1,
-    'use_feature_matching': True,
+    'data_label': None,
+    'use_feature_matching': False,
     'feature_matching_weight': 0.1,
 }
 
@@ -72,7 +67,6 @@ encoder_params = {
     'block_enc_hidden_size': 128,
     'padding_mode': 'zeros',
 }
-
 
 discriminator_params = {
     'kernel_num': 64,
@@ -118,14 +112,20 @@ eigvals_sub_path = os.path.join(root_dir, eigvals_sub_dir)
 if not os.path.isdir(eigvals_sub_path):
     os.makedirs(eigvals_sub_path)
 
-ham_sub_path = os.path.join(root_dir, hamiltonian_sub_dir)     
-if not os.path.isdir(ham_sub_path):
-    os.makedirs(ham_sub_path)
-
 save_gan_params(params, generator_params, discriminator_params, root_dir)
 
-data = HamiltionianDataset(data_path, label_idx=(3, 4), format='csr', threshold=0.15)
+# Try to load data statistics
+try:
+    with open(data_mean_std_path, 'rb') as f:
+        mean, std = pickle.load(f)
+except:
+    data = HamiltionianDataset(data_path, label_idx=(3, 4), format='csr', threshold=0.15)
+    data_loader = DataLoader(data, params['batch_size'])
+    mean, std = calculate_mean_and_std(data_loader)
+    with open(data_mean_std_path, 'wb') as f:
+        pickle.dump((mean, std), f)
 
+data = HamiltionianDataset(data_path, label_idx=(3, 4), format='csr', threshold=0.15, normalization_mean=mean, normalization_std=std)
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size
 
@@ -134,15 +134,10 @@ train_loader = DataLoader(train_data, params['batch_size'])
 test_loader = DataLoader(test_data, params['batch_size'])
 
 generator_config = get_full_model_config(params, generator_params)
-generator = Generator(HamiltonianGeneratorV2, generator_config)
-load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, generator)
+generator = Generator(QuantumDotsHamiltonianGenerator, generator_config)
 
 discriminator_config = get_full_model_config(params, discriminator_params)
 discriminator = Discriminator(PositionalEncoder, discriminator_config)
-# load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, discriminator)
-
-encoder_config = get_full_model_config(params, encoder_params)
-encoder = load_model(PositionalEncoder, encoder_config, original_autoencoder_path, original_autoencoder_epoch)
 
 print(generator)
 print(discriminator)
@@ -151,12 +146,6 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 generator_optimizer = torch.optim.Adam(generator.parameters(), lr=generator_params['lr'])
 discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=discriminator_params['lr'])
-
-init_distribution = load_latent_distribution(distribution_path)
-cov_matrix = load_covariance_matrix(distribution_path)
-
-save_latent_distribution(init_distribution, root_dir)
-save_covariance_matrix(cov_matrix, root_dir)
 
 save_data_list(['Epoch', 'Generator loss', 'Discriminator loss'], loss_path, mode='w')
 
@@ -171,8 +160,6 @@ for epoch in range(1, params['epochs'] + 1):
         device,
         generator_optimizer,
         discriminator_optimizer,
-        init_distribution,
-        cov_matrix=cov_matrix,
         data_label=params['data_label'],
         strategy=params['strategy'],
         gradient_penalty_weight=params['gp_weight'],
@@ -185,23 +172,20 @@ for epoch in range(1, params['epochs'] + 1):
     save_gan(generator, discriminator, root_dir, epoch)
     save_data_list([epoch, gen_loss, disc_loss], loss_path)
 
-    test_hamiltonian = SpinLadder(**DEFAULT_PARAMS)
-    eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))
-    plot_test_eigvals(test_hamiltonian, encoder, generator.nn, x_axis, x_values, eigvals_path, device=device, xnorm=xnorm, ylim=ylim)
-    ham_auto_path = os.path.join(ham_sub_path, hamiltonian_plot_name.format(f'_ep{epoch}' + '{}'))
-    ham_diff_path = os.path.join(ham_sub_path, hamiltonain_diff_plot_name.format(f'_ep{epoch}'))
-    plot_test_matrices(test_hamiltonian.get_hamiltonian(), encoder, generator.nn, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device)
-
     # Plot sample hamiltonian
     test_matrix_path = os.path.join(root_dir, f'test_{epoch}')
     generator.to(device)
     os.makedirs(test_matrix_path, exist_ok=True)
-    for i in range(10):
+    num_states = 5
+    for i in range(num_states):
         generator.eval()
-        z = generator.get_noise(1, device=device, noise_type='covariance', mean=init_distribution[0], covariance=cov_matrix)
+        z = generator.get_noise(1, device=device, noise_type='hybrid')
         matrix = generator.nn(z).detach().cpu().numpy()[0]
         
         plot_matrix(matrix[0], os.path.join(test_matrix_path, f"random_hamiltonian_real_{i}.png"))
         plot_matrix(matrix[1], os.path.join(test_matrix_path, f"random_hamiltonian_imag_{i}.png"))
+
+        eigvals_gen_plot_path = os.path.join(test_matrix_path, eigvals_gen_plot_name.format(i))
+    plot_generator_eigvals(generator, num_states, eigvals_gen_plot_path, noise_type='hybrid', ylim=ylim)
    
 plot_convergence(loss_path, convergence_path, read_label=True)

@@ -1,4 +1,5 @@
 import abc
+from collections import defaultdict
 from functools import reduce
 import json
 import os
@@ -6,8 +7,9 @@ import typing as t
 
 import numpy as np
 from scipy import sparse
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 import torch
+from torchvision.transforms import Normalize
 from tqdm import tqdm
 
 DICTIONARY_NAME = 'dictionary.txt'
@@ -42,6 +44,8 @@ class HamiltionianDataset(Dataset):
         eigvals: bool = False,
         eig_decomposition: bool = False,
         format: str = 'numpy',
+        normalization_mean: t.Tuple[float, float] = (0., 0.),
+        normalization_std: t.Tuple[float, float] = (1., 1.),
         **kwargs,
     ):
         dic_path = os.path.join(data_dir, DICTIONARY_NAME)
@@ -54,7 +58,7 @@ class HamiltionianDataset(Dataset):
         self.eig_dec = eig_decomposition
         self.eig_vals_num = kwargs.get('eigvals_num', 4)
         self.format = format
-
+        self.normalization = Normalize(normalization_mean, normalization_std)
       
     def __len__(self) -> int:
         if self.data_limit != None:
@@ -69,6 +73,7 @@ class HamiltionianDataset(Dataset):
 
         tensor = self.load_data(MATRICES_DIR_NAME, idx, self.format)
         tensor = torch.stack((tensor.real, tensor.imag), dim=0)
+        tensor = self.normalization(tensor)
 
         if self.eig_dec:
             try:
@@ -282,3 +287,30 @@ def save_matrix(matrix: np.ndarray, root_dir: str, folder_name: str, file_name: 
         sparse.save_npz(matrix_name, sparse.csr_matrix(matrix))
     else:
         raise ValueError("Wrong format")
+    
+
+def calculate_mean_and_std(
+    data_loader: DataLoader,
+    device: torch.device,
+    callable: t.Optional[t.Callable] = None
+):
+    # calculate latent space distribution (mean and std)
+    mean = defaultdict(float)
+    std = defaultdict(float)
+    for data, _ in tqdm(data_loader, 'Collecting data statistics...'):
+        data = data.to(device)
+        if callable is not None:
+            data = callable(data)
+        for channel in range(data.shape[1]):
+            mean[channel] += data[:, channel].mean().item()
+            std[channel] += data[:, channel].std().item()
+    for channel in mean.keys():
+        mean[channel] /= len(data_loader)
+        std[channel] /= len(data_loader)
+    return tuple(mean.values()), tuple(std.values())
+
+
+def denormalization(mean: t.Tuple[float, ...], std: t.Tuple[float, ...]):
+    mean = torch.tensor(mean)
+    std = torch.tensor(std)
+    return Normalize((-mean/std).tolist(), (1./std).tolist())
