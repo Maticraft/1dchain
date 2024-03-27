@@ -46,7 +46,7 @@ class AtomicUnits:
     Bh=235051.76 # Teslas
 
 
-MZM_THRESHOLD = 0.1/ AtomicUnits.Eh # to adjust?
+MZM_THRESHOLD = 0.07/ AtomicUnits.Eh # to adjust?
 
 
 class DefaultParameters:
@@ -169,7 +169,7 @@ class QuantumDotsHamiltonian(Hamiltonian):
     def onsite_matrix(self, i: int):
         par = self.parameters
         # Nambu spinor = [\Psi^dag_up, \Psi^dag_down, \Psi_up, \Psi_down]
-        onsite = np.zeros((self.dimB,self.dimB), dtype=np.complex128)
+        onsite = np.zeros((self.dimB, self.dimB), dtype=np.complex128)
         onsite[0,0] = -par.mu[i]+par.b[i]
         onsite[1,1] = -par.mu[i]-par.b[i]
         onsite[2,2] =  par.mu[i]-par.b[i]

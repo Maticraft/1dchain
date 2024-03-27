@@ -310,7 +310,8 @@ def calculate_mean_and_std(
     return tuple(mean.values()), tuple(std.values())
 
 
-def denormalization(mean: t.Tuple[float, ...], std: t.Tuple[float, ...]):
-    mean = torch.tensor(mean)
-    std = torch.tensor(std)
-    return Normalize((-mean/std).tolist(), (1./std).tolist())
+class Denormalize(Normalize):
+    def __init__(self, mean: t.Tuple[float, ...], std: t.Tuple[float, ...]):
+        mean = torch.tensor(mean)
+        std = torch.tensor(std)
+        super().__init__((-mean/std).tolist(), (1./std).tolist())

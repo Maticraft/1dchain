@@ -91,12 +91,12 @@ class Decoder(nn.Module):
         if self.upsample_method == 'transpose':
             for _ in range(2, self.conv_num):
                 convs.append(nn.ConvTranspose2d(self.kernel_num, self.kernel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))
-                convs.append(self._get_activation())
                 convs.append(nn.BatchNorm2d(self.kernel_num))
+                convs.append(self._get_activation())
             if self.conv_num > 1:
                 convs.append(nn.ConvTranspose2d(self.kernel_num, self.kernel_num1, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))
-                convs.append(self._get_activation())
                 convs.append(nn.BatchNorm2d(self.kernel_num1))
+                convs.append(self._get_activation())
 
             convs.append(nn.ConvTranspose2d(self.kernel_num1, self.channel_num, kernel_size=self.kernel_size1, stride=self.stride1, dilation=self.dilation1))
         else:
@@ -105,14 +105,13 @@ class Decoder(nn.Module):
                     raise ValueError("Upsample not implemented for stride larger than 1")
                 convs.append(nn.Upsample(scale_factor=self.scale_factor[-i], mode=self.upsample_method))
                 convs.append(nn.Conv2d(self.kernel_num, self.kernel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation, padding='same'))
-                convs.append(self._get_activation())
                 convs.append(nn.BatchNorm2d(self.kernel_num))
+                convs.append(self._get_activation())
             if self.conv_num > 1:
                 convs.append(nn.Upsample(scale_factor=self.scale_factor[1], mode=self.upsample_method))
                 convs.append(nn.Conv2d(self.kernel_num, self.kernel_num1, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation, padding='same'))
-                convs.append(self._get_activation())
                 convs.append(nn.BatchNorm2d(self.kernel_num1))
-
+                convs.append(self._get_activation())
             convs.append(nn.Upsample(scale_factor=self.scale_factor[0], mode=self.upsample_method))
             convs.append(nn.Conv2d(self.kernel_num1, self.channel_num, kernel_size=self.kernel_size1, stride=self.stride1, dilation=self.dilation1, padding='same'))
 
@@ -132,12 +131,12 @@ class Decoder(nn.Module):
     def _get_fcs(self):
         fcs = []
         fcs.append(nn.Linear(self.representation_dim, self.hidden_size))
-        fcs.append(self._get_activation())
         fcs.append(nn.BatchNorm1d(self.hidden_size))
+        fcs.append(self._get_activation())
         for _ in range(1, self.fc_num - 1):
             fcs.append(nn.Linear(self.hidden_size, self.hidden_size))
-            fcs.append(self._get_activation())
             fcs.append(nn.BatchNorm1d(self.hidden_size))
+            fcs.append(self._get_activation())
         fcs.append(nn.Linear(self.hidden_size, self.fcs_output_size))
         return nn.Sequential(*fcs)
 
@@ -156,15 +155,17 @@ class Decoder(nn.Module):
         strips_split = torch.tensor_split(strips, self.channel_num // 2, dim=1)
         for i, strip in enumerate(strips_split):
             offset = i - (len(strips_split) // 2)
-            strip_off = max(0, -offset)
             matrix_off = abs(offset)*self.block_size
-            for j in range(self.N - abs(offset)):
+            for j in range(self.N):
                 idx0 =  j*self.block_size
                 idx1 = (j+1)*self.block_size
                 if offset >= 0:
-                    matrix[:, :, idx0: idx1, idx0 + matrix_off: idx1 + matrix_off] = strip[:, :, :, idx0 + strip_off: idx1 + strip_off]
+                    matrix_idx0 = (idx0 + matrix_off) % (self.N*self.block_size)
+                    matrix_idx1 = matrix_idx0 + self.block_size
                 else:
-                    matrix[:, :, idx0 + matrix_off: idx1 + matrix_off, idx0: idx1] = strip[:, :, :, idx0 + strip_off: idx1 + strip_off]
+                    matrix_idx0 = (idx0 - matrix_off) % (self.N*self.block_size)
+                    matrix_idx1 = matrix_idx0 + self.block_size
+                matrix[:, :, idx0: idx1, matrix_idx0: matrix_idx1] = strip[:, :, :, idx0: idx1]
         return matrix
 
     def forward(self, x: torch.Tensor):
@@ -246,18 +247,18 @@ class Encoder(nn.Module):
     def _get_convs(self):
         convs = []
         convs.append(nn.Conv2d(self.channel_num, self.kernel_num1, kernel_size= self.kernel_size1, stride=self.stride1, dilation=self.dilation1))
-        convs.append(self._get_activation())
         convs.append(nn.BatchNorm2d(self.kernel_num1))
+        convs.append(self._get_activation())
 
         if self.conv_num > 1:
             convs.append(nn.Conv2d(self.kernel_num1, self.kernel_num, kernel_size= self.kernel_size, stride=self.stride, dilation=self.dilation))
-            convs.append(self._get_activation())
             convs.append(nn.BatchNorm2d(self.kernel_num))
+            convs.append(self._get_activation())
 
         for _ in range(2, self.conv_num):
             convs.append(nn.Conv2d(self.kernel_num, self.kernel_num, kernel_size=self.kernel_size, stride=self.stride, dilation=self.dilation))
-            convs.append(self._get_activation())
             convs.append(nn.BatchNorm2d(self.kernel_num))
+            convs.append(self._get_activation())
         return nn.Sequential(*convs)
 
     def _get_convs_output_size(self, dim):
@@ -269,32 +270,49 @@ class Encoder(nn.Module):
     def _get_fcs(self):
         fcs = []
         fcs.append(nn.Linear(self.convs_output_size, self.hidden_size))
-        fcs.append(self._get_activation())
         fcs.append(nn.BatchNorm1d(self.hidden_size))
+        fcs.append(self._get_activation())
         for _ in range(1, self.fc_num - 1):
             fcs.append(nn.Linear(self.hidden_size, self.hidden_size))
-            fcs.append(self._get_activation())
             fcs.append(nn.BatchNorm1d(self.hidden_size))
+            fcs.append(self._get_activation())
         fcs.append(nn.Linear(self.hidden_size, self.representation_dim))
         return nn.Sequential(*fcs)
 
-    def _get_strip(self, x: torch.Tensor, offset: int):
+    def _get_strip(self, x: torch.Tensor, offset: int, fill_mode: str = 'zeros'):
         strip = torch.zeros((x.shape[0], x.shape[1], self.block_size, self.N*self.block_size)).to(x.device)
-        strip_off = max(0, -offset)
-        idx_off = abs(offset)*self.block_size
-        for i in range(self.N - abs(offset)):
+        x_off = abs(offset)*self.block_size
+        for i in range(self.N):
             idx0 =  i*self.block_size
-            idx1 = (i+1)*self.block_size
+            idx1 = idx0 + self.block_size
             if offset >= 0:
-                strip[:, :, :, idx0 + strip_off: idx1 + strip_off] = x[:, :, idx0: idx1, idx0 + idx_off: idx1 + idx_off]
+                idx0_off = (idx0 + x_off) % (self.N * self.block_size)
+                idx1_off = idx0_off + self.block_size
             else:
-                strip[:, :, :, idx0 + strip_off: idx1 + strip_off] = x[:, :, idx0 + idx_off: idx1 + idx_off, idx0: idx1]
-        return strip
+                idx0_off = (idx0 - x_off) % (self.N * self.block_size)
+                idx1_off = idx0_off + self.block_size
+            strip[:, :, :, idx0: idx1] = x[:, :, idx0: idx1, idx0_off: idx1_off]
+        if fill_mode == 'zeros':
+            if offset > 0:
+                strip[:, :, :, -x_off:] = 0.
+            elif offset < 0:
+                strip[:, :, :, :x_off] = 0.
+            return strip
+        elif fill_mode == 'circular':
+            if offset > 0:
+                strip[:, :, :, -x_off:] = strip[:, :, :, :x_off]
+            elif offset < 0:
+                strip[:, :, :, :x_off] = strip[:, :, :, -x_off:]
+            return strip
+        elif fill_mode == 'hamiltonian':
+            return strip
+        else:
+            raise ValueError(f'Fill mode: {fill_mode} not implemented')
 
     def forward(self, x: torch.Tensor):
         if self.use_strips:
             strip_bound = ((self.channel_num // 2) - 1) // 2
-            x = torch.cat([self._get_strip(x, i) for i in range(-strip_bound, strip_bound + 1)], dim=1)
+            x = torch.cat([self._get_strip(x, i, fill_mode='hamiltonian') for i in range(-strip_bound, strip_bound + 1)], dim=1)
         x = self.convs(x)
         x = x.view(-1, self.convs_output_size)
         x = self.fcs(x)

@@ -14,7 +14,7 @@ from src.models.files import save_gan_params, save_gan, save_data_list, get_full
 from src.models.gan import Discriminator
 from src.plots import plot_convergence, plot_test_matrices, plot_test_eigvals, plot_matrix, plot_generator_eigvals
 
-from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
+from src.models.autoencoder import Decoder, Encoder
 
 # Paths
 data_path = './data/quantum_dots/7dots2levels_defaults'
@@ -36,68 +36,64 @@ eigvals_gen_plot_name = 'eigvals_spectre_generator_{}.png'
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Model name
-model_name = 'QuantumDotsHamiltonian_WGAN-GP-extra-genearator-focus'
+model_name = 'Simple_WGAN-GP-strips'
 
 # Params
 params = {
-    'epochs': 200,
+    'epochs': 1000,
     'batch_size': 64,
     'N': 14,
     'in_channels': 10,
     'block_size': 4,
     'representation_dim': 100,
     'strategy': 'wgan-gp',
-    'gp_weight': 1.e-4,
+    'gp_weight': 1.e-3,
     'discriminator_iters': 1,
-    'generator_iters': 10,
+    'generator_iters': 5,
     'start_training_mode': 'generator',
     'data_label': None,
     'use_feature_matching': False,
     'feature_matching_weight': 0.1,
 }
 
-# Architecture
 encoder_params = {
+    'kernel_size': (1, 3),
+    'kernel_size1': (4, 4),
+    'stride': (1, 1),
+    'stride1': 4,
+    'dilation': 1,
+    'dilation1': 1,
+    'fc_num': 4,
+    'conv_num': 3,
     'kernel_num': 64,
-    'kernel_size': 4,
+    'kernel_num1': 64,
+    'hidden_size': 512,
     'activation': 'leaky_relu',
-    'freq_enc_depth': 4,
-    'freq_enc_hidden_size': 128,
-    'block_enc_depth': 4,
-    'block_enc_hidden_size': 128,
-    'padding_mode': 'zeros',
-}
-
-discriminator_params = {
-    'kernel_num': 64,
-    'kernel_size': 4,
-    'activation': 'leaky_relu',
-    'freq_enc_depth': 4,
-    'freq_enc_hidden_size': 128,
-    'block_enc_depth': 4,
-    'block_enc_hidden_size': 128,
-    'padding_mode': 'zeros',
+    'use_strips': True,
     'lr': 1.e-4,
+
 }
 
-generator_params = {
-    # "kernel_num": 64,
-    "activation": "leaky_relu",
-    "freq_dec_depth": 4,
-    "freq_dec_hidden_size": 128,
-    "block_dec_depth": 4,
-    "block_dec_hidden_size": 128,
-    "seq_dec_depth": 4,
-    "seq_dec_hidden_size": 128,
-    'smoothing': False,
-    'varying_potential': True,
-    'varying_delta': False,
-    'lr': 1.e-3,
-    'skip_noise_converter': True,
+decoder_params = {
+    'kernel_size': (1, 3),
+    'kernel_size1': (4, 4),
+    'stride': (1, 1),
+    'stride1': 4,
+    'dilation': 1,
+    'dilation1': 1,
+    'fc_num': 4,
+    'conv_num': 3,
+    'kernel_num': 64,
+    'kernel_num1': 64,
+    'hidden_size': 512,
+    'upsample_method': 'transpose',
+    'scale_factor': 2, # does matter only for upsample_method 'nearest' or 'bilinear'
+    'activation': 'leaky_relu',
+    'use_strips': True,
+    'lr': 1.e-4,
     'training_switch_loss_ratio': 1.2,
-    'reduce_blocks': False,
-    'seq_num': 32,
 }
+
 
 
 # Set the root dir
@@ -112,7 +108,7 @@ eigvals_sub_path = os.path.join(root_dir, eigvals_sub_dir)
 if not os.path.isdir(eigvals_sub_path):
     os.makedirs(eigvals_sub_path)
 
-save_gan_params(params, generator_params, discriminator_params, root_dir)
+save_gan_params(params, decoder_params, encoder_params, root_dir)
 
 # Try to load data statistics
 try:
@@ -136,17 +132,17 @@ train_data, test_data = random_split(data, [train_size, test_size])
 train_loader = DataLoader(train_data, params['batch_size'])
 test_loader = DataLoader(test_data, params['batch_size'])
 
-generator_config = get_full_model_config(params, generator_params)
-generator = Generator(QuantumDotsHamiltonianGenerator, generator_config)
+generator_config = get_full_model_config(params, decoder_params)
+generator = Generator(Decoder, generator_config)
 
-discriminator_config = get_full_model_config(params, discriminator_params)
-discriminator = Discriminator(PositionalEncoder, discriminator_config)
+discriminator_config = get_full_model_config(params, encoder_params)
+discriminator = Discriminator(Encoder, discriminator_config)
 
 print(generator)
 print(discriminator)
 
-generator_optimizer = torch.optim.Adam(generator.parameters(), lr=generator_params['lr'])
-discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=discriminator_params['lr'])
+generator_optimizer = torch.optim.Adam(generator.parameters(), lr=decoder_params['lr'])
+discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=encoder_params['lr'])
 
 save_data_list(['Epoch', 'Generator loss', 'Discriminator loss'], loss_path, mode='w')
 
@@ -166,7 +162,7 @@ for epoch in range(1, params['epochs'] + 1):
         gradient_penalty_weight=params['gp_weight'],
         discriminator_repeats=params['discriminator_iters'],
         generator_repeats=params['generator_iters'],
-        training_switch_loss_ratio=generator_params['training_switch_loss_ratio'],
+        training_switch_loss_ratio=decoder_params['training_switch_loss_ratio'],
         start_training_mode=training_mode,
         use_majoranas_feature_matching=params['use_feature_matching'],
         feature_matching_loss_weight=params['feature_matching_weight'],

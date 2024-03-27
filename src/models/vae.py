@@ -46,6 +46,8 @@ def train_vae(
     eigenstates_loss_weight: float = .5,
     diag_loss: bool = False,
     diag_loss_weight: float = .01,
+    kl_loss: bool = True,
+    kl_loss_weight: float = 0.01,
 ):
     criterion = nn.MSELoss()
 
@@ -71,9 +73,10 @@ def train_vae(
         loss = criterion(x_hat, x)
         total_reconstruction_loss += torch.mean(loss).item()
 
-        k1_loss = kl_divergence_loss(freq_dist).mean() + kl_divergence_loss(block_dist).mean()
-        total_kl_loss += k1_loss.item()
-        loss += .01 * k1_loss
+        if kl_loss:
+            k1_loss = kl_divergence_loss(freq_dist).mean() + kl_divergence_loss(block_dist).mean()
+            total_kl_loss += k1_loss.item()
+            loss += kl_loss_weight * k1_loss
 
         if edge_loss:
             e_loss = edge_diff(x_hat, x, criterion, edge_width=8)

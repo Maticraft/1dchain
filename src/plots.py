@@ -316,11 +316,17 @@ def simple_plot(
     if 'xlim' in kwargs:
         plt.xlim(kwargs['xlim'])
     if 'xnorm' in kwargs and kwargs['xnorm']:
-        xvalues = xvalues / kwargs['xnorm']
+        xvalues = np.array(xvalues) / kwargs['xnorm']
         if kwargs['xnorm'] == np.pi:
             xnorm = 'π'
         else:
             xnorm = kwargs['xnorm']
+    if 'ynorm' in kwargs:
+        yvalues = np.array(yvalues) / kwargs['ynorm']
+        if kwargs['ynorm'] == np.pi:
+            ynorm = 'π'
+        else:
+            ynorm = kwargs['ynorm']
 
     plt.plot(xvalues, yvalues)
 
@@ -328,11 +334,14 @@ def simple_plot(
         plt.xlabel(f'{xaxis}/{xnorm}')
     else:
         plt.xlabel(f'{xaxis}')
+    if ynorm:
+        plt.ylabel(f'{yaxis}/{ynorm}')
+    else:
+        plt.ylabel(yaxis)
 
     if 'scale' in kwargs:
         plt.yscale(kwargs['scale'])
 
-    plt.ylabel(yaxis)
     plt.savefig(filename)
     plt.close()
 
@@ -345,16 +354,19 @@ def plot_test_matrices(
     save_path_rec: t.Optional[str] = None,
     save_path_org: t.Optional[str] = None,
     device: torch.device = torch.device('cpu'),
+    vscale: t.Optional[float] = None,
     **reconstruction_kwargs: t.Dict[str, t.Any],
 ):
+    if vscale is None:
+        vscale = 1.
     rec_matrix = reconstruct_hamiltonian(matrix, encoder, decoder, device, **reconstruction_kwargs)
     if save_path_org:
-        plot_matrix(np.real(matrix), save_path_org.format('_real'))
-        plot_matrix(np.imag(matrix), save_path_org.format('_imag'))
+        plot_matrix(np.real(matrix), save_path_org.format('_real'), vmin = -vscale, vmax = vscale)
+        plot_matrix(np.imag(matrix), save_path_org.format('_imag'), vmin = -vscale, vmax = vscale)
     if save_path_rec:
-        plot_matrix(np.real(rec_matrix), save_path_rec.format('_real'))
-        plot_matrix(np.imag(rec_matrix), save_path_rec.format('_imag'))
-    plot_matrix(np.abs(rec_matrix - matrix), save_path_diff, vmin = 1.e-3, vmax = 1, norm = 'log', cmap='YlGnBu')
+        plot_matrix(np.real(rec_matrix), save_path_rec.format('_real'), vmin = -vscale, vmax = vscale)
+        plot_matrix(np.imag(rec_matrix), save_path_rec.format('_imag'), vmin = -vscale, vmax = vscale)
+    plot_matrix(np.abs(rec_matrix - matrix), save_path_diff, vmin = vscale*1.e-3, vmax = vscale*1, norm = 'log', cmap='YlGnBu')
 
 
 def plot_matrix(matrix: np.ndarray, filepath: str, **kwargs: t.Dict[str, t.Any]):

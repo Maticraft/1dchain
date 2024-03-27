@@ -9,7 +9,9 @@ import torch.nn as nn
 from torch.distributions.normal import Normal
 from torch.distributions.multivariate_normal import MultivariateNormal
 from torch.distributions.kl import kl_divergence
+from torchvision.transforms import Normalize
 
+from src.data_utils import Denormalize
 
 def majorana_eigvals_feature_matching(x_hat: torch.Tensor, zero_eigvals_threshold: float = 0.015):
     x_hat_complex = torch.complex(x_hat[:, 0, :, :], x_hat[:, 1, :, :])
@@ -113,6 +115,9 @@ def reconstruct_hamiltonian(H: np.ndarray, encoder: nn.Module, decoder: nn.Modul
     with torch.no_grad():
         H_torch = torch.from_numpy(H)
         H_torch = torch.stack((H_torch.real, H_torch.imag), dim= 0)
+        if 'normalization_mean' in kwargs and 'normalization_std' in kwargs:
+            normalization = Normalize(kwargs['normalization_mean'], kwargs['normalization_std'])
+            H_torch = normalization(H_torch)
         H_torch = H_torch.unsqueeze(0).float().to(device)
         latent_vec = encoder(H_torch)
         if kwargs.get("decoder_eigvals", False):
@@ -126,6 +131,10 @@ def reconstruct_hamiltonian(H: np.ndarray, encoder: nn.Module, decoder: nn.Modul
                 latent_vec = latent_vec + torch.rand_like(latent_vec) * kwargs.get("latent_shift", 1.)
             latent_vec = (latent_vec, min_eigvals.real)
         H_torch_rec = decoder(latent_vec)
+
+        if 'normalization_mean' in kwargs and 'normalization_std' in kwargs:
+            denormalization = Denormalize(kwargs['normalization_mean'], kwargs['normalization_std'])
+            H_torch_rec = denormalization(H_torch_rec)
         H_rec = torch.complex(H_torch_rec[:, 0, :, :], H_torch_rec[:, 1, :, :]).squeeze().cpu().numpy()
     return H_rec
 

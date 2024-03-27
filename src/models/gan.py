@@ -221,6 +221,7 @@ def train_gan(
     criterion: nn.Module = nn.BCEWithLogitsLoss(), # param effective for standard GAN
     gradient_penalty_weight: float = 1.e-4, # param effective for WGAN-GP
     discriminator_repeats: int = 5, # param effective for WGAN-GP
+    generator_repeats: int = 1, # param effective for WGAN-GP
     use_majoranas_feature_matching: bool = False,
     feature_matching_loss_weight: float = 1, 
 ):
@@ -258,17 +259,14 @@ def train_gan(
 
         total_discriminator_loss += discriminator_loss
 
-        generator_optimizer.zero_grad()
-
-        x_hat = generate_fake_data(generator, x.shape[0], device, init_distribution, cov_matrix)
-        fake_prediction = discriminator(x_hat)
-
-        feature_matching_loss = 0
-        if use_majoranas_feature_matching:
-            # feature matching
-            feature_matching_loss = majorana_eigvals_feature_matching(x_hat, zero_eigvals_threshold= 0.015)
-
         if strategy == 'standard':
+            generator_optimizer.zero_grad()
+            x_hat = generate_fake_data(generator, x.shape[0], device, init_distribution, cov_matrix)
+            fake_prediction = discriminator(x_hat)
+            feature_matching_loss = 0
+            if use_majoranas_feature_matching:
+                # feature matching
+                feature_matching_loss = majorana_eigvals_feature_matching(x_hat, zero_eigvals_threshold= 0.015)
             generator_loss = criterion(fake_prediction, torch.ones_like(fake_prediction)) + feature_matching_loss_weight * feature_matching_loss # for standard GAN with discriminator
             if discriminator_loss.item() > training_switch_loss_ratio * generator_loss.item():
                 generator.eval()
@@ -280,12 +278,21 @@ def train_gan(
                 generator_optimizer.step()
 
         if strategy == 'wgan-gp':
-            generator_loss = -fake_prediction.mean() + feature_matching_loss_weight * feature_matching_loss # for WGAN with critic
-            generator_loss.backward()
-            generator_optimizer.step()
+            for _ in range(generator_repeats):
+                generator_optimizer.zero_grad()
+                x_hat = generate_fake_data(generator, x.shape[0], device, init_distribution, cov_matrix)
+                fake_prediction = discriminator(x_hat)
+                feature_matching_loss = 0
+                if use_majoranas_feature_matching:
+                    # feature matching
+                    feature_matching_loss = majorana_eigvals_feature_matching(x_hat, zero_eigvals_threshold= 0.015)
+                generator_loss = -fake_prediction.mean() + feature_matching_loss_weight * feature_matching_loss # for WGAN with critic
+                generator_loss.backward()
+                generator_optimizer.step()
 
         if strategy == 'no-discriminator':
-            assert use_majoranas_feature_matching, 'Feature matching is required for this strategy'
+            generator_optimizer.zero_grad()
+            feature_matching_loss = majorana_eigvals_feature_matching(x_hat, zero_eigvals_threshold= 0.015)
             generator_loss = feature_matching_loss
             generator_loss.backward()
             generator_optimizer.step()
