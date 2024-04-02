@@ -17,9 +17,9 @@ from src.plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
 
 # Paths
-data_path = './data/quantum_dots/7dots2levels_defaults'
+data_path = './data/quantum_dots/7dots2levels_large'
 data_mean_std_path = f'{data_path}/mean_std.pkl'
-save_dir = './autoencoder/quantum_dots/7dots2levels_defaults'
+save_dir = './autoencoder/quantum_dots/7dots2levels_large'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -44,7 +44,7 @@ parameters = QuantumDotsHamiltonianParameters(no_dots=7, no_levels=2, default_pa
 test_hamiltonian = QuantumDotsHamiltonian(parameters)
 
 # Model name
-model_name = 'pos_encoder_qdh_generator'
+model_name = 'pos_encoder_qdh_generator_mocked_latitudes'
 
 # Params
 params = {
@@ -83,7 +83,7 @@ encoder_params = {
 
 
 decoder_params = {
-    # 'kernel_num': 64,
+    'kernel_num': 64,
     'activation': 'leaky_relu',
     'freq_dec_depth': 4,
     'freq_dec_hidden_size': 128,
@@ -96,6 +96,8 @@ decoder_params = {
     'smoothing': False,
     'varying_potential': True,
     'varying_delta': True,
+    'allow_periodic': False,
+    'interlevel_interactions': False,
 }
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -141,6 +143,7 @@ test_loader = DataLoader(test_data, params['batch_size'])
 encoder = PositionalEncoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
 # decoder = EigvalsPositionalDecoder(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
 decoder = QuantumDotsHamiltonianGenerator(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
+# decoder = PositionalDecoder(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
 
 print(encoder)
 print(decoder)

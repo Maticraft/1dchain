@@ -334,6 +334,8 @@ class QuantumDotsHamiltonianGenerator(HamiltonianGeneratorV2):
         self.strip_longitude_interaction_conv = nn.Conv1d(self.channel_num - 2, self.num_interaction_params, kernel_size=2, stride=1, dilation=self.num_levels, bias=False)
         # in case of quantum dots latitute interactions are interactions between different levels (assumed only neighboring levels interact with each other)
         self.strip_latitude_interaction_conv = nn.Conv1d(self.channel_num - 2, self.num_interaction_params*(self.num_levels - 1), kernel_size=self.num_levels, stride=self.num_levels, dilation=1, bias=False)
+        self.allow_periodic = kwargs.get('allow_periodic', False)
+        self.interlevels_interactions = kwargs.get('interlevels_interactions', False)
 
 
     def _construct_interactions(self, latitude_interactions: torch.Tensor, longitude_interactions: torch.Tensor):
@@ -344,6 +346,12 @@ class QuantumDotsHamiltonianGenerator(HamiltonianGeneratorV2):
         latitude_interactions = torch.cat((latitude_interactions, torch.zeros((latitude_interactions.shape[0], self.num_interaction_params, self.N//self.num_levels), device=latitude_interactions.device)), dim=1)
         latitude_interactions = latitude_interactions.view(-1, self.num_interaction_params, self.N)
         num_interaction_params_per_block = self.num_interaction_params // 2 # separate for real and imaginary part
+
+        # mock longitude interactions at periodic boundaries to 0s
+        if not self.allow_periodic:
+            longitude_interactions[:, :, (self.N - 2):] = 0
+        if not self.interlevels_interactions:
+            latitude_interactions.fill_(0)
 
         # since only nearest levels interactions are considers we must to fill the missing interactions with 0s
         if self.num_levels == 1:

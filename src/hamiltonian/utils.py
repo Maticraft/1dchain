@@ -133,13 +133,23 @@ def plot_eigvals_levels(
     
     if 'ylim' in kwargs:
         plt.ylim(kwargs['ylim'])
+
+    if 'ynorm' in kwargs:
+        eigvals = eigvals / kwargs['ynorm']
+        if kwargs['ynorm'] == np.pi:
+            ynorm = 'π'
+        else:
+            ynorm = kwargs['ynorm']
    
     xrange = [0, 10]
     for i in range(len(eigvals)):
         plt.plot(xrange, [eigvals[i], eigvals[i]])
 
     plt.xticks([])
-    plt.ylabel('Energy')
+    if ynorm:
+        plt.ylabel(f'Energy/{ynorm}')
+    else:
+        plt.ylabel('Energy')    
     plt.savefig(save_path)
     plt.close()
 

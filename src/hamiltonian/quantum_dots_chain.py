@@ -50,7 +50,7 @@ MZM_THRESHOLD = 0.07/ AtomicUnits.Eh # to adjust?
 
 
 class DefaultParameters:
-    def __init__(self, mu_max: float = 100., t_max: float = 100., b_max: float = 2., d_max: float = 5., lambda_max: float = 2.):
+    def __init__(self, mu_max: float = 1., t_max: float = 1., b_max: float = 1., d_max: float = 1., lambda_max: float = 1.):
         # potential within a dot (meV)
         self.mu_default = 0./AtomicUnits.Eh
         self.mu_range = [-mu_max/AtomicUnits.Eh, mu_max/AtomicUnits.Eh]
@@ -293,7 +293,7 @@ class Plotting:
 
 
 def generate_parameters(n_samples: int):
-    default_params = DefaultParameters(mu_max=100., t_max=100, b_max=2, d_max=5, lambda_max=2)
+    default_params = DefaultParameters(mu_max=10., t_max=5., b_max=5, d_max=5, lambda_max=1)
     params = QuantumDotsHamiltonianParameters(no_dots=7, no_levels=2, default_parameters=default_params)
     for _ in range(n_samples):
         params.set_random_parameters_const()
@@ -301,6 +301,6 @@ def generate_parameters(n_samples: int):
     return parameters
 
 if __name__ == '__main__':
-    N = 100000
+    N = 1000000
     parameters = generate_parameters(N)
-    generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/7dots2levels_defaults', eig_decomposition=False, format='csr')
+    generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/7dots2levels_large', eig_decomposition=False, format='csr')

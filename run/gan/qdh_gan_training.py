@@ -17,9 +17,9 @@ from src.plots import plot_convergence, plot_test_matrices, plot_test_eigvals, p
 from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
 
 # Paths
-data_path = './data/quantum_dots/7dots2levels_defaults'
+data_path = './data/quantum_dots/7dots2levels_simplified'
 data_mean_std_path = f'{data_path}/mean_std.pkl'
-save_dir = './gan/quantum_dots/7dots2levels_defaults'
+save_dir = './gan/quantum_dots/7dots2levels_simplified'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 distribution_dir_name = 'tests_latent_majoranas_ep_{}'
@@ -36,7 +36,7 @@ eigvals_gen_plot_name = 'eigvals_spectre_generator_{}.png'
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Model name
-model_name = 'QuantumDotsHamiltonian_WGAN-GP-extra-genearator-focus'
+model_name = 'QDH-WGAN-mocked-latitudes'
 
 # Params
 params = {
@@ -77,7 +77,7 @@ discriminator_params = {
     'block_enc_depth': 4,
     'block_enc_hidden_size': 128,
     'padding_mode': 'zeros',
-    'lr': 1.e-4,
+    'lr': 1.e-5,
 }
 
 generator_params = {
@@ -92,11 +92,13 @@ generator_params = {
     'smoothing': False,
     'varying_potential': True,
     'varying_delta': False,
-    'lr': 1.e-3,
+    'lr': 1.e-4,
     'skip_noise_converter': True,
     'training_switch_loss_ratio': 1.2,
     'reduce_blocks': False,
     'seq_num': 32,
+    'allow_periodic': False,
+    'interlevel_interactions': False,
 }
 
 

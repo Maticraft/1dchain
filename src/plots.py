@@ -11,7 +11,7 @@ from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 
 from src.hamiltonian.utils import plot_eigvals_levels
-from src.data_utils import Hamiltonian, HamiltionianDataset
+from src.data_utils import Hamiltonian, HamiltionianDataset, Denormalize
 from src.models.gan import Generator
 from src.models.utils import get_eigvals, reconstruct_hamiltonian
 from src.models.files import DELIMITER
@@ -38,16 +38,38 @@ def plot_dataset_samples(
                 idx = np.random.randint(len(dataset))
                 (tensor, y), _ = dataset[idx]
         save_path = os.path.join(save_dir, 'sample_{}.png')
-        H = TorchHamiltonian.from_2channel_tensor(tensor)
-        plot_eigvals_levels(H, save_path.format(i), **kwargs)
-        plotted_ids.append(idx)
+
+        plot_dataset_sample(tensor, i, save_path, **kwargs)
 
         if kwargs.get('plot_reconstructed_eigvals', False):
             assert 'encoder' in kwargs and 'decoder' in kwargs, 'Encoder and decoder must be provided for reconstruction'
-            H_rec = reconstruct_hamiltonian(H.get_hamiltonian(), **kwargs)
-            H_rec = TorchHamiltonian(torch.from_numpy(H_rec))
-            plot_eigvals_levels(H_rec, save_path.format(f'{i}_rec'), **kwargs)
+            plot_reconstructed_sample(tensor, i, save_path, **kwargs)
 
+        plotted_ids.append(idx)
+
+
+def plot_reconstructed_sample(
+    tensor: torch.Tensor,
+    sample_idx: int,
+    save_path: str,
+    encoder: nn.Module,
+    decoder: nn.Module,
+    **kwargs: t.Dict[str, t.Any],
+):
+    H = TorchHamiltonian.from_2channel_tensor(tensor)
+    H_rec = reconstruct_hamiltonian(H.get_hamiltonian(), encoder, decoder, **kwargs)
+    H_rec = TorchHamiltonian(torch.from_numpy(H_rec))
+    plot_eigvals_levels(H_rec, save_path.format(f'{sample_idx}_rec_eigvals'), **kwargs)
+    plot_matrix(np.real(H_rec.get_hamiltonian()), save_path.format(f'{sample_idx}_rec_matrix_real'), **kwargs)
+    plot_matrix(np.imag(H_rec.get_hamiltonian()), save_path.format(f'{sample_idx}_rec_matrix_imag'), **kwargs)
+
+
+def plot_dataset_sample(tensor: torch.Tensor, sample_idx: int, save_path: str, **kwargs: t.Dict[str, t.Any]):
+    H = TorchHamiltonian.from_2channel_tensor(tensor)
+    plot_eigvals_levels(H, save_path.format(f'{sample_idx}_eigvals'), **kwargs)
+    plot_matrix(np.real(H.get_hamiltonian()), save_path.format(f'{sample_idx}_matrix_real'), **kwargs)
+    plot_matrix(np.imag(H.get_hamiltonian()), save_path.format(f'{sample_idx}_matrix_imag'), **kwargs)
+        
 
 def plot_dataset_continous_samples(
     dataset: HamiltionianDataset,
@@ -311,6 +333,7 @@ def simple_plot(
     **kwargs: t.Dict[str, t.Any]
 ):
     xnorm = None
+    ynorm = None
     if 'ylim' in kwargs:
         plt.ylim(kwargs['ylim'])
     if 'xlim' in kwargs:
