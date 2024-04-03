@@ -24,6 +24,8 @@ class BlockConstructor:
         assumes:
           block_params_sequence.shape = (block_params_num, batch_size, seq_size)
           pauli_block_names = list of length block_params_num with names of respective pauli block pairs, e.g. ['1x', 'xx', 'yz', 'zz']
+        returns:
+          torch.Tensor of shape (batch_size, 4, 4*seq_size)
         '''
         blocks = [cls._block_generator(block_sequence, *cls._get_block_pair(pair_name)) for block_sequence, pair_name in zip(block_params_sequence,pauli_block_names)]
         return sum(blocks)
