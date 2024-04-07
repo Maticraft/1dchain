@@ -13,6 +13,7 @@ from src.models.ensemble_autoencoder import DecoderEnsemble, EncoderEnsemble
 from src.models.gan import Discriminator, Generator
 from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
 from src.models.vae import VariationalPositionalEncoder
+from src.models.distribution_preserving_autoencoder import DistributionPreservingEncoder, DistributionPreservingHamiltonianGenerator
 
 GENERAL_PARAMS_NAME = 'general_params.json'
 CLASSIFIER_PARAMS_NAME = 'classifier_params.json'
@@ -52,6 +53,8 @@ MODEL_TO_NAMES = {
     HamiltonianGenerator: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
     HamiltonianGeneratorV2: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
     QuantumDotsHamiltonianGenerator: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
+    DistributionPreservingEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),
+    DistributionPreservingHamiltonianGenerator: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
 }
 
 def load_autoencoder(root_dir: str, epoch: int) -> t.Tuple[Encoder, Decoder]:

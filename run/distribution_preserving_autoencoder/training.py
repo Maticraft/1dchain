@@ -8,13 +8,11 @@ import torch
 from src.data_utils import HamiltionianDataset, calculate_mean_and_std
 from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from src.hamiltonian.quantum_dots_chain import QuantumDotsHamiltonian, QuantumDotsHamiltonianParameters, DefaultParameters, AtomicUnits
-from src.models.hamiltonian_generator import QuantumDotsHamiltonianGenerator
+from src.models.distribution_preserving_autoencoder import DistributionPreservingEncoder, DistributionPreservingHamiltonianGenerator
 from src.models.autoencoder import train_autoencoder
-from src.models.autoencoder import Decoder, Encoder, test_autoencoder
-from src.models.eigvals_autoencoder import EigvalsPositionalDecoder, EigvalsPositionalEncoder
+from src.models.autoencoder import test_autoencoder
 from src.models.files import save_autoencoder_params, save_autoencoder, save_data_list
 from src.plots import plot_convergence, plot_test_matrices, plot_test_eigvals
-from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
 
 # Paths
 data_path = './data/quantum_dots/7dots2levels_large'
@@ -26,6 +24,7 @@ convergence_file = 'convergence.png'
 # Reference eigvals plot params
 eigvals_sub_dir = 'eigvals'
 eigvals_plot_name = 'eigvals_spectre_autoencoder{}.png'
+eigvals_org_plot_name = 'eigvals_spectre_original.png'
 x_axis = 'mu'
 x_values = np.linspace(-1.5/AtomicUnits.Eh, .5/AtomicUnits.Eh, 100)
 xnorm=1/AtomicUnits.Eh
@@ -36,18 +35,19 @@ vscale = 1/AtomicUnits.Eh
 # Reference hamiltonian params
 hamiltonian_sub_dir = 'hamiltonian'
 hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
-hamiltonain_diff_plot_name = 'hamiltonian_diff{}.png'
+hamiltonian_diff_plot_name = 'hamiltonian_diff{}.png'
+hamiltonian_org_plot_name = 'hamiltonian_original{}.png'
 
 defaults = DefaultParameters()
 parameters = QuantumDotsHamiltonianParameters(no_dots=7, no_levels=2, default_parameters=defaults)
 test_hamiltonian = QuantumDotsHamiltonian(parameters)
 
 # Model name
-model_name = 'pos_encoder_qdh_generator_mocked_latitudes'
+model_name = 'ditribution_preserving_autoencoder'
 
 # Params
 params = {
-    'epochs': 200,
+    'epochs': 60,
     'batch_size': 64,
     'N': 14,
     'in_channels': 10,
@@ -69,34 +69,32 @@ params = {
 
 # Architecture
 encoder_params = {
-    'kernel_num': 64,
-    'kernel_size': 4,
+    'on_site_real_block_pairs': ['z1', 'zx', 'zz', 'iyiy'],
+    'on_site_imag_block_pairs': ['1iy', 'xiy'],
+    'interaction_real_block_pairs': ['z1', '1iy'],
+    'interaction_imag_block_pairs': ['z1', '1z', '1x'],
+    'seq_channels_num': 64,
+    'enc_depth': 5,
+    'enc_hidden_size': 256,
     'activation': 'leaky_relu',
-    'freq_enc_depth': 4,
-    'freq_enc_hidden_size': 128,
-    'block_enc_depth': 4,
-    'block_enc_hidden_size': 128,
-    'padding_mode': 'zeros',
-    'mlp_layers': 3,
+    'seq_freq_enc_depth': 4,
+    'seq_freq_enc_hidden_size': 128,
+    'seq_enc_depth': 4,
+    'seq_enc_hidden_size': 128,
 }
 
 
 decoder_params = {
-    'kernel_num': 64,
-    'activation': 'leaky_relu',
-    'freq_dec_depth': 4,
-    'freq_dec_hidden_size': 128,
-    'block_dec_depth': 4,
-    'block_dec_hidden_size': 128,
+    'on_site_real_block_pairs': ['z1', 'zx', 'zz', 'iyiy'],
+    'on_site_imag_block_pairs': ['1iy', 'xiy'],
+    'interaction_real_block_pairs': ['z1', '1iy'],
+    'interaction_imag_block_pairs': ['z1', '1z', '1x'],
+    'dec_depth': 4,
+    'dec_hidden_size': 128,
     'seq_dec_depth': 4,
     'seq_dec_hidden_size': 128,
-    'reduce_blocks': False,
-    'seq_num': 32,
-    'smoothing': False,
-    'varying_potential': True,
-    'varying_delta': True,
-    'allow_periodic': False,
-    'interlevel_interactions': False,
+    'seq_channels_num': 64,
+    'activation': 'leaky_relu',
 }
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -139,10 +137,8 @@ train_data, test_data = random_split(data, [train_size, test_size])
 train_loader = DataLoader(train_data, params['batch_size'])
 test_loader = DataLoader(test_data, params['batch_size'])
 
-encoder = PositionalEncoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
-# decoder = EigvalsPositionalDecoder(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
-decoder = QuantumDotsHamiltonianGenerator(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
-# decoder = PositionalDecoder(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
+encoder = DistributionPreservingEncoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
+decoder = DistributionPreservingHamiltonianGenerator(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
 
 print(encoder)
 print(decoder)
@@ -189,9 +185,11 @@ for epoch in range(1, params['epochs'] + 1):
     save_data_list([epoch, tr_loss, tr_edge_loss, tr_ev_loss, tr_eig_loss, tr_diag_loss, te_loss, te_edge_loss, te_ev_loss, te_eig_loss, te_diag_loss], loss_path)
 
     eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))
-    plot_test_eigvals(test_hamiltonian, encoder, decoder, x_axis, x_values, eigvals_path, device=device, xnorm=xnorm, ynorm=ynorm, ylim=ylim, normalization_mean=mean, normalization_std=std)
+    eigvals_org_path = os.path.join(eigvals_sub_path, eigvals_org_plot_name)
+    plot_test_eigvals(test_hamiltonian, encoder, decoder, x_axis, x_values, save_path_rec=eigvals_path, save_path_org=eigvals_org_path, device=device, xnorm=xnorm, ynorm=ynorm, ylim=ylim, normalization_mean=mean, normalization_std=std)
     ham_auto_path = os.path.join(ham_sub_path, hamiltonian_plot_name.format(f'_ep{epoch}' + '{}'))
-    ham_diff_path = os.path.join(ham_sub_path, hamiltonain_diff_plot_name.format(f'_ep{epoch}'))
-    plot_test_matrices(test_hamiltonian.get_hamiltonian(), encoder, decoder, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, device=device, normalization_mean=mean, normalization_std=std, vscale=vscale)
+    ham_diff_path = os.path.join(ham_sub_path, hamiltonian_diff_plot_name.format(f'_ep{epoch}'))
+    ham_org_path = os.path.join(ham_sub_path, hamiltonian_org_plot_name)
+    plot_test_matrices(test_hamiltonian.get_hamiltonian(), encoder, decoder, save_path_rec=ham_auto_path, save_path_diff=ham_diff_path, save_path_org=ham_org_path, device=device, normalization_mean=mean, normalization_std=std, vscale=vscale)
    
 plot_convergence(loss_path, convergence_path, read_label=True)

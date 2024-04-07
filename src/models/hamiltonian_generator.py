@@ -6,6 +6,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+# Models in this file are depracated and may contain bugs, use with care
+
 class HamiltonianGenerator(nn.Module):
     def __init__(self, representation_dim: t.Union[int, t.Tuple[int, int]], output_size: t.Tuple[int, int, int], **kwargs: t.Dict[str, t.Any]):
         super(HamiltonianGenerator, self).__init__()
