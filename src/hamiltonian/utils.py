@@ -134,6 +134,7 @@ def plot_eigvals_levels(
     if 'ylim' in kwargs:
         plt.ylim(kwargs['ylim'])
 
+    ynorm = None
     if 'ynorm' in kwargs:
         eigvals = eigvals / kwargs['ynorm']
         if kwargs['ynorm'] == np.pi:

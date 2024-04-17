@@ -5,38 +5,47 @@ import numpy as np
 from torch.utils.data import random_split, DataLoader
 import torch
 
-from src.data_utils import HamiltionianDataset, calculate_mean_and_std
+from src.data_utils import HamiltionianDataset, calculate_mean_and_std, Denormalize
 from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
+from src.hamiltonian.quantum_dots_chain import QuantumDotsHamiltonian, QuantumDotsHamiltonianParameters, DefaultParameters, AtomicUnits
 from src.models.gan import Generator
+from src.models.distribution_preserving_autoencoder import DistributionPreservingEncoder, DistributionPreservingHamiltonianGenerator
 from src.models.hamiltonian_generator import QuantumDotsHamiltonianGenerator
 from src.models.gan import train_gan
 from src.models.files import save_gan_params, save_gan, save_data_list, get_full_model_config, load_gan_submodel_state_dict, load_model, load_latent_distribution, save_latent_distribution, load_covariance_matrix, save_covariance_matrix
-from src.models.gan import Discriminator
+from src.models.gan import Discriminator, EigvalsDiscriminator
 from src.plots import plot_convergence, plot_test_matrices, plot_test_eigvals, plot_matrix, plot_generator_eigvals
 
 from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
 
 # Paths
-data_path = './data/quantum_dots/7dots2levels_simplified'
+data_path = './data/quantum_dots/7dots2levels_large'
 data_mean_std_path = f'{data_path}/mean_std.pkl'
-save_dir = './gan/quantum_dots/7dots2levels_simplified'
+save_dir = './gan/quantum_dots/7dots2levels_large'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
-distribution_dir_name = 'tests_latent_majoranas_ep_{}'
+distribution_dir_name = 'tests_latent_ep_{}'
+
+original_autoencoder_path = './autoencoder/quantum_dots/7dots2levels_large/100/ditribution_preserving_autoencoder'
+original_autoencoder_epoch = 20
+distribution_path = os.path.join(original_autoencoder_path, distribution_dir_name.format(original_autoencoder_epoch))
+
 
 # Reference eigvals plot params
 eigvals_sub_dir = 'eigvals'
-x_axis = 'q'
-x_values = np.arange(0., np.pi, 0.1)
-xnorm = np.pi
-ylim = (-0.5, 0.5)
-eigvals_gen_plot_name = 'eigvals_spectre_generator_{}.png'
+eigvals_gen_plot_name = 'eigvals_spectre.png'
+x_axis = 'mu'
+x_values = np.linspace(-1.5/AtomicUnits.Eh, .5/AtomicUnits.Eh, 100)
+xnorm=1/AtomicUnits.Eh
+ynorm=1/AtomicUnits.Eh
+ylim = (-1., 1.)
+vscale = 1/AtomicUnits.Eh
 
 # Device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Model name
-model_name = 'QDH-WGAN-mocked-latitudes'
+model_name = 'QDH-WGAN-eigvals-distribution_preserving_autoencoder'
 
 # Params
 params = {
@@ -46,59 +55,48 @@ params = {
     'in_channels': 10,
     'block_size': 4,
     'representation_dim': 100,
-    'strategy': 'wgan-gp',
+    'strategy': 'eigvals-discriminator-wgan',
     'gp_weight': 1.e-4,
-    'discriminator_iters': 1,
-    'generator_iters': 10,
-    'start_training_mode': 'generator',
+    'discriminator_iters': 2,
+    'generator_iters': 1,
+    'start_training_mode': 'discriminator',
     'data_label': None,
     'use_feature_matching': False,
     'feature_matching_weight': 0.1,
 }
 
 # Architecture
-encoder_params = {
-    'kernel_num': 64,
-    'kernel_size': 4,
-    'activation': 'leaky_relu',
-    'freq_enc_depth': 4,
-    'freq_enc_hidden_size': 128,
-    'block_enc_depth': 4,
-    'block_enc_hidden_size': 128,
-    'padding_mode': 'zeros',
-}
-
 discriminator_params = {
-    'kernel_num': 64,
-    'kernel_size': 4,
+    'on_site_real_block_pairs': ['z1', 'zx', 'zz', 'iyiy'],
+    'on_site_imag_block_pairs': ['1iy', 'xiy'],
+    'interaction_real_block_pairs': ['z1', '1iy'],
+    'interaction_imag_block_pairs': ['z1', '1z', '1x'],
+    'seq_channels_num': 64,
+    'enc_depth': 5,
+    'enc_hidden_size': 256,
     'activation': 'leaky_relu',
-    'freq_enc_depth': 4,
-    'freq_enc_hidden_size': 128,
-    'block_enc_depth': 4,
-    'block_enc_hidden_size': 128,
-    'padding_mode': 'zeros',
+    'seq_freq_enc_depth': 4,
+    'seq_freq_enc_hidden_size': 128,
+    'seq_enc_depth': 4,
+    'seq_enc_hidden_size': 128,
     'lr': 1.e-5,
 }
 
 generator_params = {
-    # "kernel_num": 64,
-    "activation": "leaky_relu",
-    "freq_dec_depth": 4,
-    "freq_dec_hidden_size": 128,
-    "block_dec_depth": 4,
-    "block_dec_hidden_size": 128,
-    "seq_dec_depth": 4,
-    "seq_dec_hidden_size": 128,
-    'smoothing': False,
-    'varying_potential': True,
-    'varying_delta': False,
+    'on_site_real_block_pairs': ['z1', 'zx', 'zz', 'iyiy'],
+    'on_site_imag_block_pairs': ['1iy', 'xiy'],
+    'interaction_real_block_pairs': ['z1', '1iy'],
+    'interaction_imag_block_pairs': ['z1', '1z', '1x'],
+    'dec_depth': 4,
+    'dec_hidden_size': 128,
+    'seq_dec_depth': 4,
+    'seq_dec_hidden_size': 128,
+    'seq_channels_num': 64,
+    'activation': 'leaky_relu',
     'lr': 1.e-4,
     'skip_noise_converter': True,
     'training_switch_loss_ratio': 1.2,
-    'reduce_blocks': False,
-    'seq_num': 32,
-    'allow_periodic': False,
-    'interlevel_interactions': False,
+    'nn_in_features_split_index': 32,
 }
 
 
@@ -139,16 +137,24 @@ train_loader = DataLoader(train_data, params['batch_size'])
 test_loader = DataLoader(test_data, params['batch_size'])
 
 generator_config = get_full_model_config(params, generator_params)
-generator = Generator(QuantumDotsHamiltonianGenerator, generator_config)
+generator = Generator(DistributionPreservingHamiltonianGenerator, generator_config)
+load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, generator)
 
 discriminator_config = get_full_model_config(params, discriminator_params)
-discriminator = Discriminator(PositionalEncoder, discriminator_config)
+discriminator = EigvalsDiscriminator(DistributionPreservingEncoder, discriminator_config)
+load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, discriminator)
 
 print(generator)
 print(discriminator)
 
 generator_optimizer = torch.optim.Adam(generator.parameters(), lr=generator_params['lr'])
 discriminator_optimizer = torch.optim.Adam(discriminator.parameters(), lr=discriminator_params['lr'])
+
+init_distribution = load_latent_distribution(distribution_path)
+cov_matrix = load_covariance_matrix(distribution_path)
+
+save_latent_distribution(init_distribution, root_dir)
+save_covariance_matrix(cov_matrix, root_dir)
 
 save_data_list(['Epoch', 'Generator loss', 'Discriminator loss'], loss_path, mode='w')
 
@@ -163,6 +169,7 @@ for epoch in range(1, params['epochs'] + 1):
         device,
         generator_optimizer,
         discriminator_optimizer,
+        init_distribution,
         data_label=params['data_label'],
         strategy=params['strategy'],
         gradient_penalty_weight=params['gp_weight'],
@@ -183,13 +190,17 @@ for epoch in range(1, params['epochs'] + 1):
     num_states = 5
     for i in range(num_states):
         generator.eval()
-        z = generator.get_noise(1, device=device, noise_type='hybrid')
-        matrix = generator.nn(z).detach().cpu().numpy()[0]
-        
-        plot_matrix(matrix[0], os.path.join(test_matrix_path, f"random_hamiltonian_real_{i}.png"))
-        plot_matrix(matrix[1], os.path.join(test_matrix_path, f"random_hamiltonian_imag_{i}.png"))
+        z = generator.get_noise(1, device=device, noise_type='custom', mean=init_distribution[0], std=init_distribution[1], covariance_matrix=cov_matrix)
+        output = generator(z)
 
-        eigvals_gen_plot_path = os.path.join(test_matrix_path, eigvals_gen_plot_name.format(i))
-    plot_generator_eigvals(generator, 5, eigvals_gen_plot_path, noise_type='hybrid', ylim=ylim)
+        # denormalize before plotting
+        denormalization = Denormalize(mean, std)
+        matrix = denormalization(output).detach().cpu().numpy()[0]
+        
+        plot_matrix(matrix[0], os.path.join(test_matrix_path, f"random_hamiltonian_real_{i}.png"), vmin=-vscale, vmax=vscale)
+        plot_matrix(matrix[1], os.path.join(test_matrix_path, f"random_hamiltonian_imag_{i}.png"), vmin=-vscale, vmax=vscale)
+
+    eigvals_gen_plot_path = os.path.join(test_matrix_path, eigvals_gen_plot_name)
+    plot_generator_eigvals(generator, 5, eigvals_gen_plot_path, noise_type='custom', ylim=ylim, mean=init_distribution[0], std=init_distribution[1], covariance_matrix=cov_matrix, xnorm=xnorm, ynorm=ynorm)
    
 plot_convergence(loss_path, convergence_path, read_label=True)

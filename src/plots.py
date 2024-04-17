@@ -318,6 +318,10 @@ def plot_generator_eigvals(
     states = torch.stack(states)
 
     output = generator(states)
+    if 'normalization_mean' in kwargs and 'normalization_std' in kwargs:
+        denormalization = Denormalize(kwargs['normalization_mean'], kwargs['normalization_std'])
+        output = denormalization(output)
+    
     Hs = torch.complex(output[:, 0, :, :], output[:, 1, :, :]).squeeze().detach().cpu().numpy()
     eigvals = [np.linalg.eigvalsh(H) for H in Hs]
 

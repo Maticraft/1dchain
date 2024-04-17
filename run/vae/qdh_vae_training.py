@@ -8,18 +8,18 @@ import torch
 from src.data_utils import HamiltionianDataset, calculate_mean_and_std
 from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from src.hamiltonian.quantum_dots_chain import QuantumDotsHamiltonian, QuantumDotsHamiltonianParameters, DefaultParameters, AtomicUnits
-from src.models.distribution_preserving_autoencoder import DistributionPreservingEncoder, DistributionPreservingHamiltonianGenerator
-from src.models.autoencoder import train_autoencoder
 from src.models.autoencoder import test_autoencoder
+from src.models.distribution_preserving_autoencoder import DistributionPreservingHamiltonianGenerator, VariationalDistributionPreservingEncoder, train_vae
 from src.models.files import save_autoencoder_params, save_autoencoder, save_data_list
 from src.plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 # Paths
-data_path = './data/quantum_dots/7dots2levels_large_random'
+data_path = './data/quantum_dots/7dots2levels_large'
 data_mean_std_path = f'{data_path}/mean_std.pkl'
-save_dir = './autoencoder/quantum_dots/7dots2levels_large_random'
+save_dir = './vae/quantum_dots/7dots2levels_large'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
+
 
 # Reference eigvals plot params
 eigvals_sub_dir = 'eigvals'
@@ -54,19 +54,37 @@ params = {
     'in_channels': 10,
     'block_size': 4,
     'representation_dim': 100,
-    'eigvals_num': 54,
     'lr': 1.e-5,
     'edge_loss': False,
     'edge_loss_weight': 1.,
-    'eigenvalues_loss': False,
-    'eigenvalues_loss_weight': 1.,
     'eigenstates_loss': False,
     'eigenstates_loss_weight': 1.,
     'diag_loss': True,
     'diag_loss_weight': 0.01,
-    'log_scaled_loss': False,
-    'gt_eigvals': False
+    'kl_loss': True,
+    'kl_loss_weight': 0.01,
 }
+
+# params = {
+#     'epochs': 60,
+#     'batch_size': 64,
+#     'N': 14,
+#     'in_channels': 10,
+#     'block_size': 4,
+#     'representation_dim': 100,
+#     'eigvals_num': 54,
+#     'lr': 1.e-5,
+#     'edge_loss': False,
+#     'edge_loss_weight': 1.,
+#     'eigenvalues_loss': False,
+#     'eigenvalues_loss_weight': 1.,
+#     'eigenstates_loss': False,
+#     'eigenstates_loss_weight': 1.,
+#     'diag_loss': True,
+#     'diag_loss_weight': 0.01,
+#     'log_scaled_loss': False,
+#     'gt_eigvals': False
+# }
 
 # Architecture
 encoder_params = {
@@ -138,21 +156,19 @@ train_data, test_data = random_split(data, [train_size, test_size])
 train_loader = DataLoader(train_data, params['batch_size'])
 test_loader = DataLoader(test_data, params['batch_size'])
 
-encoder = DistributionPreservingEncoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
+encoder = VariationalDistributionPreservingEncoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
 decoder = DistributionPreservingHamiltonianGenerator(params['representation_dim'], (params['in_channels'], params['N'], params['block_size']), **decoder_params)
 
 print(encoder)
 print(decoder)
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
 encoder_optimizer = torch.optim.Adam(encoder.parameters(), lr=params['lr'])
 decoder_optimizer = torch.optim.Adam(decoder.parameters(), lr=params['lr'])
 
-save_data_list(['Epoch', 'Train loss', 'Train edge loss', 'Train eigenvalues loss', 'Train eigenstates loss', 'Train diag loss', 'Test loss', 'Test edge loss', 'Test eigevalues loss', 'Test eigenstates loss', 'Test diag loss'], loss_path, mode='w')
+save_data_list(['Epoch', 'Train rec loss', 'Train kl loss', 'Train edge loss', 'Train eigenstates loss', 'Train diag loss', 'Test loss', 'Test edge loss', 'Test eigenstates loss', 'Test diag loss'], loss_path, mode='w')
 
 for epoch in range(1, params['epochs'] + 1):
-    tr_loss, tr_edge_loss, tr_ev_loss, tr_eig_loss, tr_diag_loss, _ = train_autoencoder(
+    tr_loss, tr_kl_loss, tr_edge_loss, tr_eig_loss, tr_diag_loss = train_vae(
         encoder,
         decoder,
         train_loader,
@@ -162,28 +178,16 @@ for epoch in range(1, params['epochs'] + 1):
         decoder_optimizer,
         edge_loss=params['edge_loss'],
         edge_loss_weight=params['edge_loss_weight'],
-        eigenvalues_loss=params['eigenvalues_loss'],
-        eigenvalues_loss_weight=params['eigenvalues_loss_weight'],
         eigenstates_loss=params['eigenstates_loss'],
         eigenstates_loss_weight=params['eigenstates_loss_weight'],
         diag_loss=params['diag_loss'],
         diag_loss_weight=params['diag_loss_weight'],
-        log_scaled_loss=params['log_scaled_loss'],
-        gt_eigvals=params['gt_eigvals']
+        kl_loss=params['kl_loss'],
     )
-    te_loss, te_edge_loss, te_ev_loss, te_eig_loss, te_diag_loss, _ = test_autoencoder(
-        encoder,
-        decoder,
-        test_loader,
-        device,
-        edge_loss=params['edge_loss'],
-        eigenvalues_loss=params['eigenvalues_loss'],
-        eigenstates_loss=params['eigenstates_loss'],
-        diag_loss=params['diag_loss'],
-        gt_eigvals=params['gt_eigvals']
-    )
+    te_loss, te_edge_loss, te_eig_loss, te_eig_loss, te_diag_loss, te_det_loss = test_autoencoder(encoder, decoder, test_loader, device, edge_loss=params['edge_loss'], eigenstates_loss=params['eigenstates_loss'], diag_loss=params['diag_loss'])
+    
     save_autoencoder(encoder, decoder, root_dir, epoch)
-    save_data_list([epoch, tr_loss, tr_edge_loss, tr_ev_loss, tr_eig_loss, tr_diag_loss, te_loss, te_edge_loss, te_ev_loss, te_eig_loss, te_diag_loss], loss_path)
+    save_data_list([epoch, tr_loss, tr_kl_loss, tr_edge_loss, tr_eig_loss, tr_diag_loss, te_loss, te_edge_loss, te_eig_loss, te_diag_loss], loss_path)
 
     eigvals_path = os.path.join(eigvals_sub_path, eigvals_plot_name.format(f'_ep{epoch}'))
     eigvals_org_path = os.path.join(eigvals_sub_path, eigvals_org_plot_name)

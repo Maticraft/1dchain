@@ -6,6 +6,7 @@ from tqdm import tqdm
 
 from src.models.utils import generate_sample_from_mean_and_covariance, majorana_eigvals_feature_matching
 from src.torch_utils import torch_total_polarization_loss
+from src.models.base_models import MLP
 
 
 class Discriminator(nn.Module):
@@ -30,8 +31,20 @@ class Discriminator(nn.Module):
             else:
                 layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, hidden_size))
-            layers.append(nn.LeakyReLU(negative_slope=0.01))
+            if i != layers_num - 1:
+                layers.append(nn.LeakyReLU(negative_slope=0.01))
         return nn.Sequential(*layers)
+    
+
+class EigvalsDiscriminator(Discriminator):
+    def __init__(self, model_class: t.Type[nn.Module], model_config: t.Dict[str, t.Any]):
+        super(EigvalsDiscriminator, self).__init__(model_class, model_config)
+        self.eigvals_discriminator = self._get_mlp(5, model_config['input_size'][1]*model_config['input_size'][2], 128, 1)
+
+    def forward(self, x: torch.Tensor, eigvals: torch.Tensor):
+        matrix_score = super(EigvalsDiscriminator, self).forward(x)
+        eigvals_score = self.eigvals_discriminator(eigvals)
+        return matrix_score + eigvals_score
 
 
 class Generator(nn.Module):
@@ -46,6 +59,7 @@ class Generator(nn.Module):
 
         self.skip_noise_converter = model_config.get('skip_noise_converter', False)
         self.noise_converter = self._get_mlp(5, self.nn_in_features, self.nn_in_features, self.nn_in_features, final_activation=activation)
+        self.nn_in_features_split_idx = model_config.get('nn_in_features_split_index', self.nn_in_features // 2)
 
     def forward(self, x: torch.Tensor):
         if not self.skip_noise_converter:
@@ -93,7 +107,7 @@ class Generator(nn.Module):
         elif noise_type == 'uniform':
             return torch.rand((batch_size, self.nn_in_features), device=device)
         elif noise_type == 'hybrid':
-            return torch.cat([torch.randn((batch_size, self.nn_in_features // 2), device=device), torch.rand((batch_size, self.nn_in_features // 2), device=device)], dim=-1)
+            return torch.cat([torch.randn((batch_size, self.nn_in_features_split_idx), device=device), torch.rand((batch_size, self.nn_in_features // 2), device=device)], dim=-1)
         elif noise_type == 'custom':
             mean = kwargs['mean'].unsqueeze(0).expand(batch_size, -1)
             std = kwargs['std'].unsqueeze(0).expand(batch_size, -1)
@@ -101,10 +115,10 @@ class Generator(nn.Module):
         elif noise_type == 'covariance':
             mean = kwargs['mean']
             cov = kwargs['covariance']
-            mean_freq = mean[:self.nn_in_features // 2]
-            mean_block = mean[self.nn_in_features // 2:]
-            cov_freq = cov[:self.nn_in_features // 2, :self.nn_in_features // 2]
-            cov_block = cov[self.nn_in_features // 2:, self.nn_in_features // 2:]
+            mean_freq = mean[:self.nn_in_features_split_idx]
+            mean_block = mean[self.nn_in_features_split_idx:]
+            cov_freq = cov[:self.nn_in_features_split_idx, :self.nn_in_features_split_idx]
+            cov_block = cov[self.nn_in_features_split_idx:, self.nn_in_features_split_idx:]
             freq_noise = generate_sample_from_mean_and_covariance(mean_freq, cov_freq, batch_size)
             block_noise = generate_sample_from_mean_and_covariance(mean_block, cov_block, batch_size)
             return torch.cat([freq_noise, block_noise], dim=-1).to(device)
@@ -254,6 +268,13 @@ def train_gan(
             discriminator_loss = train_discriminator_wgan_gp(x, y, generator, discriminator, device, discriminator_optimizer, init_distribution, cov_matrix, data_label, gradient_penalty_weight, discriminator_repeats)
             generator.train()
             generator.requires_grad_(True)
+        if strategy == 'eigvals-discriminator-wgan':
+            # for WGAN with critic and gradient penalty
+            generator.eval()
+            generator.requires_grad_(False)
+            discriminator_loss = train_discriminator_wgan_gp(x, y, generator, discriminator, device, discriminator_optimizer, init_distribution, cov_matrix, data_label, gradient_penalty_weight, discriminator_repeats, discriminator_eigvals=True)
+            generator.train()
+            generator.requires_grad_(True)
         if strategy == 'no-discriminator':
             discriminator_loss = 0.
 
@@ -289,6 +310,19 @@ def train_gan(
                 generator_loss = -fake_prediction.mean() + feature_matching_loss_weight * feature_matching_loss # for WGAN with critic
                 generator_loss.backward()
                 generator_optimizer.step()
+        
+        if strategy == 'eigvals-discriminator-wgan':
+            for _ in range(generator_repeats):
+                generator_optimizer.zero_grad()
+                x_hat = generate_fake_data(generator, x.shape[0], device, init_distribution, cov_matrix)
+                x_hat_complex = torch.complex(x_hat[:, 0, :, :], x_hat[:, 1, :, :])
+                eigvals_hat = torch.abs(torch.linalg.eigvalsh(x_hat_complex))
+                fake_prediction = discriminator(x_hat, eigvals_hat)
+                feature_matching_loss = 0
+                if use_majoranas_feature_matching:
+                    # feature matching
+                    feature_matching_loss = majorana_eigvals_feature_matching(x_hat, zero_eigvals_threshold= 0.015)
+                generator_loss = -fake_prediction.mean() + feature_matching_loss_weight * feature_matching_loss
 
         if strategy == 'no-discriminator':
             generator_optimizer.zero_grad()
@@ -365,22 +399,36 @@ def train_discriminator_wgan_gp(
     data_label: t.Optional[int] = None,
     gradient_penalty_weight: float = 1.e-4,
     discriminator_repeats: int = 5,
+    discriminator_eigvals: bool = False
 ):
     mean_iteration_discriminator_loss = 0
     x = x if data_label is None else x[(y == data_label).squeeze()]
+    eigvals = None
+    eigvals_hat = None
 
     for _ in range(discriminator_repeats):
         discriminator_optimizer.zero_grad()
         if x.shape[0] > 1:
-            real_prediction = discriminator(x)
+            if discriminator_eigvals:
+                x_complex = torch.complex(x[:, 0, :, :], x[:, 1, :, :])
+                eigvals = torch.abs(torch.linalg.eigvalsh(x_complex))
+                real_prediction = discriminator(x, eigvals.detach())
+            else:
+                real_prediction = discriminator(x)
         else:
             real_prediction = torch.tensor(1.)
             
         x_hat = generate_fake_data(generator, x.shape[0], device, init_distribution, cov_matrix)
-        fake_prediction = discriminator(x_hat.detach())
+        
+        if discriminator_eigvals:
+            x_hat_complex = torch.complex(x_hat[:, 0, :, :], x_hat[:, 1, :, :])
+            eigvals_hat = torch.abs(torch.linalg.eigvalsh(x_hat_complex))
+            fake_prediction = discriminator(x_hat.detach(), eigvals_hat.detach())
+        else:
+            fake_prediction = discriminator(x_hat.detach())
 
         epsilon = torch.rand(len(x), 1, 1, 1, device=device, requires_grad=True)
-        gradient = get_gradient(discriminator, x, x_hat.detach(), epsilon)
+        gradient = get_gradient(discriminator, x, x_hat.detach(), epsilon, eigvals, eigvals_hat)
         gp = gradient_penalty(gradient)
         discriminator_loss = torch.mean(fake_prediction) - torch.mean(real_prediction) + gradient_penalty_weight * gp
 
@@ -408,7 +456,7 @@ def generate_fake_data(
 
 
 
-def get_gradient(critic: nn.Module, real: torch.Tensor, fake: torch.Tensor, epsilon: torch.Tensor):
+def get_gradient(critic: nn.Module, real: torch.Tensor, fake: torch.Tensor, epsilon: torch.Tensor, real_eigvals: t.Optional[torch.Tensor] = None, fake_eigvals: t.Optional[torch.Tensor] = None):
     '''
     Return the gradient of the critic's scores with respect to mixes of real and fake data.
     Parameters:
@@ -423,7 +471,12 @@ def get_gradient(critic: nn.Module, real: torch.Tensor, fake: torch.Tensor, epsi
     mixed_data = real * epsilon + fake * (1 - epsilon)
 
     # Calculate the critic's scores on the mixed data
-    mixed_scores = critic(mixed_data)
+    if real_eigvals is not None and fake_eigvals is not None:
+        eigvals_epsilon = epsilon.squeeze(dim=(-1, -2))
+        mixed_eigvals = real_eigvals * eigvals_epsilon + fake_eigvals * (1 - eigvals_epsilon)
+        mixed_scores = critic(mixed_data, mixed_eigvals)
+    else:
+        mixed_scores = critic(mixed_data)
     
     # Take the gradient of the scores with respect to the data
     gradient = torch.autograd.grad(

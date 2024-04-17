@@ -1,29 +1,34 @@
 import os
+import pickle
 
 from seaborn import heatmap
 from torch.utils.data import DataLoader
 import torch
 
 
-from src.data_utils import HamiltionianDataset, HamiltionianParamsDataset
+from src.data_utils import HamiltionianDataset, HamiltionianParamsDataset, calculate_mean_and_std
 from src.models.utils import calculate_latent_space_distribution, calculate_classifier_distance
 from src.models.files import load_classifier, load_variational_positional_autoencoder, load_positional_autoencoder, load_general_params, save_latent_distribution, save_covariance_matrix, load_ae_model
 from src.plots import plot_dim_red_full_space, plot_dim_red_freq_block, plot_latent_space_distribution
 from src.models.positional_autoencoder import PositionalEncoder
 from src.models.hamiltonian_generator import HamiltonianGenerator, HamiltonianGeneratorV2
+from src.models.distribution_preserving_autoencoder import DistributionPreservingEncoder, DistributionPreservingHamiltonianGenerator
 
-model_dir = './autoencoder/spin_ladder/70_2_RedDistSimplePeriodicPGSeparatedMajoranas/100/twice_pretrained_pos_encoder_symmetric_hamiltonian_generator_v2_varying_potential_and_delta_tf'
+
+model_dir = './autoencoder/quantum_dots/7dots2levels_large/100/ditribution_preserving_autoencoder'
 epoch = 20
 batch_size = 128
 mzm_threshold = 0.012
 
 # Paths
-data_path = './data/spin_ladder/70_2_RedDistSimplePeriodicPGSeparatedMajoranas'
+data_path = './data/quantum_dots/7dots2levels_large'
+data_mean_std_path = f'{data_path}/mean_std.pkl'
+
 
 for i in range(1):  # 10
     print(i)
     # test_dir_name = 'tests_subspace_{}_latent_ep{}'
-    test_dir_name = 'tests_latent_majoranas_ep_{}'
+    test_dir_name = 'tests_latent_ep_{}'
     dim_red_plot_file_name = 'tsne_class_{}.png'
     latent_space_plot_name = 'latent_space.png'
     correlation_matrix_name = 'covariance_matrix.png'
@@ -35,11 +40,21 @@ for i in range(1):  # 10
 
     # Load model
     params = load_general_params(model_dir)
-    encoder, decoder = load_ae_model(model_dir, epoch, PositionalEncoder, HamiltonianGeneratorV2)
+    encoder, decoder = load_ae_model(model_dir, epoch, DistributionPreservingEncoder, DistributionPreservingHamiltonianGenerator)
 
     # classifier = load_classifier(model_dir, epoch, input_dim = params['representation_dim'], layers=params['classifier_layers'], classifier_output_idx=params['classifier_main_idx'])
 
-    data = HamiltionianDataset(data_path, data_limit=1000, label_idx=label_idx, eig_decomposition=False, format='csr', threshold=mzm_threshold)
+    try:
+        with open(data_mean_std_path, 'rb') as f:
+            mean, std = pickle.load(f)
+    except:
+        data = HamiltionianDataset(data_path, label_idx=(3, 4), format='csr', threshold=0.15)
+        data_loader = DataLoader(data, params['batch_size'])
+        mean, std = calculate_mean_and_std(data_loader, device=device)
+        with open(data_mean_std_path, 'wb') as f:
+            pickle.dump((mean, std), f)
+
+    data = HamiltionianDataset(data_path, data_limit=1000, label_idx=(3, 4), format='csr', normalization_mean=mean, normalization_std=std)
 
     # data = HamiltionianParamsDataset(data_path, data_limit=1000, label_key=['potential', 'increase_potential_at_edges'], format='csr')
     test_loader = DataLoader(data, batch_size)
@@ -53,7 +68,7 @@ for i in range(1):  # 10
     latent_space_plot_path = os.path.join(dir_path, latent_space_plot_name)
     cov_matrix_path = os.path.join(dir_path, correlation_matrix_name)
 
-    latent_space_distribution = calculate_latent_space_distribution(encoder, test_loader, device, label=1, label_idx=0) # latent_space_ids=latent_space_ids)
+    latent_space_distribution = calculate_latent_space_distribution(encoder, test_loader, device) # latent_space_ids=latent_space_ids)
     mean, std, covariance_matrix = latent_space_distribution
 
     save_latent_distribution((mean, std), dir_path)

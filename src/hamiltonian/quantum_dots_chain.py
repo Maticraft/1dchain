@@ -296,11 +296,11 @@ def generate_parameters(n_samples: int):
     default_params = DefaultParameters(mu_max=10., t_max=5., b_max=5, d_max=5, lambda_max=1)
     params = QuantumDotsHamiltonianParameters(no_dots=7, no_levels=2, default_parameters=default_params)
     for _ in range(n_samples):
-        params.set_random_parameters_const()
+        params.set_random_parameters_free()
         yield {'parameters': params.to_dict()}
     return parameters
 
 if __name__ == '__main__':
     N = 1000000
     parameters = generate_parameters(N)
-    generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/7dots2levels_large', eig_decomposition=False, format='csr')
+    generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/7dots2levels_large_random', eig_decomposition=False, format='csr')
