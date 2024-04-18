@@ -23,7 +23,7 @@ test_dir_name = 'generation_tests_ep{}'
 # latent_distrib_dir = 'tests_majoranas_ep{}'
 polarization_sub_dir = 'polarization_{}'
 hamiltonian_elements_sub_dir = 'hamiltonian_{}'
-gen_epoch = 4
+gen_epoch = 2
 
 eigvals_gen_plot_name = 'eigvals_spectre_generator_{}.png'
 

@@ -10,10 +10,10 @@ from src.models.classifier import Classifier, MultiClassifier
 from src.models.hamiltonian_generator import HamiltonianGenerator, HamiltonianGeneratorV2, QuantumDotsHamiltonianGenerator
 from src.models.eigvals_autoencoder import EigvalsPositionalDecoder, EigvalsPositionalEncoder
 from src.models.ensemble_autoencoder import DecoderEnsemble, EncoderEnsemble
-from src.models.gan import Discriminator, Generator
+from src.models.gan import Discriminator, Generator, EigvalsDiscriminator
 from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
 from src.models.vae import VariationalPositionalEncoder
-from src.models.distribution_preserving_autoencoder import DistributionPreservingEncoder, DistributionPreservingHamiltonianGenerator
+from src.models.distribution_preserving_autoencoder import DistributionPreservingEncoder, DistributionPreservingHamiltonianGenerator, VariationalDistributionPreservingEncoder
 
 GENERAL_PARAMS_NAME = 'general_params.json'
 CLASSIFIER_PARAMS_NAME = 'classifier_params.json'
@@ -47,6 +47,7 @@ MODEL_TO_NAMES = {
     PositionalEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),
     Generator: (GENERATOR_PARAMS_NAME, GENERATOR_NAME, GENERATOR_DIR),
     Discriminator: (DISCRIMINATOR_PARAMS_NAME, DISCRIMINATOR_NAME, DISCRIMINATOR_DIR),
+    EigvalsDiscriminator: (DISCRIMINATOR_PARAMS_NAME, DISCRIMINATOR_NAME, DISCRIMINATOR_DIR),
     VariationalPositionalEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),
     EigvalsPositionalEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),
     EigvalsPositionalDecoder: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
@@ -55,6 +56,7 @@ MODEL_TO_NAMES = {
     QuantumDotsHamiltonianGenerator: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
     DistributionPreservingEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),
     DistributionPreservingHamiltonianGenerator: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
+    VariationalDistributionPreservingEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),
 }
 
 def load_autoencoder(root_dir: str, epoch: int) -> t.Tuple[Encoder, Decoder]:

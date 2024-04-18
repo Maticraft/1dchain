@@ -120,6 +120,7 @@ def plot_dim_red_freq_block(
     tsne_metric: t.Union[str, t.Callable] = 'euclidean',
     tsne_metric_params: t.Optional[t.Dict[str, t.Any]] = None,
     latent_space_ids: t.Optional[t.List[int]] = None,
+    num_freq_features: int = 50,
 ):
     encoder_model.to(device)
     encoder_model.eval()
@@ -133,8 +134,8 @@ def plot_dim_red_freq_block(
         z = encoder_model(x).detach().cpu().numpy()
         if latent_space_ids is not None:
             z = z[:, latent_space_ids]
-        z1_list.append(z[:, :z.shape[1] // 2])
-        z2_list.append(z[:, z.shape[1] // 2:])
+        z1_list.append(z[:, :num_freq_features])
+        z2_list.append(z[:, num_freq_features:])
         y_list.append(y.detach().cpu().numpy())
 
     if strategy == 'tsne':
@@ -223,7 +224,7 @@ def plot_pca(file_path: str, z_list: t.List[np.ndarray], y_list: t.List[np.ndarr
     if len(y.shape) == 1:
         y = y.reshape(-1, 1)
 
-    for i in range(len(y.shape[1])):
+    for i in range(y.shape[1]):
         file_path_rep = file_path.replace('.png', f'_{i}.png')
         plt.figure(figsize=(10, 10))
         plt.scatter(z_pca[:, 0], z_pca[:, 1], c=y[:, i])

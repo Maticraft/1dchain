@@ -330,19 +330,36 @@ class DistributionPreservingHamiltonianGenerator(nn.Module):
 
 class VariationalDistributionPreservingEncoder(DistributionPreservingEncoder):
     def __init__(self, input_size: t.Tuple[int, int, int], representation_dim: t.Union[int, t.Tuple[int, int]], **kwargs: t.Dict[str, t.Any]):
-        new_representation_dim = 2*representation_dim if isinstance(representation_dim, int) else (2*representation_dim[0], 2*representation_dim[1])
+        encoded_size = self._calculate_encoded_size(input_size[0], representation_dim, **kwargs)
+        new_representation_dim = representation_dim + encoded_size
         super(VariationalDistributionPreservingEncoder, self).__init__(input_size, new_representation_dim, **kwargs)
 
     def forward(self, x: torch.Tensor, return_distr: bool = False, eps: float = 1e-10):
         x = super(VariationalDistributionPreservingEncoder, self).forward(x)
-        x_mean, x_std = torch.split(x, x.shape[-1] // 2, dim=-1)
+        x_encoded = x[:, self.total_distribution_params:]
+        x_mean, x_std = torch.split(x_encoded, x_encoded.shape[-1] // 2, dim=-1)
         x_dist = Normal(x_mean, x_std.exp() + eps)
         x_sample = x_dist.rsample()
+        x_sample = torch.cat((x[:, :self.total_distribution_params], x_sample), dim=-1)
         if return_distr:
             return x_sample, x_dist
         else:
             return x_sample
+        
+    def _calculate_encoded_size(self, channel_num: int, representation_dim: t.Union[int, t.Tuple[int, int]], **kwargs: t.Dict[str, t.Any]):
+        on_site_real_block_pairs = kwargs.get('on_site_real_block_pairs', ['z1', 'zx', 'zz', 'iyiy'])
+        on_site_imag_block_pairs = kwargs.get('on_site_imag_block_pairs', ['1iy', 'xiy'])
+        interaction_real_block_pairs = kwargs.get('interaction_real_block_pairs', ['z1', '1iy'])
+        interaction_imag_block_pairs = kwargs.get('interaction_imag_block_pairs', ['z1', '1z', '1x']) # why for ladder z1 is used while for qdh it is 1z?
 
+        total_on_site_params = len(on_site_real_block_pairs) + len(on_site_imag_block_pairs)
+        num_independent_interaction_strips = (channel_num // 2 - 1) // 2
+        interaction_params_per_strip = len(interaction_real_block_pairs) + len(interaction_imag_block_pairs)
+        total_interaction_params = interaction_params_per_strip * num_independent_interaction_strips
+        total_params = total_on_site_params + total_interaction_params
+        total_distribution_params = 2*total_params # for mean and std
+        encoded_data_dim = representation_dim - total_distribution_params
+        return encoded_data_dim
 
 
 def train_vae(

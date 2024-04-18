@@ -74,7 +74,7 @@ for i in range(1):  # 10
     save_latent_distribution((mean, std), dir_path)
     # plot_latent_space_distribution((mean, std), latent_space_plot_path)
     plot_dim_red_full_space(encoder, test_loader, device, dim_red_plot_path.format('all'), strategy='tsne') #, predictor=classifier) #latent_space_ids=latent_space_ids #, tsne_metric=calculate_classifier_distance, tsne_metric_params={'model': classifier})
-    plot_dim_red_freq_block(encoder, test_loader, device, dim_red_plot_path, strategy='tsne')
+    plot_dim_red_freq_block(encoder, test_loader, device, dim_red_plot_path, strategy='tsne', num_freq_features=32)
     save_covariance_matrix(covariance_matrix, dir_path)
     cov_matrix_plot = heatmap(covariance_matrix.detach().cpu().numpy(), annot=False)
     cov_matrix_plot.get_figure().savefig(cov_matrix_path)

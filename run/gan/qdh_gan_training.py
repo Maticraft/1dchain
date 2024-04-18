@@ -201,6 +201,6 @@ for epoch in range(1, params['epochs'] + 1):
         plot_matrix(matrix[1], os.path.join(test_matrix_path, f"random_hamiltonian_imag_{i}.png"), vmin=-vscale, vmax=vscale)
 
     eigvals_gen_plot_path = os.path.join(test_matrix_path, eigvals_gen_plot_name)
-    plot_generator_eigvals(generator, 5, eigvals_gen_plot_path, noise_type='custom', ylim=ylim, mean=init_distribution[0], std=init_distribution[1], covariance_matrix=cov_matrix, xnorm=xnorm, ynorm=ynorm)
+    plot_generator_eigvals(generator, 5, eigvals_gen_plot_path, noise_type='custom', ylim=ylim, mean=init_distribution[0], std=init_distribution[1], covariance_matrix=cov_matrix, xnorm=xnorm, ynorm=ynorm, normalization_mean=mean, normalization_std=std)
    
 plot_convergence(loss_path, convergence_path, read_label=True)
