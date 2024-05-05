@@ -15,7 +15,7 @@ class MLP(nn.Module):
             if i == 0:
                 layers.append(nn.Linear(input_size, hidden_size))
                 layers.append(nn.BatchNorm1d(hidden_size))
-            elif i == layers_num - 1:
+            elif i == (layers_num - 1):
                 layers.append(nn.Linear(hidden_size, output_size))
             else:
                 layers.append(nn.Linear(hidden_size, hidden_size))

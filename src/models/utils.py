@@ -17,12 +17,15 @@ def majorana_eigvals_feature_matching(x_hat: torch.Tensor, zero_eigvals_threshol
     x_hat_complex = torch.complex(x_hat[:, 0, :, :], x_hat[:, 1, :, :])
     eigvals = torch.abs(torch.linalg.eigvalsh(x_hat_complex))
     min_eigvals, _ = torch.min(eigvals, dim=-1, keepdim=True)
-    eigvals_threshold = (min_eigvals + zero_eigvals_threshold).detach()
-    zero_eigvals = eigvals[eigvals < eigvals_threshold]
-    zero_eigvals_loss = torch.exp(zero_eigvals - zero_eigvals_threshold) # normalized to 1 at the threshold
-    non_zero_eigvals = eigvals[eigvals >= eigvals_threshold]
-    non_zero_eigvals_loss = -torch.log(non_zero_eigvals/(100*zero_eigvals_threshold*math.e)) # normalized to 0 at the 10*threshold
-    return zero_eigvals_loss.mean() + non_zero_eigvals_loss.mean() + non_zero_eigvals.std()
+    # eigvals_threshold = (min_eigvals + zero_eigvals_threshold).detach()
+    # zero_eigvals = eigvals[eigvals < eigvals_threshold]
+    # zero_eigvals_loss = torch.exp(zero_eigvals - zero_eigvals_threshold) # normalized to 1 at the threshold
+    zero_eigvals_loss = torch.exp(min_eigvals)
+    # non_zero_eigvals = eigvals[eigvals >= eigvals_threshold]
+    # non_zero_eigvals_loss = -torch.log(non_zero_eigvals/(100*zero_eigvals_threshold*math.e)) # normalized to 0 at the 10*threshold
+    mean_eigvals = torch.mean(eigvals, dim=-1, keepdim=True)
+    non_zero_eigvals_loss = -torch.log(mean_eigvals)
+    return zero_eigvals_loss.mean() + non_zero_eigvals_loss.mean() + torch.exp(eigvals.var())
 
 
 def diagonal_loss(x_hat: torch.Tensor, x: torch.Tensor, criterion: t.Callable, block_size: int = 4):
@@ -174,6 +177,7 @@ def calculate_latent_space_distribution(
     label: t.Optional[int] = None,
     label_idx: t.Optional[int] = None,
     latent_space_ids: t.Optional[t.List[int]] = None,
+    vae_flag: bool = False,
 ):
     encoder.to(device)
     encoder.eval()
@@ -186,7 +190,11 @@ def calculate_latent_space_distribution(
             y = y.to(device)[:, label_idx]
             x = x[y == label]
         if x.shape[0] > 0:
-            z = encoder(x)
+            if vae_flag:
+                z0, z_dist = encoder(x, return_distr = True)
+                z = torch.cat((z0[:, :encoder.total_distribution_params], z_dist.mean), dim=1)
+            else:
+                z = encoder(x)
             if latent_space_ids is not None:
                 z = z[:, latent_space_ids]
             population.append(z)

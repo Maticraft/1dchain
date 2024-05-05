@@ -308,7 +308,9 @@ def plot_generator_eigvals(
     generator.eval()
     
     states_noise = generator.get_noise(num_states, torch.device('cpu'), noise_type, **kwargs)
-    
+    if 'real_sample' in kwargs:
+        states_noise = (1 - kwargs['noise_strength'])*kwargs['real_sample'] + kwargs['noise_strength']*states_noise
+
     eps = 1/num_interval_states
     states = []
     for i in range(len(states_noise) - 1):
@@ -327,6 +329,32 @@ def plot_generator_eigvals(
     eigvals = [np.linalg.eigvalsh(H) for H in Hs]
 
     simple_plot(f'{num_states} random states transition', range(len(eigvals)), 'Eigen energy', eigvals, save_path, **kwargs)
+
+
+def plot_generator_noisy_sample_eigvals(
+    generator: Generator,
+    save_path: str,
+    real_sample: torch.Tensor,
+    noise_type: str = 'hybrid',
+    num_interval_states: int = 100,
+    eps = 1/100,
+    **kwargs: t.Dict[str, t.Any],
+):
+    generator = generator.cpu()
+    generator.eval()
+    
+    states_noise = generator.get_noise(num_interval_states, torch.device('cpu'), noise_type, **kwargs)    
+    states = torch.cat([(1-eps)*real_sample + eps*noise for noise in states_noise])
+
+    output = generator(states)
+    if 'normalization_mean' in kwargs and 'normalization_std' in kwargs:
+        denormalization = Denormalize(kwargs['normalization_mean'], kwargs['normalization_std'])
+        output = denormalization(output)
+    
+    Hs = torch.complex(output[:, 0, :, :], output[:, 1, :, :]).squeeze().detach().cpu().numpy()
+    eigvals = [np.linalg.eigvalsh(H) for H in Hs]
+
+    simple_plot(f'{num_interval_states} noise samples transition', range(len(eigvals)), 'Eigen energy', eigvals, save_path, **kwargs)
 
 
 def simple_plot(

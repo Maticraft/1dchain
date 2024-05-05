@@ -15,9 +15,9 @@ from src.models.files import save_autoencoder_params, save_autoencoder, save_dat
 from src.plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 # Paths
-data_path = './data/quantum_dots/7dots2levels_large_random'
+data_path = './data/quantum_dots/7dots2levels_large'
 data_mean_std_path = f'{data_path}/mean_std.pkl'
-save_dir = './autoencoder/quantum_dots/7dots2levels_large_random'
+save_dir = './vae/quantum_dots/7dots2levels_large'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -38,13 +38,14 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonian_diff_plot_name = 'hamiltonian_diff{}.png'
 hamiltonian_org_plot_name = 'hamiltonian_original{}.png'
 
-default_params = DefaultParameters(mu_max=10., t_max=5., b_max=5, d_max=5, lambda_max=1)
+# default_params = DefaultParameters(mu_max=10., t_max=5., b_max=5, d_max=5, lambda_max=1)
+default_params =DefaultParameters()
 parameters = QuantumDotsHamiltonianParameters(no_dots=7, no_levels=2, default_parameters=default_params)
 parameters.set_random_parameters_free()
 test_hamiltonian = QuantumDotsHamiltonian(parameters)
 
 # Model name
-model_name = 'distribution_preserving_autoencoder'
+model_name = 'distribution_preserving_autoencoder_test'
 
 # Params
 params = {

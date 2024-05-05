@@ -25,13 +25,13 @@ class Discriminator(nn.Module):
         for i in range(layers_num):
             if i == 0:
                 layers.append(nn.Linear(input_size, hidden_size))
-            elif i == layers_num - 1:
                 layers.append(nn.BatchNorm1d(hidden_size))
+            elif i == (layers_num - 1):
                 layers.append(nn.Linear(hidden_size, output_size))
             else:
-                layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, hidden_size))
-            if i != layers_num - 1:
+                layers.append(nn.BatchNorm1d(hidden_size))
+            if i != (layers_num - 1):
                 layers.append(nn.LeakyReLU(negative_slope=0.01))
         return nn.Sequential(*layers)
     
@@ -39,12 +39,17 @@ class Discriminator(nn.Module):
 class EigvalsDiscriminator(Discriminator):
     def __init__(self, model_class: t.Type[nn.Module], model_config: t.Dict[str, t.Any]):
         super(EigvalsDiscriminator, self).__init__(model_class, model_config)
-        self.eigvals_discriminator = self._get_mlp(5, model_config['input_size'][1]*model_config['input_size'][2], 128, 1)
+        self.num_eigvals = model_config.get('num_eigvals', model_config['input_size'][1]*model_config['input_size'][2])
+        self.eigvals_discriminator = self._get_mlp(5, self.num_eigvals, 128, 1)
 
-    def forward(self, x: torch.Tensor, eigvals: torch.Tensor):
-        matrix_score = super(EigvalsDiscriminator, self).forward(x)
-        eigvals_score = self.eigvals_discriminator(eigvals)
-        return matrix_score + eigvals_score
+    def forward(self, x: torch.Tensor, eigvals: torch.Tensor, return_eigvals_score: bool = False):
+        # matrix_score = super(EigvalsDiscriminator, self).forward(x)
+        # if return_eigvals_score:
+            # get first k min eigvals
+        min_eigvals = torch.topk(torch.abs(eigvals), self.num_eigvals, largest=False).values
+        eigvals_score = self.eigvals_discriminator(min_eigvals)
+        return eigvals_score #matrix_score + eigvals_score
+        # return matrix_score
 
 
 class Generator(nn.Module):
@@ -55,7 +60,7 @@ class Generator(nn.Module):
         if 'distribution' in model_config:
             activation = self._create_activation_from_distribution(model_config['distribution'])
         else:
-            activation = nn.LeakyReLU(negative_slope=0.01)
+            activation = None
 
         self.skip_noise_converter = model_config.get('skip_noise_converter', False)
         self.noise_converter = self._get_mlp(5, self.nn_in_features, self.nn_in_features, self.nn_in_features, final_activation=activation)
@@ -63,7 +68,7 @@ class Generator(nn.Module):
 
     def forward(self, x: torch.Tensor):
         if not self.skip_noise_converter:
-            x = self.noise_converter(x)
+            x = x + self.noise_converter(x)
         return self.nn(x)
 
     def _create_activation_from_distribution(self, distribution: t.Tuple[torch.Tensor, torch.Tensor]):
@@ -83,21 +88,22 @@ class Generator(nn.Module):
                 return self.activation(x)
         return Activation(mu, std)
 
-    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int, final_activation = t.Callable):
+    def _get_mlp(self, layers_num: int, input_size: int, hidden_size: int, output_size: int, final_activation: t.Optional[t.Callable] = None):
         layers = []
         if layers_num == 1:
             return nn.Linear(input_size, output_size)
         for i in range(layers_num):
             if i == 0:
                 layers.append(nn.Linear(input_size, hidden_size))
+                layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.LeakyReLU(negative_slope=0.01))
             elif i == layers_num - 1:
-                layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, output_size))
-                layers.append(final_activation)
+                if final_activation is not None:
+                    layers.append(final_activation)
             else:
-                layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.Linear(hidden_size, hidden_size))
+                layers.append(nn.BatchNorm1d(hidden_size))
                 layers.append(nn.LeakyReLU(negative_slope=0.01))
         return nn.Sequential(*layers)
 
@@ -117,8 +123,15 @@ class Generator(nn.Module):
             cov = kwargs['covariance']
             mean_freq = mean[:self.nn_in_features_split_idx]
             mean_block = mean[self.nn_in_features_split_idx:]
+            
             cov_freq = cov[:self.nn_in_features_split_idx, :self.nn_in_features_split_idx]
+            eigs_freq = torch.amin(torch.linalg.eigvalsh(cov_freq))
+            if eigs_freq < 0.: cov_freq -= torch.eye(cov_freq.shape[-1])*eigs_freq  
+
             cov_block = cov[self.nn_in_features_split_idx:, self.nn_in_features_split_idx:]
+            eigs_block = torch.amin(torch.linalg.eigvalsh(cov_block))
+            if eigs_block < 0.: cov_block -= torch.eye(cov_block.shape[-1])*eigs_block  
+            
             freq_noise = generate_sample_from_mean_and_covariance(mean_freq, cov_freq, batch_size)
             block_noise = generate_sample_from_mean_and_covariance(mean_block, cov_block, batch_size)
             return torch.cat([freq_noise, block_noise], dim=-1).to(device)
@@ -277,6 +290,8 @@ def train_gan(
             generator.requires_grad_(True)
         if strategy == 'no-discriminator':
             discriminator_loss = 0.
+            generator.train()
+            generator.requires_grad_(True)
 
         total_discriminator_loss += discriminator_loss
 
@@ -312,12 +327,12 @@ def train_gan(
                 generator_optimizer.step()
         
         if strategy == 'eigvals-discriminator-wgan':
-            for _ in range(generator_repeats):
+            for i in range(generator_repeats):
                 generator_optimizer.zero_grad()
                 x_hat = generate_fake_data(generator, x.shape[0], device, init_distribution, cov_matrix)
-                x_hat_complex = torch.complex(x_hat[:, 0, :, :], x_hat[:, 1, :, :])
-                eigvals_hat = torch.abs(torch.linalg.eigvalsh(x_hat_complex))
-                fake_prediction = discriminator(x_hat, eigvals_hat)
+                x_hat_complex = torch.complex(x_hat[:, 0, :, :].detach(), x_hat[:, 1, :, :].detach())
+                eigvals_hat = torch.linalg.eigvalsh(x_hat_complex)
+                fake_prediction = discriminator(x_hat, eigvals_hat, return_eigvals_score = True) #i % 2 == 1)
                 feature_matching_loss = 0
                 if use_majoranas_feature_matching:
                     # feature matching
@@ -326,6 +341,7 @@ def train_gan(
 
         if strategy == 'no-discriminator':
             generator_optimizer.zero_grad()
+            x_hat = generate_fake_data(generator, x.shape[0], device, init_distribution, cov_matrix)
             feature_matching_loss = majorana_eigvals_feature_matching(x_hat, zero_eigvals_threshold= 0.015)
             generator_loss = feature_matching_loss
             generator_loss.backward()
@@ -406,13 +422,13 @@ def train_discriminator_wgan_gp(
     eigvals = None
     eigvals_hat = None
 
-    for _ in range(discriminator_repeats):
+    for i in range(discriminator_repeats):
         discriminator_optimizer.zero_grad()
         if x.shape[0] > 1:
             if discriminator_eigvals:
                 x_complex = torch.complex(x[:, 0, :, :], x[:, 1, :, :])
-                eigvals = torch.abs(torch.linalg.eigvalsh(x_complex))
-                real_prediction = discriminator(x, eigvals.detach())
+                eigvals = torch.linalg.eigvalsh(x_complex)
+                real_prediction = discriminator(x, eigvals, return_eigvals_score = i % 2 == 1)
             else:
                 real_prediction = discriminator(x)
         else:
@@ -421,16 +437,17 @@ def train_discriminator_wgan_gp(
         x_hat = generate_fake_data(generator, x.shape[0], device, init_distribution, cov_matrix)
         
         if discriminator_eigvals:
-            x_hat_complex = torch.complex(x_hat[:, 0, :, :], x_hat[:, 1, :, :])
-            eigvals_hat = torch.abs(torch.linalg.eigvalsh(x_hat_complex))
-            fake_prediction = discriminator(x_hat.detach(), eigvals_hat.detach())
+            x_hat_detach = x_hat.detach()
+            x_hat_complex = torch.complex(x_hat_detach[:, 0, :, :], x_hat_detach[:, 1, :, :])
+            eigvals_hat = torch.linalg.eigvalsh(x_hat_complex)
+            fake_prediction = discriminator(x_hat_detach, eigvals_hat, return_eigvals_score = True) # i % 2 == 1)
         else:
             fake_prediction = discriminator(x_hat.detach())
 
-        epsilon = torch.rand(len(x), 1, 1, 1, device=device, requires_grad=True)
-        gradient = get_gradient(discriminator, x, x_hat.detach(), epsilon, eigvals, eigvals_hat)
-        gp = gradient_penalty(gradient)
-        discriminator_loss = torch.mean(fake_prediction) - torch.mean(real_prediction) + gradient_penalty_weight * gp
+        # epsilon = torch.rand(len(x), 1, 1, 1, device=device, requires_grad=True)
+        # gradient = get_gradient(discriminator, x, x_hat.detach(), epsilon, eigvals, eigvals_hat)
+        # gp = gradient_penalty(gradient)
+        discriminator_loss = torch.mean(fake_prediction) - torch.mean(real_prediction) # + gradient_penalty_weight * gp
 
         mean_iteration_discriminator_loss += discriminator_loss.item() / discriminator_repeats
         discriminator_loss.backward()

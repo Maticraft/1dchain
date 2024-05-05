@@ -2,7 +2,7 @@ import os
 import pickle
 
 import numpy as np
-from torch.utils.data import random_split, DataLoader
+from torch.utils.data import random_split, DataLoader, Subset
 import torch
 
 from src.data_utils import HamiltionianDataset, calculate_mean_and_std
@@ -10,13 +10,13 @@ from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from src.hamiltonian.quantum_dots_chain import QuantumDotsHamiltonian, QuantumDotsHamiltonianParameters, DefaultParameters, AtomicUnits
 from src.models.autoencoder import test_autoencoder
 from src.models.distribution_preserving_autoencoder import DistributionPreservingHamiltonianGenerator, VariationalDistributionPreservingEncoder, train_vae
-from src.models.files import save_autoencoder_params, save_autoencoder, save_data_list
+from src.models.files import save_autoencoder_params, save_autoencoder, save_data_list, load_ae_model
 from src.plots import plot_convergence, plot_test_matrices, plot_test_eigvals
 
 # Paths
-data_path = './data/quantum_dots/7dots2levels_large'
+data_path = './data/quantum_dots/7dots2levels_large_balanced'
 data_mean_std_path = f'{data_path}/mean_std.pkl'
-save_dir = './vae/quantum_dots/7dots2levels_large'
+save_dir = './vae/quantum_dots/7dots2levels_large_balanced'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 
@@ -38,14 +38,13 @@ hamiltonian_plot_name = 'hamiltonian_autoencoder{}.png'
 hamiltonian_diff_plot_name = 'hamiltonian_diff{}.png'
 hamiltonian_org_plot_name = 'hamiltonian_original{}.png'
 
-default_params = DefaultParameters(mu_max=10., t_max=5., b_max=5, d_max=5, lambda_max=1)
+default_params = DefaultParameters()
 parameters = QuantumDotsHamiltonianParameters(no_dots=7, no_levels=2, default_parameters=default_params)
-parameters.set_random_parameters_free()
+parameters.set_random_parameters_const()
 test_hamiltonian = QuantumDotsHamiltonian(parameters)
 
 # Model name
-model_name = 'distribution_preserving_autoencoder'
-
+model_name = 'majoranas_distribution_preserving_autoencoder_kl_01_weighting'
 # Params
 params = {
     'epochs': 60,
@@ -114,6 +113,7 @@ decoder_params = {
     'seq_dec_hidden_size': 128,
     'seq_channels_num': 64,
     'activation': 'leaky_relu',
+    'output_weighting': True,
 }
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -121,18 +121,18 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # Set the root dir
 root_dir = os.path.join(save_dir, f'{params["representation_dim"]}', model_name)
 if not os.path.isdir(root_dir):
-    os.makedirs(root_dir)
+    os.makedirs(root_dir, exist_ok=True)
 
 loss_path = os.path.join(root_dir, loss_file)
 convergence_path = os.path.join(root_dir, convergence_file)
 
 eigvals_sub_path = os.path.join(root_dir, eigvals_sub_dir)     
 if not os.path.isdir(eigvals_sub_path):
-    os.makedirs(eigvals_sub_path)
+    os.makedirs(eigvals_sub_path, exist_ok=True)
 
 ham_sub_path = os.path.join(root_dir, hamiltonian_sub_dir)     
 if not os.path.isdir(ham_sub_path):
-    os.makedirs(ham_sub_path)
+    os.makedirs(ham_sub_path, exist_ok=True)
 
 save_autoencoder_params(params, encoder_params, decoder_params, root_dir)
 
@@ -148,6 +148,8 @@ except:
         pickle.dump((mean, std), f)
 
 data = HamiltionianDataset(data_path, label_idx=(3, 4), eig_decomposition=params['eigenstates_loss'], format='csr', normalization_mean=mean, normalization_std=std)
+# take subset of the data taking the second half of the data
+data = Subset(data, range(len(data)//2, len(data)))
 
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size

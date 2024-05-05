@@ -89,9 +89,10 @@ def test_encoder_with_classifier(
             not_class_ids = all_ids[all_ids != classifier_model.classifier_output_idx]
             prediction = classifier_model(z)
             class_loss = class_criterion(prediction[:, classifier_model.classifier_output_idx], y[:, classifier_model.classifier_output_idx])
-            reg_loss = reg_criterion(prediction[:, not_class_ids], y[:, not_class_ids])
+            if len(not_class_ids) > 0:
+                reg_loss = reg_criterion(prediction[:, not_class_ids], y[:, not_class_ids])
+                total_reg_loss += torch.mean(reg_loss, dim=0)
             total_class_loss += class_loss.item()
-            total_reg_loss += torch.mean(reg_loss, dim=0)
 
             for i, j in zip(y[:, classifier_model.classifier_output_idx], prediction[:, classifier_model.classifier_output_idx]):
                 conf_matrix[int(i.item()), round(j.item())] += 1
@@ -211,7 +212,7 @@ def train_encoder_with_classifier(
 
         total_loss_ae += loss_ae.item()
 
-        loss =class_loss_weight*loss_class + loss_ae
+        loss = class_loss_weight*loss_class + loss_ae
         loss.backward()
         classifier_optimizer.step()
         encoder_optimizer.step()

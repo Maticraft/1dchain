@@ -2,26 +2,26 @@ import os
 import pickle
 
 from seaborn import heatmap
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 import torch
 
-
+from src.hamiltonian.quantum_dots_chain import MZM_THRESHOLD
 from src.data_utils import HamiltionianDataset, HamiltionianParamsDataset, calculate_mean_and_std
 from src.models.utils import calculate_latent_space_distribution, calculate_classifier_distance
 from src.models.files import load_classifier, load_variational_positional_autoencoder, load_positional_autoencoder, load_general_params, save_latent_distribution, save_covariance_matrix, load_ae_model
 from src.plots import plot_dim_red_full_space, plot_dim_red_freq_block, plot_latent_space_distribution
 from src.models.positional_autoencoder import PositionalEncoder
 from src.models.hamiltonian_generator import HamiltonianGenerator, HamiltonianGeneratorV2
-from src.models.distribution_preserving_autoencoder import DistributionPreservingEncoder, DistributionPreservingHamiltonianGenerator
+from src.models.distribution_preserving_autoencoder import DistributionPreservingEncoder, DistributionPreservingHamiltonianGenerator, VariationalDistributionPreservingEncoder
 
 
-model_dir = './autoencoder/quantum_dots/7dots2levels_large/100/ditribution_preserving_autoencoder'
+model_dir = './vae/quantum_dots/7dots2levels_large_balanced/100/majoranas_distribution_preserving_autoencoder_kl_01_weighting'
 epoch = 20
 batch_size = 128
 mzm_threshold = 0.012
 
 # Paths
-data_path = './data/quantum_dots/7dots2levels_large'
+data_path = './data/quantum_dots/7dots2levels_large_balanced'
 data_mean_std_path = f'{data_path}/mean_std.pkl'
 
 
@@ -40,7 +40,7 @@ for i in range(1):  # 10
 
     # Load model
     params = load_general_params(model_dir)
-    encoder, decoder = load_ae_model(model_dir, epoch, DistributionPreservingEncoder, DistributionPreservingHamiltonianGenerator)
+    encoder, decoder = load_ae_model(model_dir, epoch, VariationalDistributionPreservingEncoder, DistributionPreservingHamiltonianGenerator)
 
     # classifier = load_classifier(model_dir, epoch, input_dim = params['representation_dim'], layers=params['classifier_layers'], classifier_output_idx=params['classifier_main_idx'])
 
@@ -48,15 +48,16 @@ for i in range(1):  # 10
         with open(data_mean_std_path, 'rb') as f:
             mean, std = pickle.load(f)
     except:
-        data = HamiltionianDataset(data_path, label_idx=(3, 4), format='csr', threshold=0.15)
+        data = HamiltionianDataset(data_path, label_idx=(3, 4), format='csr', threshold=MZM_THRESHOLD)
         data_loader = DataLoader(data, params['batch_size'])
         mean, std = calculate_mean_and_std(data_loader, device=device)
         with open(data_mean_std_path, 'wb') as f:
             pickle.dump((mean, std), f)
 
-    data = HamiltionianDataset(data_path, data_limit=1000, label_idx=(3, 4), format='csr', normalization_mean=mean, normalization_std=std)
+    data = HamiltionianDataset(data_path, label_idx=(3, 4), format='csr', normalization_mean=mean, normalization_std=std, threshold=MZM_THRESHOLD)
+    data = Subset(data, range(0, 1000))
 
-    # data = HamiltionianParamsDataset(data_path, data_limit=1000, label_key=['potential', 'increase_potential_at_edges'], format='csr')
+   # data = HamiltionianParamsDataset(data_path, data_limit=1000, label_key=['potential', 'increase_potential_at_edges'], format='csr')
     test_loader = DataLoader(data, batch_size)
 
     # dir_path = os.path.join(model_dir, test_dir_name.format(i, epoch))
@@ -68,13 +69,13 @@ for i in range(1):  # 10
     latent_space_plot_path = os.path.join(dir_path, latent_space_plot_name)
     cov_matrix_path = os.path.join(dir_path, correlation_matrix_name)
 
-    latent_space_distribution = calculate_latent_space_distribution(encoder, test_loader, device) # latent_space_ids=latent_space_ids)
+    latent_space_distribution = calculate_latent_space_distribution(encoder, test_loader, device, vae_flag=True, label_idx=0, label=1) # latent_space_ids=latent_space_ids)
     mean, std, covariance_matrix = latent_space_distribution
 
     save_latent_distribution((mean, std), dir_path)
     # plot_latent_space_distribution((mean, std), latent_space_plot_path)
     plot_dim_red_full_space(encoder, test_loader, device, dim_red_plot_path.format('all'), strategy='tsne') #, predictor=classifier) #latent_space_ids=latent_space_ids #, tsne_metric=calculate_classifier_distance, tsne_metric_params={'model': classifier})
-    plot_dim_red_freq_block(encoder, test_loader, device, dim_red_plot_path, strategy='tsne', num_freq_features=32)
+    plot_dim_red_freq_block(encoder, test_loader, device, dim_red_plot_path, strategy='tsne', num_freq_features=encoder.total_distribution_params)
     save_covariance_matrix(covariance_matrix, dir_path)
     cov_matrix_plot = heatmap(covariance_matrix.detach().cpu().numpy(), annot=False)
     cov_matrix_plot.get_figure().savefig(cov_matrix_path)

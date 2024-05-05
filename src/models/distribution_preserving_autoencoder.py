@@ -124,7 +124,8 @@ class DistributionPreservingEncoder(nn.Module):
         seq_mean = seq.mean(dim=-1)
         # seq_std = torch.ones_like(seq_mean)
         seq_std = seq.var(dim=-1, unbiased=False) # actually it must be variance, because std causes nans (sqrt is not defined for 0 and smaller values)
-        seq_std = torch.maximum(seq_std, torch.full_like(seq_std, 1.e-6))
+        seq_std = torch.maximum(seq_std, torch.full_like(seq_std, std_threshold))
+        seq_std = torch.sqrt(seq_std)
         normalized_seq = (seq - seq_mean.unsqueeze(-1)) / seq_std.unsqueeze(-1)
         # normalized_seq_masked = torch.where(seq_std.unsqueeze(-1) < std_threshold, torch.zeros_like(normalized_seq), normalized_seq)
         return normalized_seq, seq_mean, seq_std
@@ -178,10 +179,18 @@ class DistributionPreservingHamiltonianGenerator(nn.Module):
             nn.Conv1d(self.seq_channels_num, self.interaction_params_per_strip, kernel_size=2, stride=1, dilation=interaction_range, bias=False)
             for interaction_range in range(1, self.num_independent_interaction_strips + 1)
         ])
-        self.allow_periodic = kwargs.get('allow_periodic', False)
-        self.interlevels_interactions = kwargs.get('interlevels_interactions', False)
-        self.smoothing = kwargs.get('smoothing', False)
 
+        self.output_weighting = kwargs.get('output_weighting', False)
+        if self.output_weighting:
+            self.on_site_weighting = nn.ModuleList([
+                MLP(2, self.encoded_data_dim + self.N + 2, self.dec_hidden_size, self.N, self.activation, final_activation='sigmoid')
+                for _ in range(self.total_on_site_params)
+            ])
+
+            self.interaction_weighting = nn.ModuleList([
+                MLP(2, self.encoded_data_dim + self.N + 2, self.dec_hidden_size, self.N, self.activation, final_activation='sigmoid')
+                for _ in range(self.total_interaction_params)
+            ])
 
     def forward(self, x: torch.Tensor):
         '''
@@ -209,6 +218,19 @@ class DistributionPreservingHamiltonianGenerator(nn.Module):
 
         denormalized_on_site_seq = self._denormalize_seq(on_site_seq, on_site_mean, on_site_std)
         denormalized_interactions_seq = self._denormalize_seq(interactions_seq, interactions_mean, interactions_std)
+
+        if self.output_weighting:
+            # Additional on-site weights
+            on_site_expanded_encoded_data = encoded_data.unsqueeze(1).expand(-1, self.total_on_site_params, -1)
+            on_site_conditioners = torch.cat([on_site_expanded_encoded_data, on_site_seq, on_site_mean.view(-1, self.total_on_site_params, 1), on_site_std.view(-1, self.total_on_site_params, 1)], dim=-1)
+            on_site_weights = torch.stack([on_site_weighting(on_site_conditioners[:, i]) for i, on_site_weighting in enumerate(self.on_site_weighting)], dim=1)
+            denormalized_on_site_seq = denormalized_on_site_seq * on_site_weights
+
+            # Additional interaction weights
+            interaction_expanded_encoded_data = encoded_data.unsqueeze(1).expand(-1, self.total_interaction_params, -1)
+            interaction_conditioners = torch.cat([interaction_expanded_encoded_data, interactions_seq.view(-1, self.total_interaction_params, self.N), interactions_mean.view(-1, self.total_interaction_params, 1), interactions_std.view(-1, self.total_interaction_params, 1)], dim=-1)
+            interaction_weights = torch.stack([interaction_weighting(interaction_conditioners[:, i]) for i, interaction_weighting in enumerate(self.interaction_weighting)], dim=1)
+            denormalized_interactions_seq = denormalized_interactions_seq * interaction_weights.view(*denormalized_interactions_seq.shape)
 
         interaction_strips_lower, interaction_strips_upper = self._construct_interactions(denormalized_interactions_seq)
 

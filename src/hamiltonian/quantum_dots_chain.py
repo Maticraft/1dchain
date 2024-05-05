@@ -292,15 +292,29 @@ class Plotting:
         plt.close()
 
 
-def generate_parameters(n_samples: int):
+def generate_parameters(n_samples: int, num_verified_majoranas: int = 0):
+    num_hamiltonians_with_majoranas = 0
+    total_num_hamiltonians = 0
     default_params = DefaultParameters(mu_max=10., t_max=5., b_max=5, d_max=5, lambda_max=1)
     params = QuantumDotsHamiltonianParameters(no_dots=7, no_levels=2, default_parameters=default_params)
-    for _ in range(n_samples):
-        params.set_random_parameters_free()
-        yield {'parameters': params.to_dict()}
+    while total_num_hamiltonians < n_samples:
+        params.set_random_parameters_const()
+        if num_verified_majoranas > num_hamiltonians_with_majoranas:
+            hamiltonian = QuantumDotsHamiltonian(params)
+            label = hamiltonian.get_label()
+            label = label.split(', ')
+            if float(label[2]) * float(label[3]) < -MZM_THRESHOLD:
+                total_num_hamiltonians += 1
+                num_hamiltonians_with_majoranas + 1
+                yield {'parameters': params.to_dict()}  
+            if total_num_hamiltonians < (n_samples - num_verified_majoranas):
+                total_num_hamiltonians += 1
+                yield {'parameters': params.to_dict()}
+        else:
+            yield {'parameters': params.to_dict()}
     return parameters
 
 if __name__ == '__main__':
     N = 1000000
-    parameters = generate_parameters(N)
-    generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/7dots2levels_large_random', eig_decomposition=False, format='csr')
+    parameters = generate_parameters(N, num_verified_majoranas=N//2)
+    generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/7dots2levels_large_balanced', eig_decomposition=False, format='csr')

@@ -16,14 +16,14 @@ from src.torch_utils import TorchHamiltonian
 
 
 # Model params
-gen_dir = './gan/quantum_dots/7dots2levels_large/100/QDH-WGAN-distribution_preserving_autoencoder'
-data_path = './data/quantum_dots/7dots2levels_large'
+gen_dir = './gan/quantum_dots/7dots2levels_large_balanced/100/QDH-FM-GEN-majoranas_distribution_preserving_autoencoder-weighted'
+data_path = './data/quantum_dots/7dots2levels_large_balanced'
 data_mean_std_path = f'{data_path}/mean_std.pkl'
 test_dir_name = 'generation_tests_ep{}'
 # latent_distrib_dir = 'tests_majoranas_ep{}'
 polarization_sub_dir = 'polarization_{}'
 hamiltonian_elements_sub_dir = 'hamiltonian_{}'
-gen_epoch = 2
+gen_epoch = 19
 
 eigvals_gen_plot_name = 'eigvals_spectre_generator_{}.png'
 
@@ -72,13 +72,13 @@ for i in tqdm(range(num_plots), desc='Plotting generator eigvals'):
     H = denormalization(H).squeeze()
     H = TorchHamiltonian.from_2channel_tensor(H)
 
-    site_elements_sub_dir = os.path.join(test_sub_path, hamiltonian_elements_sub_dir.format(i))
-    os.makedirs(site_elements_sub_dir, exist_ok=True)
-    plot_site_matrix_elements(H, 'potential', site_elements_sub_dir)
-    plot_site_matrix_elements(H, 'delta', site_elements_sub_dir)
-    plot_site_matrix_elements(H, 'spin', site_elements_sub_dir)
-    plot_site_matrix_elements(H, 'interaction_i_j', site_elements_sub_dir)
-    plot_site_matrix_elements(H, 'interaction_j_i', site_elements_sub_dir)
+    # site_elements_sub_dir = os.path.join(test_sub_path, hamiltonian_elements_sub_dir.format(i))
+    # os.makedirs(site_elements_sub_dir, exist_ok=True)
+    # plot_site_matrix_elements(H, 'potential', site_elements_sub_dir)
+    # plot_site_matrix_elements(H, 'delta', site_elements_sub_dir)
+    # plot_site_matrix_elements(H, 'spin', site_elements_sub_dir)
+    # plot_site_matrix_elements(H, 'interaction_i_j', site_elements_sub_dir)
+    # plot_site_matrix_elements(H, 'interaction_j_i', site_elements_sub_dir)
     plot_matrix(H.get_hamiltonian().real, os.path.join(test_sub_path, f"random_hamiltonian_real_{i}.png"), vmin=-vscale, vmax=vscale)
     plot_matrix(H.get_hamiltonian().imag, os.path.join(test_sub_path, f"random_hamiltonian_imag_{i}.png"), vmin=-vscale, vmax=vscale)
 

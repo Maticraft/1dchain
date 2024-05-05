@@ -2,7 +2,7 @@ import os
 import pickle
 
 import numpy as np
-from torch.utils.data import random_split, DataLoader
+from torch.utils.data import random_split, DataLoader, Subset
 import torch
 
 from src.data_utils import HamiltionianDataset, calculate_mean_and_std, Denormalize
@@ -19,14 +19,14 @@ from src.plots import plot_convergence, plot_test_matrices, plot_test_eigvals, p
 from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
 
 # Paths
-data_path = './data/quantum_dots/7dots2levels_large'
+data_path = './data/quantum_dots/7dots2levels_large_balanced'
 data_mean_std_path = f'{data_path}/mean_std.pkl'
-save_dir = './gan/quantum_dots/7dots2levels_large'
+save_dir = './gan/quantum_dots/7dots2levels_large_balanced'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
-distribution_dir_name = 'tests_latent_ep_{}'
+distribution_dir_name = 'tests_majoranas_latent_ep_{}'
 
-original_autoencoder_path = './autoencoder/quantum_dots/7dots2levels_large/100/ditribution_preserving_autoencoder'
+original_autoencoder_path = './vae/quantum_dots/7dots2levels_large_balanced/100/majoranas_distribution_preserving_autoencoder_kl_01_weighting'
 original_autoencoder_epoch = 20
 distribution_path = os.path.join(original_autoencoder_path, distribution_dir_name.format(original_autoencoder_epoch))
 
@@ -45,7 +45,7 @@ vscale = 1/AtomicUnits.Eh
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Model name
-model_name = 'QDH-WGAN-eigvals-distribution_preserving_autoencoder'
+model_name = 'QDH-WGAN-nogp-eigvals-only-majoranas_distribution_preserving_autoencoder-weighted'
 
 # Params
 params = {
@@ -56,13 +56,13 @@ params = {
     'block_size': 4,
     'representation_dim': 100,
     'strategy': 'eigvals-discriminator-wgan',
-    'gp_weight': 1.e-4,
-    'discriminator_iters': 2,
+    'gp_weight': 0.,
+    'discriminator_iters': 1,
     'generator_iters': 1,
     'start_training_mode': 'discriminator',
     'data_label': None,
     'use_feature_matching': False,
-    'feature_matching_weight': 0.1,
+    'feature_matching_weight': 1.,
 }
 
 # Architecture
@@ -80,6 +80,7 @@ discriminator_params = {
     'seq_enc_depth': 4,
     'seq_enc_hidden_size': 128,
     'lr': 1.e-5,
+    'num_eigvals': 56
 }
 
 generator_params = {
@@ -94,9 +95,10 @@ generator_params = {
     'seq_channels_num': 64,
     'activation': 'leaky_relu',
     'lr': 1.e-4,
-    'skip_noise_converter': True,
+    'skip_noise_converter': False,
     'training_switch_loss_ratio': 1.2,
     'nn_in_features_split_index': 32,
+    'output_weighting': True
 }
 
 
@@ -129,6 +131,7 @@ print('Data mean:', mean)
 print('Data std:', std)
 
 data = HamiltionianDataset(data_path, label_idx=(3, 4), format='csr', threshold=0.15, normalization_mean=mean, normalization_std=std)
+data = Subset(data, range(len(data) // 2, len(data)))
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size
 
@@ -142,7 +145,8 @@ load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epo
 
 discriminator_config = get_full_model_config(params, discriminator_params)
 discriminator = EigvalsDiscriminator(DistributionPreservingEncoder, discriminator_config)
-load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, discriminator)
+discriminator.nn.requires_grad_(False)
+# load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, discriminator)
 
 print(generator)
 print(discriminator)
@@ -170,6 +174,7 @@ for epoch in range(1, params['epochs'] + 1):
         generator_optimizer,
         discriminator_optimizer,
         init_distribution,
+        cov_matrix=cov_matrix,
         data_label=params['data_label'],
         strategy=params['strategy'],
         gradient_penalty_weight=params['gp_weight'],
@@ -190,7 +195,7 @@ for epoch in range(1, params['epochs'] + 1):
     num_states = 5
     for i in range(num_states):
         generator.eval()
-        z = generator.get_noise(1, device=device, noise_type='custom', mean=init_distribution[0], std=init_distribution[1], covariance_matrix=cov_matrix)
+        z = generator.get_noise(1, device=device, noise_type='covariance', mean=init_distribution[0], std=init_distribution[1], covariance=cov_matrix)
         output = generator(z)
 
         # denormalize before plotting
@@ -201,6 +206,6 @@ for epoch in range(1, params['epochs'] + 1):
         plot_matrix(matrix[1], os.path.join(test_matrix_path, f"random_hamiltonian_imag_{i}.png"), vmin=-vscale, vmax=vscale)
 
     eigvals_gen_plot_path = os.path.join(test_matrix_path, eigvals_gen_plot_name)
-    plot_generator_eigvals(generator, 5, eigvals_gen_plot_path, noise_type='custom', ylim=ylim, mean=init_distribution[0], std=init_distribution[1], covariance_matrix=cov_matrix, xnorm=xnorm, ynorm=ynorm, normalization_mean=mean, normalization_std=std)
+    plot_generator_eigvals(generator, 5, eigvals_gen_plot_path, noise_type='covariance', ylim=ylim, mean=init_distribution[0], std=init_distribution[1], covariance=cov_matrix, xnorm=xnorm, ynorm=ynorm, normalization_mean=mean, normalization_std=std)
    
 plot_convergence(loss_path, convergence_path, read_label=True)
