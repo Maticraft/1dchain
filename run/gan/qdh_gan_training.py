@@ -38,31 +38,32 @@ x_axis = 'mu'
 x_values = np.linspace(-1.5/AtomicUnits.Eh, .5/AtomicUnits.Eh, 100)
 xnorm=1/AtomicUnits.Eh
 ynorm=1/AtomicUnits.Eh
-ylim = (-1., 1.)
+ylim = (-5., 5.)
 vscale = 1/AtomicUnits.Eh
 
 # Device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Model name
-model_name = 'QDH-WGAN-nogp-eigvals-only-majoranas_distribution_preserving_autoencoder-weighted'
+model_name = 'QDH-1lvl-FM-pol-fixed-loss-GEN-reduced-constant-magnetic-field-delta-and-t-nonzero-potential-majoranas_distribution_preserving_autoencoder-weighted'
 
 # Params
 params = {
     'epochs': 200,
     'batch_size': 64,
     'N': 14,
-    'in_channels': 10,
+    'in_channels': 6,
     'block_size': 4,
     'representation_dim': 100,
-    'strategy': 'eigvals-discriminator-wgan',
+    'strategy': 'no-discriminator',
     'gp_weight': 0.,
     'discriminator_iters': 1,
     'generator_iters': 1,
-    'start_training_mode': 'discriminator',
+    'start_training_mode': 'generator',
     'data_label': None,
-    'use_feature_matching': False,
+    'use_feature_matching': True,
     'feature_matching_weight': 1.,
+    'relative_noise_strength': 0.
 }
 
 # Architecture
@@ -84,10 +85,14 @@ discriminator_params = {
 }
 
 generator_params = {
-    'on_site_real_block_pairs': ['z1', 'zx', 'zz', 'iyiy'],
-    'on_site_imag_block_pairs': ['1iy', 'xiy'],
+    'on_site_real_block_pairs': ['z1', 'zz', 'iyiy'],
+    'on_site_imag_block_pairs': ['xiy'],
     'interaction_real_block_pairs': ['z1', '1iy'],
-    'interaction_imag_block_pairs': ['z1', '1z', '1x'],
+    'interaction_imag_block_pairs': ['1z', '1x'],  # if conj is present then use blocks (1z and 1x), if not then use (zz and zx)
+    'on_site_constant_real_blocks_ids': ['iyiy', 'zz'],
+    'on_site_constant_imag_blocks_ids': ['xiy'],
+    'interaction_constant_real_blocks_ids': ['z1'],
+    'interaction_constant_imag_blocks_ids': ['1z'],
     'dec_depth': 4,
     'dec_hidden_size': 128,
     'seq_dec_depth': 4,
@@ -98,7 +103,8 @@ generator_params = {
     'skip_noise_converter': False,
     'training_switch_loss_ratio': 1.2,
     'nn_in_features_split_index': 32,
-    'output_weighting': True
+    'output_weighting': True,
+    'interlevel_interactions': True
 }
 
 
@@ -141,11 +147,11 @@ test_loader = DataLoader(test_data, params['batch_size'])
 
 generator_config = get_full_model_config(params, generator_params)
 generator = Generator(DistributionPreservingHamiltonianGenerator, generator_config)
-load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, generator)
+# load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, generator)
 
 discriminator_config = get_full_model_config(params, discriminator_params)
-discriminator = EigvalsDiscriminator(DistributionPreservingEncoder, discriminator_config)
-discriminator.nn.requires_grad_(False)
+discriminator = Discriminator(DistributionPreservingEncoder, discriminator_config)
+# discriminator.nn.requires_grad_(False)
 # load_gan_submodel_state_dict(original_autoencoder_path, original_autoencoder_epoch, discriminator)
 
 print(generator)
@@ -184,12 +190,13 @@ for epoch in range(1, params['epochs'] + 1):
         start_training_mode=training_mode,
         use_majoranas_feature_matching=params['use_feature_matching'],
         feature_matching_loss_weight=params['feature_matching_weight'],
+        relative_noise_strength=params['relative_noise_strength'],
     )
     save_gan(generator, discriminator, root_dir, epoch)
     save_data_list([epoch, gen_loss, disc_loss], loss_path)
 
     # Plot sample hamiltonian
-    test_matrix_path = os.path.join(root_dir, f'test_{epoch}')
+    test_matrix_path = os.path.join(root_dir, 'tests', f'test_{epoch}')
     generator.to(device)
     os.makedirs(test_matrix_path, exist_ok=True)
     num_states = 5

@@ -10,8 +10,10 @@ import torch.nn as nn
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 
-from src.hamiltonian.utils import plot_eigvals_levels
-from src.data_utils import Hamiltonian, HamiltionianDataset, Denormalize
+from src.hamiltonian.hamiltonian import IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, Hamiltonian
+from src.hamiltonian.utils import plot_eigvals_levels, extract_property_strip
+from src.hamiltonian.hamiltonian_torch_handlers import BlockConstructor
+from src.data_utils import HamiltionianDataset, Denormalize
 from src.models.gan import Generator
 from src.models.utils import get_eigvals, reconstruct_hamiltonian
 from src.models.files import DELIMITER
@@ -325,10 +327,33 @@ def plot_generator_eigvals(
         denormalization = Denormalize(kwargs['normalization_mean'], kwargs['normalization_std'])
         output = denormalization(output)
     
+    if kwargs.get('plot_properties_change', False):
+        for property_name, property_config in kwargs.get('properties', {'potential': {'interaction_level': 0, 'part': 'all'}}).items():
+            if property_config['part'] == 'all' or property_config['part'] == 'real':
+                real_avg_values = _collect_avg_property_values_for_hamiltonian_tensor(output, property_name, property_config['interaction_level'], 'real')
+                simple_plot(f'{num_states} random states transition', range(len(real_avg_values)), f'{property_name} real', real_avg_values, save_path.replace('.png', f'_{property_name}_real.png'), **kwargs)
+            if property_config['part'] == 'all' or property_config['part'] == 'imag':
+                imag_avg_values = _collect_avg_property_values_for_hamiltonian_tensor(output, property_name, property_config['interaction_level'], 'imag')
+                simple_plot(f'{num_states} random states transition', range(len(imag_avg_values)), f'{property_name} imag', imag_avg_values, save_path.replace('.png', f'_{property_name}_imag.png'), **kwargs)
+
     Hs = torch.complex(output[:, 0, :, :], output[:, 1, :, :]).squeeze().detach().cpu().numpy()
     eigvals = [np.linalg.eigvalsh(H) for H in Hs]
 
     simple_plot(f'{num_states} random states transition', range(len(eigvals)), 'Eigen energy', eigvals, save_path, **kwargs)
+
+
+def _collect_avg_property_values_for_hamiltonian_tensor(
+    hamiltonian_tensor: torch.Tensor,
+    property_name: str,
+    interaction_level: int,
+    part: str,
+):
+    avg_values = []
+    for h in hamiltonian_tensor:
+        hamiltonian = TorchHamiltonian.from_2channel_tensor(h)
+        strip = extract_property_strip(hamiltonian, property_name, part=part, interaction_level=interaction_level)
+        avg_values.append(np.mean(strip))
+    return avg_values
 
 
 def plot_generator_noisy_sample_eigvals(
@@ -355,6 +380,68 @@ def plot_generator_noisy_sample_eigvals(
     eigvals = [np.linalg.eigvalsh(H) for H in Hs]
 
     simple_plot(f'{num_interval_states} noise samples transition', range(len(eigvals)), 'Eigen energy', eigvals, save_path, **kwargs)
+
+
+def plot_generator_sample_eigvals_varying_property(
+    save_path: str,
+    real_sample: torch.Tensor,
+    property_name: str,
+    part: str = 'both',
+    num_interval_states: int = 100,
+    offset: int = 0,
+    **kwargs: t.Dict[str, t.Any],
+):
+    real_property_block_names = []
+    imag_property_block_names = []
+    init_block_params = torch.ones((1, 1, real_sample.shape[-1] // 4))
+    if part == 'real' or part == 'both':
+        real_property_block_names.append(REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR[property_name])
+    if part == 'imag' or part == 'both':
+        imag_property_block_names.append(IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR[property_name])
+    block_matrix = torch.abs(BlockConstructor.generate_block_matrix(init_block_params, init_block_params, real_property_block_names, imag_property_block_names, offset))
+    weights = np.linspace(1.e-5, 1., num_interval_states - 1)
+    weight_matrices = torch.cat([block_matrix*weights[i] for i in range(num_interval_states - 1)], dim=0)
+    weight_matrices_0 = torch.where(block_matrix == 0, torch.ones_like(block_matrix), torch.zeros_like(block_matrix))
+    weight_matrices = torch.cat((weight_matrices_0, torch.where(weight_matrices == 0, torch.ones_like(weight_matrices), weight_matrices)))
+    weighted_matrices = real_sample.unsqueeze(0) * weight_matrices
+    Hs = torch.complex(weighted_matrices[:, 0, :, :], weighted_matrices[:, 1, :, :]).squeeze().detach().cpu().numpy()
+    eigvals = [np.linalg.eigvalsh(H) for H in Hs]
+
+    # kwargs['xscale'] = 'log'
+    simple_plot(f'varying {property_name} amplitude', np.append(weights, 0), 'Eigen energy', eigvals, save_path, **kwargs)
+
+
+def plot_generator_sample_eigvals_increasing_property(
+    save_path: str,
+    real_sample: torch.Tensor,
+    property_name: str,
+    property_value_range: t.Tuple[float, float],
+    part: str = 'both',
+    num_interval_states: int = 100,
+    offset: int = 0,
+    should_replace_original_property: bool = False, 
+    **kwargs: t.Dict[str, t.Any],
+):
+    real_property_block_names = []
+    imag_property_block_names = []
+    init_block_params = torch.ones((1, 1, real_sample.shape[-1] // 4))
+    if part == 'real' or part == 'both':
+        real_property_block_names.append(REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR[property_name])
+    if part == 'imag' or part == 'both':
+        imag_property_block_names.append(IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR[property_name])
+    block_matrix = BlockConstructor.generate_block_matrix(init_block_params, init_block_params, real_property_block_names, imag_property_block_names, offset)
+    property_values = np.linspace(property_value_range[0], property_value_range[1], num_interval_states)
+    property_matrices = torch.cat([block_matrix*property_values[i] for i in range(num_interval_states)], dim=0)
+    modified_sample = real_sample.unsqueeze(0)
+    if should_replace_original_property:
+        modified_sample = torch.where(block_matrix == 0, modified_sample, torch.zeros_like(modified_sample))
+    weighted_matrices = modified_sample + property_matrices
+    Hs = torch.complex(weighted_matrices[:, 0, :, :], weighted_matrices[:, 1, :, :]).squeeze().detach().cpu().numpy()
+    eigvals = [np.linalg.eigvalsh(H) for H in Hs]
+
+    # kwargs['xscale'] = 'log'
+    simple_plot(f'{property_name} ', property_values, 'Eigen energy', eigvals, save_path, **kwargs)
+
 
 
 def simple_plot(
@@ -397,6 +484,8 @@ def simple_plot(
 
     if 'scale' in kwargs:
         plt.yscale(kwargs['scale'])
+    if 'xscale' in kwargs:
+        plt.xscale(kwargs['xscale'])
 
     plt.savefig(filename)
     plt.close()

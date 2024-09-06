@@ -5,7 +5,8 @@ import typing as t
 import numpy as np
 import matplotlib.pyplot as plt
 
-from src.data_utils import Hamiltonian
+from src.hamiltonian.hamiltonian import IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, Hamiltonian, Representation
+from src.hamiltonian.hamiltonian_torch_handlers import get_strip, BlockExtractor
 
 
 def count_mzm_states(H: np.ndarray, threshold: float = 1.e-5):
@@ -45,7 +46,8 @@ def majorana_polarization(
     H: np.ndarray,
     threshold: float = 1.e-5,
     axis: str = 'total',
-    site: t.Optional[t.Union[int, str]] = 'avg'
+    site: t.Optional[t.Union[int, str]] = 'avg',
+    representation: Representation = Representation.default
 ):
     eigvals, eigvecs = np.linalg.eigh(H)
     zm = eigvecs[:, np.abs(eigvals) < threshold]
@@ -57,12 +59,12 @@ def majorana_polarization(
 
     if type(site) == int:
         zm_site = zm[4*site:4*(site+1), :]
-        return majorana_polarization_site(zm_site, axis=axis)
+        return majorana_polarization_site(zm_site, axis=axis, representation=representation)
 
     P_m = {}
     for i in range(zm.shape[0] // 4):
         zm_site_i = zm[4*i:4*(i+1), :]
-        P_m[i] = majorana_polarization_site(zm_site_i, axis=axis)
+        P_m[i] = majorana_polarization_site(zm_site_i, axis=axis, representation=representation)
         
     if site == 'avg':
         return np.mean(list(P_m.values()))
@@ -74,21 +76,33 @@ def majorana_polarization(
         raise ValueError('site must be one of "avg", "all", or an integer')
 
 
-def majorana_polarization_site(zero_mode: np.ndarray, axis: str = 'total'):
+def majorana_polarization_site(zero_mode: np.ndarray, axis: str = 'total', representation: Representation = Representation.default):
     if axis == 'total':
-        return 2*np.mean(np.abs(zero_mode[1, :] * zero_mode[2, :].conj() + zero_mode[0, :] * zero_mode[3, :].conj()))
+        return 2*np.mean(np.abs(majorana_polarization_product(zero_mode, representation)))
     if axis == 'x':
-        return 2*np.mean(np.real(zero_mode[1, :] * zero_mode[2, :].conj() + zero_mode[0, :] * zero_mode[3, :].conj()))
+        return 2*np.mean(np.real(majorana_polarization_product(zero_mode, representation)))
     if axis == 'y':
-        return 2*np.mean(np.imag(zero_mode[1, :] * zero_mode[2, :].conj() + zero_mode[0, :] * zero_mode[3, :].conj()))
+        return 2*np.mean(np.imag(majorana_polarization_product(zero_mode, representation)))
+    
+
+def majorana_polarization_product(zero_mode: np.ndarray, representation: Representation = Representation.second_quantized_plus_minus_up_down):
+    if representation == Representation.majorana_plus_minus_up_down:
+        return zero_mode[1, :] * zero_mode[3, :].conj() - zero_mode[0, :] * zero_mode[2, :].conj() # just guessing
+    if representation == Representation.second_quantized_polarization:
+        '''Seems invalid for QDH (that's good actually)'''
+        return zero_mode[1, :] * zero_mode[2, :].conj() + zero_mode[0, :] * zero_mode[3, :].conj()
+    if representation == Representation.second_quantized_plus_minus_up_down:
+        return zero_mode[1, :] * zero_mode[3, :].conj() - zero_mode[0, :] * zero_mode[2, :].conj() # reversing conjugate makes the polarization flip signs - to discuss with Jarek
 
 
 def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: np.ndarray, filename: str, **kwargs: t.Dict[str, t.Any]):
+    representation = kwargs.get('representation', Representation.default)
     energies = []
     for x in xparams:
         ladder = deepcopy(model)
         ladder.set_parameter(xaxis, x)
-        energies.append(np.linalg.eigvalsh(ladder.get_hamiltonian()))
+        H = ladder.get_hamiltonian(representation)
+        energies.append(np.linalg.eigvalsh(H))
     energies = np.array(energies)
 
     xnorm = None
@@ -128,7 +142,8 @@ def plot_eigvals_levels(
     save_path: str,
     **kwargs: t.Dict[str, t.Any],
 ):
-    H = model.get_hamiltonian()
+    representation = kwargs.get('representation', Representation.default)
+    H = model.get_hamiltonian(representation)
     eigvals = np.linalg.eigvalsh(H)
     
     if 'ylim' in kwargs:
@@ -203,7 +218,8 @@ def plot_majorana_polarization(
 
     string_num = kwargs.get('string_num', 1)
 
-    H = model.get_hamiltonian()
+    representation = kwargs.get('representation', Representation.default)
+    H = model.get_hamiltonian(representation)
     eigvals, eigvecs = np.linalg.eigh(H)
 
     zm_eigvals = eigvals[np.abs(eigvals) < threshold]
@@ -216,6 +232,7 @@ def plot_majorana_polarization(
             majorana_polarization_site(
                 np.expand_dims(zm_nambu[site], axis=1),
                 axis=polaxis,
+                representation=representation
             ) 
             for site in range(H.shape[0] // 4)
         ]
@@ -229,7 +246,7 @@ def plot_majorana_polarization(
         site_plot(P_m_summed[:, j], f'{dirpath}/polarization_summed_string_{j}.png', 'Summed over eigenvalues', 'Majorana polarization', **kwargs)
 
 
-def plot_site_matrix_elements(model: Hamiltonian, property_name: str, dirpath: str):
+def plot_site_varying_matrix_elements(model: Hamiltonian, property_name: str, dirpath: str, representation: Representation = Representation.default):
     # matrix structure
     # mu + B                   | S/2*(cos(phi)-isin(phi)) | 0                                | delta 
     # S/2*(cos(phi)+isin(phi)) | mu -B                    | -delta                           | 0
@@ -261,7 +278,8 @@ def plot_site_matrix_elements(model: Hamiltonian, property_name: str, dirpath: s
 
     site_elements = []
     for element_ids, sign in zip(property_to_element_ids[property_name], property_to_sign[property_name]):
-        matrix_elements = extract_matrix_elements(model, element_ids, site_shift)
+        hamiltonian_matrix = model.get_hamiltonian(representation=representation)
+        matrix_elements = extract_matrix_elements(hamiltonian_matrix, element_ids, site_shift)
         matrix_array = np.array(matrix_elements) * sign
         site_elements.append(np.abs(matrix_array))
     site_elements = np.stack(site_elements, axis=1)
@@ -270,15 +288,59 @@ def plot_site_matrix_elements(model: Hamiltonian, property_name: str, dirpath: s
     site_plot(site_elements_mean, f'{dirpath}/{property_name}.png', f'Averaged {property_name}', f'{property_name}', errorbar=site_elements_std)
 
 
-def extract_matrix_elements(model: Hamiltonian, element_ids: t.Tuple[int, int], site_shift: t.Tuple[int, int] = (0, 0)):
+def extract_matrix_elements(hamiltonian_matrix: np.ndarray, element_ids: t.Tuple[int, int], site_shift: t.Tuple[int, int] = (0, 0), block_size: int = 4):
     # element ids are (row, column) of the 4 x 4 matrix
-    H = model.get_hamiltonian()
-    sites_num = H.shape[0] // 4
+    sites_num = hamiltonian_matrix.shape[0] // block_size
     matrix_elements = [
-        H[(4*(site_id + site_shift[0]) + element_ids[0]) % H.shape[0], (4*(site_id + site_shift[1]) + element_ids[1]) % H.shape[1]]
+        hamiltonian_matrix[(block_size*(site_id + site_shift[0]) + element_ids[0]) % hamiltonian_matrix.shape[0], (block_size*(site_id + site_shift[1]) + element_ids[1]) % hamiltonian_matrix.shape[1]]
         for site_id in range(sites_num)
     ]
     return matrix_elements
+
+
+def plot_site_constant_matrix_elements(model: Hamiltonian, property_name: str, dirpath: str, **kwargs: t.Dict[str, t.Any]):
+    representation = kwargs.get('representation', Representation.default)
+    try:
+        site_real_elements = extract_property_strip(model, property_name, part='real', representation=representation)
+        site_plot(site_real_elements, f'{dirpath}/{property_name}_real.png', f'{property_name} real part', f'{property_name} real part', **kwargs)
+    except KeyError:
+        pass
+
+    try:
+        site_imag_elements = extract_property_strip(model, property_name, part='imag', representation=representation)
+        site_plot(site_imag_elements, f'{dirpath}/{property_name}_imag.png', f'{property_name} imaginary part', f'{property_name} imaginary part', **kwargs)
+    except KeyError:
+        pass
+
+
+def plot_interaction_constant_matrix_elements(model: Hamiltonian, property_name: str, dirpath: str, **kwargs: t.Dict[str, t.Any]):
+    interaction_level = kwargs.get('interaction_level', 1)
+    representation = kwargs.get('representation', Representation.default)
+    try:
+        site_real_elements = extract_property_strip(model, property_name, part='real', interaction_level=interaction_level, representation=representation)
+        site_plot(site_real_elements, f'{dirpath}/{property_name}_real.png', f'{property_name} real part', f'{property_name} real part', **kwargs)
+    except KeyError:
+        pass
+
+    try:
+        site_imag_elements = extract_property_strip(model, property_name, part='imag', interaction_level=interaction_level, representation=representation)
+        site_plot(site_imag_elements, f'{dirpath}/{property_name}_imag.png', f'{property_name} imaginary part', f'{property_name} imaginary part', **kwargs)
+    except KeyError:
+        pass
+
+
+def extract_property_strip(model: Hamiltonian, property_name: str, part: str = 'real', interaction_level: int = 0, block_size: int = 4, representation: Representation = Representation.default):
+    torch_hamiltonian = model.get_hamiltonian_tensor(representation).unsqueeze(0)
+    strip = get_strip(torch_hamiltonian, interaction_level, fill_mode='hamiltonian', block_size=block_size)
+    if part == 'real':
+        property_block_name = REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR[property_name]
+        property_strip = BlockExtractor.extract_block_sequences(strip[:, 0], [property_block_name])
+    elif part == 'imag':
+        property_block_name = IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR[property_name]
+        property_strip = BlockExtractor.extract_block_sequences(strip[:, 1], [property_block_name])
+    else:
+        raise ValueError(f'Part: {part} not implemented')
+    return property_strip.squeeze().numpy()
 
 
 def site_plot(values: np.ndarray, filename: str, title: str, ylabel: str, **kwargs: t.Dict[str, t.Any]):
@@ -287,14 +349,22 @@ def site_plot(values: np.ndarray, filename: str, title: str, ylabel: str, **kwar
     if 'xlim' in kwargs:
         plt.xlim(kwargs['xlim'])
 
+    ynorm = None
+    if 'ynorm' in kwargs:
+        values = values / kwargs['ynorm']
+        if 'errorbar' in kwargs:
+            kwargs['errorbar'] = kwargs['errorbar'] / kwargs['ynorm']
+
     if 'errorbar' in kwargs:
         plt.errorbar(range(len(values)), values, yerr=kwargs['errorbar'], ecolor='red')
     else:
         plt.plot(values)
     plt.title(title)
     plt.xlabel('Site')
-    plt.ylabel(ylabel)
+
+    if ynorm:
+        plt.ylabel(f'{ylabel}/{ynorm}')
+    else:
+        plt.ylabel(ylabel)
     plt.savefig(filename)
     plt.close()
-
-

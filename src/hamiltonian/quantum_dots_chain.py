@@ -9,7 +9,8 @@ from scipy.linalg import eigh
 import matplotlib.pyplot as plt
 from matplotlib import colors
 
-from src.data_utils import Hamiltonian, generate_data
+from src.hamiltonian.hamiltonian import Hamiltonian
+from src.data_utils import generate_data
 from src.hamiltonian.utils import count_mzm_states, majorana_polarization, calculate_gap, calculate_mzm_main_bands_gap
 
 def abs2(c: np.ndarray): return c.real**2 + c.imag**2
@@ -168,7 +169,7 @@ class QuantumDotsHamiltonian(Hamiltonian):
 
     def onsite_matrix(self, i: int):
         par = self.parameters
-        # Nambu spinor = [\Psi^dag_up, \Psi^dag_down, \Psi_up, \Psi_down]
+        # Nambu spinor = [\Psi^dag_up, \Psi^dag_down, \Psi_up, \Psi_down] - delta indicates it is correct
         onsite = np.zeros((self.dimB, self.dimB), dtype=np.complex128)
         onsite[0,0] = -par.mu[i]+par.b[i]
         onsite[1,1] = -par.mu[i]-par.b[i]
@@ -197,7 +198,9 @@ class QuantumDotsHamiltonian(Hamiltonian):
         hopping[1,1] = -par.t[i]*(np.cos(par.l[i]) - 1.j*np.cos(par.l_rho[i])*np.sin(par.l[i]))
         hopping[2,2] =  par.t[i]*(np.cos(par.l[i]) - 1.j*np.cos(par.l_rho[i])*np.sin(par.l[i]))
         hopping[2,3] =  par.t[i]*(-1.j*np.sin(par.l_rho[i])*np.cos(par.l_ksi[i])*np.sin(par.l[i]) - np.sin(par.l_rho[i])*np.sin(par.l_ksi[i])*np.sin(par.l[i]))
+        # hopping[2,3] = par.t[i]*(-1.j*np.sin(par.l_rho[i])*np.cos(par.l_ksi[i])*np.sin(par.l[i]) + np.sin(par.l_rho[i])*np.sin(par.l_ksi[i])*np.sin(par.l[i]))
         hopping[3,2] =  par.t[i]*(-1.j*np.sin(par.l_rho[i])*np.cos(par.l_ksi[i])*np.sin(par.l[i]) + np.sin(par.l_rho[i])*np.sin(par.l_ksi[i])*np.sin(par.l[i]))
+        # hopping[3,2] =  par.t[i]*(-1.j*np.sin(par.l_rho[i])*np.cos(par.l_ksi[i])*np.sin(par.l[i]) - np.sin(par.l_rho[i])*np.sin(par.l_ksi[i])*np.sin(par.l[i]))
         hopping[3,3] =  par.t[i]*(np.cos(par.l[i]) + 1.j*np.cos(par.l_rho[i])*np.sin(par.l[i]))
         if par.no_levels > 1:
             hopping = np.kron(np.eye(par.no_levels), hopping)
@@ -235,11 +238,11 @@ class QuantumDotsHamiltonian(Hamiltonian):
             occupations.append(edge_occ)
         return values, eigenvalues, occupations
 
-    def get_hamiltonian(self):
+    def get_hamiltonian_matrix(self):
         return self.H
     
     def get_label(self):
-        mp = majorana_polarization(self.H, threshold=MZM_THRESHOLD, axis='x', site='all')
+        mp = majorana_polarization(self.H, threshold=MZM_THRESHOLD, axis='y', site='all')
         values = list(mp.values())
         mp_y_sum_left = sum(values[:len(values)//2])
         mp_y_sum_right = sum(values[len(values)//2:])

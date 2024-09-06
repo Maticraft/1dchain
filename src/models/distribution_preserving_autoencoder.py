@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch.distributions.normal import Normal
 
 from src.models.base_models import MLP
-from src.models.hamiltonian_handlers import BlockConstructor, BlockExtractor, get_matrix_from_strips, get_strip
+from src.hamiltonian.hamiltonian_torch_handlers import BlockConstructor, BlockExtractor, get_matrix_from_strips, get_strip
 from src.models.utils import diagonal_loss, edge_diff, eigenvectors_loss, kl_divergence_loss
 
 
@@ -106,7 +106,7 @@ class DistributionPreservingEncoder(nn.Module):
         return torch.cat([distribution_data, encoded_data], dim=-1)
 
     def extract_seq_from_matrix(self, x: torch.Tensor, strip_idx: int):
-        strip = get_strip(x, strip_idx, self.N, 'hamiltonian', self.block_size)
+        strip = get_strip(x, strip_idx, 'hamiltonian', self.block_size)
         if strip_idx == 0:
             seq_real = BlockExtractor.extract_block_sequences(strip[:, 0], self.on_site_real_block_pairs)
             seq_imag = BlockExtractor.extract_block_sequences(strip[:, 1], self.on_site_imag_block_pairs)
@@ -144,6 +144,14 @@ class DistributionPreservingHamiltonianGenerator(nn.Module):
         self.interaction_real_block_pairs = kwargs.get('interaction_real_block_pairs', ['z1', '1iy'])
         self.interaction_imag_block_pairs = kwargs.get('interaction_imag_block_pairs', ['z1', '1z', '1x']) # why for ladder z1 is used while for qdh it is 1z?
         
+        self.on_site_constant_real_blocks_ids = [self.on_site_real_block_pairs.index(id) for id in kwargs.get('on_site_constant_real_blocks_ids', [])]
+        self.on_site_constant_imag_blocks_ids = [self.on_site_imag_block_pairs.index(id) for id in kwargs.get('on_site_constant_imag_blocks_ids', [])]
+        self.on_site_constant_blocks_ids = torch.cat((torch.tensor(self.on_site_constant_real_blocks_ids), len(self.on_site_real_block_pairs) + torch.tensor(self.on_site_constant_imag_blocks_ids)))
+
+        self.interaction_constant_real_blocks_ids = [self.interaction_real_block_pairs.index(id) for id in kwargs.get('interaction_constant_real_blocks_ids', [])]
+        self.interaction_constant_imag_blocks_ids = [self.interaction_imag_block_pairs.index(id) for id in kwargs.get('interaction_constant_imag_blocks_ids', [])]
+        self.interaction_constant_blocks_ids = torch.cat((torch.tensor(self.interaction_constant_real_blocks_ids), len(self.interaction_real_block_pairs) + torch.tensor(self.interaction_constant_imag_blocks_ids)))
+
         self.total_on_site_params = len(self.on_site_real_block_pairs) + len(self.on_site_imag_block_pairs)
         self.num_independent_interaction_strips = (self.channel_num // 2 - 1) // 2
         self.interaction_params_per_strip = len(self.interaction_real_block_pairs) + len(self.interaction_imag_block_pairs)
@@ -160,6 +168,7 @@ class DistributionPreservingHamiltonianGenerator(nn.Module):
         self.seq_channels_num = kwargs.get('seq_channels_num', 64)
 
         self.activation = kwargs.get('activation', 'relu')
+        self.interlevel_interactions = kwargs.get('interlevel_interactions', True)
 
         self.amplitudes_decoder = nn.ModuleList([
             MLP(self.seq_dec_depth, self.encoded_data_dim, self.seq_dec_hidden_size, self.N, self.activation, final_activation='sigmoid')
@@ -213,8 +222,17 @@ class DistributionPreservingHamiltonianGenerator(nn.Module):
         distribution_std = distribution_data[:, self.total_params:]
         on_site_mean = distribution_mean[:, :self.total_on_site_params]
         on_site_std = distribution_std[:, :self.total_on_site_params]
+        if len(self.on_site_constant_blocks_ids) > 0:
+            weights = torch.ones_like(on_site_std)
+            weights[:, self.on_site_constant_blocks_ids] = 0.
+            on_site_std = on_site_std * weights
+
         interactions_mean = distribution_mean[:, self.total_on_site_params:].view(-1, self.num_independent_interaction_strips, self.interaction_params_per_strip)
         interactions_std = distribution_std[:, self.total_on_site_params:].view(-1, self.num_independent_interaction_strips, self.interaction_params_per_strip)
+        if len(self.interaction_constant_blocks_ids) > 0:
+            weights = torch.ones_like(interactions_std)
+            weights[:, :, self.interaction_constant_blocks_ids] = 0.
+            interactions_std = interactions_std * weights
 
         denormalized_on_site_seq = self._denormalize_seq(on_site_seq, on_site_mean, on_site_std)
         denormalized_interactions_seq = self._denormalize_seq(interactions_seq, interactions_mean, interactions_std)
@@ -223,14 +241,29 @@ class DistributionPreservingHamiltonianGenerator(nn.Module):
             # Additional on-site weights
             on_site_expanded_encoded_data = encoded_data.unsqueeze(1).expand(-1, self.total_on_site_params, -1)
             on_site_conditioners = torch.cat([on_site_expanded_encoded_data, on_site_seq, on_site_mean.view(-1, self.total_on_site_params, 1), on_site_std.view(-1, self.total_on_site_params, 1)], dim=-1)
-            on_site_weights = torch.stack([on_site_weighting(on_site_conditioners[:, i]) for i, on_site_weighting in enumerate(self.on_site_weighting)], dim=1)
+            on_site_weights = torch.stack([
+                on_site_weighting(on_site_conditioners[:, i]) if i not in self.on_site_constant_blocks_ids else torch.ones((on_site_conditioners.shape[0], self.N), device=on_site_conditioners.device)
+                for i, on_site_weighting in enumerate(self.on_site_weighting)
+            ], dim=1)
             denormalized_on_site_seq = denormalized_on_site_seq * on_site_weights
+            denormalized_on_site_seq = torch.cat([
+                torch.maximum(denormalized_on_site_seq[:, 0:1], torch.ones_like(denormalized_on_site_seq[:, 0:1])),
+                denormalized_on_site_seq[:, 1:],
+            ], dim=1) # real part of z1 must be greater than 1
 
             # Additional interaction weights
             interaction_expanded_encoded_data = encoded_data.unsqueeze(1).expand(-1, self.total_interaction_params, -1)
             interaction_conditioners = torch.cat([interaction_expanded_encoded_data, interactions_seq.view(-1, self.total_interaction_params, self.N), interactions_mean.view(-1, self.total_interaction_params, 1), interactions_std.view(-1, self.total_interaction_params, 1)], dim=-1)
-            interaction_weights = torch.stack([interaction_weighting(interaction_conditioners[:, i]) for i, interaction_weighting in enumerate(self.interaction_weighting)], dim=1)
-            denormalized_interactions_seq = denormalized_interactions_seq * interaction_weights.view(*denormalized_interactions_seq.shape)
+            interaction_weights = torch.stack([
+                interaction_weighting(interaction_conditioners[:, i]) for i, interaction_weighting in enumerate(self.interaction_weighting)
+            ], dim=1)
+            masked_interaction_weights = interaction_weights.view(*denormalized_interactions_seq.shape)
+            masked_interaction_weights[:, :, self.interaction_constant_blocks_ids] = 1.
+            denormalized_interactions_seq = denormalized_interactions_seq * masked_interaction_weights
+            denormalized_interactions_seq = torch.cat([
+                torch.maximum(denormalized_interactions_seq[:, :, 0:1], torch.ones_like(denormalized_interactions_seq[:, :, 0:1])),
+                denormalized_interactions_seq[:, :, 1:],
+            ], dim=2) # real part of z1 must be greater than 1
 
         interaction_strips_lower, interaction_strips_upper = self._construct_interactions(denormalized_interactions_seq)
 
@@ -282,6 +315,8 @@ class DistributionPreservingHamiltonianGenerator(nn.Module):
             interaction_strip_real = self._interaction_real_block_generator(interactions[:, interaction_strip_idx])
             interaction_strip_imag = self._interaction_imag_block_generator(interactions[:, interaction_strip_idx])
             upper_interaction_strip = torch.stack([interaction_strip_real, interaction_strip_imag], dim=1) # of shape (batch_size, 2, 4, 4*N)
+            if not self.interlevel_interactions and interaction_strip_idx == 0:
+                upper_interaction_strip = upper_interaction_strip * 0.
             periodic_interactions_offset = (interaction_strip_idx + 1) * self.block_size
             lower_interaction_strip = self._generate_lower_strip_from_upper_strip(upper_interaction_strip, periodic_interactions_offset)
             interaction_strips_upper.append(upper_interaction_strip)

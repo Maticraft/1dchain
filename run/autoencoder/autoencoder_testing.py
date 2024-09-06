@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 from src.hamiltonian.helical_ladder import SpinLadder, DEFAULT_PARAMS
-from src.hamiltonian.utils import plot_site_matrix_elements
+from src.hamiltonian.utils import plot_site_varying_matrix_elements
 from src.models.positional_autoencoder import PositionalEncoder
 from src.models.hamiltonian_generator import HamiltonianGenerator
 from src.models.files import load_autoencoder, load_positional_autoencoder, load_ae_model
@@ -80,16 +80,16 @@ torch_hamiltonian = TorchHamiltonian(torch.from_numpy(reconstructed_hamiltonian_
 
 ae_hamiltonian_elements_dir = os.path.join(test_sub_path, ae_hamiltonian_params_dir)
 os.makedirs(ae_hamiltonian_elements_dir, exist_ok=True)
-plot_site_matrix_elements(torch_hamiltonian, 'potential', ae_hamiltonian_elements_dir)
-plot_site_matrix_elements(torch_hamiltonian, 'delta', ae_hamiltonian_elements_dir)
-plot_site_matrix_elements(torch_hamiltonian, 'spin', ae_hamiltonian_elements_dir)
-plot_site_matrix_elements(torch_hamiltonian, 'interaction_i_j', ae_hamiltonian_elements_dir)
-plot_site_matrix_elements(torch_hamiltonian, 'interaction_j_i', ae_hamiltonian_elements_dir)
+plot_site_varying_matrix_elements(torch_hamiltonian, 'potential', ae_hamiltonian_elements_dir)
+plot_site_varying_matrix_elements(torch_hamiltonian, 'delta', ae_hamiltonian_elements_dir)
+plot_site_varying_matrix_elements(torch_hamiltonian, 'spin', ae_hamiltonian_elements_dir)
+plot_site_varying_matrix_elements(torch_hamiltonian, 'interaction_i_j', ae_hamiltonian_elements_dir)
+plot_site_varying_matrix_elements(torch_hamiltonian, 'interaction_j_i', ae_hamiltonian_elements_dir)
 
 ref_hamiltonian_elements_dir = os.path.join(test_sub_path, ref_hamiltonian_params_dir)
 os.makedirs(ref_hamiltonian_elements_dir, exist_ok=True)
-plot_site_matrix_elements(hamiltonian, 'potential', ref_hamiltonian_elements_dir)
-plot_site_matrix_elements(hamiltonian, 'delta', ref_hamiltonian_elements_dir)
-plot_site_matrix_elements(hamiltonian, 'spin', ref_hamiltonian_elements_dir)
-plot_site_matrix_elements(hamiltonian, 'interaction_i_j', ref_hamiltonian_elements_dir)
-plot_site_matrix_elements(hamiltonian, 'interaction_j_i', ref_hamiltonian_elements_dir)
+plot_site_varying_matrix_elements(hamiltonian, 'potential', ref_hamiltonian_elements_dir)
+plot_site_varying_matrix_elements(hamiltonian, 'delta', ref_hamiltonian_elements_dir)
+plot_site_varying_matrix_elements(hamiltonian, 'spin', ref_hamiltonian_elements_dir)
+plot_site_varying_matrix_elements(hamiltonian, 'interaction_i_j', ref_hamiltonian_elements_dir)
+plot_site_varying_matrix_elements(hamiltonian, 'interaction_j_i', ref_hamiltonian_elements_dir)

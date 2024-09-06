@@ -43,6 +43,24 @@ class BlockExtractor:
 
 class BlockConstructor:
     @classmethod
+    def generate_block_matrix(cls, real_block_params: torch.Tensor, imag_block_params: torch.Tensor, real_pauli_block_names: t.List[str], imag_pauli_block_names: t.List[str], offset: int = 0):
+        '''
+        assumes:
+          block_params.shape = (batch_size, block_params_num, seq_size)
+          pauli_block_names = list of length block_params_num with names of respective pauli block pairs, e.g. ['1x', 'xx', 'yz', 'zz']
+        returns:
+          torch.Tensor of shape (batch_size, 4, 4*seq_size)
+        '''
+        if offset == 0:
+            block_sequence = cls._construct_on_site_blocks(real_block_params, imag_block_params, real_pauli_block_names, imag_pauli_block_names)
+        else:
+            upper_interaction_strip, lower_interaction_strip = cls._construct_interactions_blocks(real_block_params, imag_block_params, real_pauli_block_names, imag_pauli_block_names, offset - 1)
+            block_sequence = torch.cat([lower_interaction_strip, torch.zeros_like(lower_interaction_strip), upper_interaction_strip], dim=1)
+        block_matrix = get_matrix_from_strips(block_sequence, sites_num=block_sequence.shape[-1] // 4)
+        return block_matrix
+        
+
+    @classmethod
     def generate_block_sequence(cls, block_params_sequence: torch.Tensor, pauli_block_names: t.List[str]):
         '''
         assumes:
@@ -52,7 +70,9 @@ class BlockConstructor:
           torch.Tensor of shape (batch_size, 4, 4*seq_size)
         '''
         blocks = [cls._block_generator(block_sequence, *get_block_pair(pair_name)) for block_sequence, pair_name in zip(block_params_sequence, pauli_block_names)]
-        return sum(blocks)
+        if len(blocks) > 0:
+            return sum(blocks)
+        return torch.zeros((block_params_sequence.shape[1], 4, 4*block_params_sequence.shape[2])).to(block_params_sequence.device)
     
     @staticmethod
     def _block_generator(x: torch.Tensor, block_a: torch.Tensor, block_b: torch.Tensor):
@@ -69,6 +89,44 @@ class BlockConstructor:
         block_expanded = block.unsqueeze(0).unsqueeze(0).expand(x.shape[0], x.shape[1], -1, -1)
         full_block = x_broadcast*block_expanded
         return torch.cat([full_block[:, i, :, :] for i in range(full_block.shape[1])], dim=-1)
+    
+    @classmethod
+    def _construct_interactions_blocks(cls, real_interactions: torch.Tensor, imag_interactions: torch.Tensor, real_pauli_block_names: t.List[str], imag_pauli_block_names: t.List[str], interaction_strip_idx: int = 0, block_size: int = 4):
+        '''
+        interactions.shape = (batch_size, real/imag part, interaction_params_per_strip, N)
+        '''
+        interaction_strip_real = cls.generate_block_sequence(real_interactions, real_pauli_block_names)
+        interaction_strip_imag = cls.generate_block_sequence(imag_interactions, imag_pauli_block_names)
+        upper_interaction_strip = torch.stack([interaction_strip_real, interaction_strip_imag], dim=1) # of shape (batch_size, 2, 4, 4*N)
+        periodic_interactions_offset = (interaction_strip_idx + 1) * block_size
+        lower_interaction_strip = cls._generate_lower_strip_from_upper_strip(upper_interaction_strip, periodic_interactions_offset)
+        return upper_interaction_strip, lower_interaction_strip
+    
+    @staticmethod
+    def _generate_lower_strip_from_upper_strip(upper_strip: torch.Tensor, periodic_interactions_offset: int):
+        # shift the periodic interactions from the right side of the upper strip to the left side of the lower strip
+        lower_strip = torch.cat([upper_strip[:, :, :, -periodic_interactions_offset:], upper_strip[:, :, :, :-periodic_interactions_offset]], dim=-1)
+        lower_strip[:, 1::2] *= -1 # conjugation of imaginary part
+        # transpose the strip (switch the order of the non-diagonal interactions in the lower strip)
+        right_upper_coeff = lower_strip[:, :, 0, 1::4].clone()
+        left_upper_coeff = lower_strip[:, :, 1, 0::4].clone()
+        lower_strip[:, :, 0, 1::4] = left_upper_coeff
+        lower_strip[:, :, 1, 0::4] = right_upper_coeff
+
+        right_lower_coeff = lower_strip[:, :, 2, 3::4].clone()
+        left_lower_coeff = lower_strip[:, :, 3, 2::4].clone()
+        lower_strip[:, :, 2, 3::4] = left_lower_coeff
+        lower_strip[:, :, 3, 2::4] = right_lower_coeff
+        return lower_strip
+    
+    @classmethod
+    def _construct_on_site_blocks(cls, real_on_site_blocks: torch.Tensor, imag_on_site_blocks: torch.Tensor, real_pauli_block_names: t.List[str], imag_pauli_block_names: t.List[str],):
+        '''
+        assumes on_site_blocks.shape = (batch_size, total_on_site_params, seq_size)
+        '''
+        real_blocks = cls.generate_block_sequence(real_on_site_blocks, real_pauli_block_names)
+        imaginary_blocks = cls.generate_block_sequence(imag_on_site_blocks, imag_pauli_block_names)
+        return torch.stack([real_blocks, imaginary_blocks], dim=1)
 
 
 def get_block_pair(pair_name: str):
@@ -109,7 +167,8 @@ def get_matrix_from_strips(strips: torch.Tensor, sites_num: int, block_size: int
     return matrix
 
 
-def get_strip(x: torch.Tensor, offset: int, sites_num: int, fill_mode: str = 'zeros', block_size: int = 4):
+def get_strip(x: torch.Tensor, offset: int, fill_mode: str = 'zeros', block_size: int = 4):
+    sites_num = x.shape[-1] // block_size
     strip = torch.zeros((x.shape[0], x.shape[1], block_size, sites_num*block_size)).to(x.device)
     x_off = abs(offset)*block_size
     for i in range(sites_num):
@@ -138,3 +197,4 @@ def get_strip(x: torch.Tensor, offset: int, sites_num: int, fill_mode: str = 'ze
         return strip
     else:
         raise ValueError(f'Fill mode: {fill_mode} not implemented')
+    

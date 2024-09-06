@@ -4,7 +4,7 @@ import typing as t
 import torch
 import numpy as np
 
-from src.data_utils import Hamiltonian
+from src.hamiltonian.hamiltonian import Hamiltonian, Representation
 from src.hamiltonian.utils import count_mzm_states, majorana_polarization
 
 
@@ -20,7 +20,7 @@ class TorchHamiltonian(Hamiltonian):
         hamiltonian = hamiltonian[0] + 1j*hamiltonian[1]
         return cls(hamiltonian)
 
-    def get_hamiltonian(self) -> np.ndarray:
+    def get_hamiltonian_matrix(self) -> np.ndarray:
         return self.hamiltonian.numpy()
 
     def get_label(self) -> str:
@@ -30,16 +30,6 @@ class TorchHamiltonian(Hamiltonian):
         mp_tot_sum_left = sum(values_tot[:len(values_tot)//2])
         mp_tot_sum_right = sum(values_tot[len(values_tot)//2:])
         return f"{mp_tot_sum_left}, {mp_tot_sum_right}, {count_mzm_states(self.H, threshold=0.05)}"
-
-
-def torch_total_polarization_loss(x_hat: torch.Tensor) -> torch.Tensor:
-    h = x_hat[:, 0] + 1j*x_hat[:, 1]
-    mp_tot, eigvals_loss = torch_extended_majorana_polarization(h, axis='total', site='all', num_mzm=4)
-    values_tot = torch.stack(list(mp_tot.values()), dim=-1)
-    mp_tot_sum_left = torch.sum(values_tot[:, :len(values_tot)//2], dim=-1)
-    mp_tot_sum_right = torch.sum(values_tot[:, len(values_tot)//2:], dim=-1)
-    eigvals_loss = torch.sum(eigvals_loss, dim=-1)
-    return torch.mean(torch.abs(mp_tot_sum_left - 0.5) + torch.abs(mp_tot_sum_right - 0.5) + eigvals_loss)
 
 
 def torch_extended_majorana_polarization(
@@ -78,14 +68,49 @@ def torch_extended_majorana_polarization(
         return P_m, eigvals_loss
     else:
         raise ValueError('site must be one of "avg", "all", or an integer')
+    
+
+def torch_majorana_polarization(
+    H: torch.Tensor,
+    axis: str = 'total',
+    site: str = 'avg',
+    num_mzm: int = 4
+):
+    eigvals, eigvecs = torch.linalg.eig(H)    
+    zm_indices = torch.topk(torch.abs(eigvals), num_mzm, largest=False, dim=-1).indices
+    zm = torch.stack([eigvecs[i, :, zm_indices[i]] for i in range(eigvecs.shape[0])], dim=0)
+
+    P_m = {}
+    for i in range(zm.shape[1] // 4):
+        zm_site_i = zm[:, 4*i:4*(i+1), :]
+        P_m[i] = torch_majorana_polarization_site(zm_site_i, axis=axis)
+        
+    if site == 'avg':
+        return torch.mean(torch.stack(list(P_m.values()), dim=-1), dim=-1)
+    if site == 'sum':
+        return torch.sum(torch.stack(list(P_m.values()), dim=-1), dim=-1)
+    elif site == 'all':
+        return P_m
+    else:
+        raise ValueError('site must be one of "avg", "all", or an integer')
 
 
-def torch_majorana_polarization_site(zero_mode: torch.Tensor, num_eigs: torch.Tensor, axis: str = 'total', eps: float = 1e-10):
+def torch_majorana_polarization_site(zero_mode: torch.Tensor, axis: str = 'total', representation: Representation = Representation.default):
     pol = 0
     if axis == 'total':
-        pol = 2*torch.sum(torch.abs(zero_mode[:, 1, :] * zero_mode[:, 2, :].conj() + zero_mode[:, 0, :] * zero_mode[:, 3, :].conj()), dim=-1)
+        pol = 2*torch.mean(torch.abs(torch_majorana_polarization_product(zero_mode, representation)), dim=-1)
     if axis == 'x':
-        pol = 2*torch.sum(torch.real(zero_mode[:, 1, :] * zero_mode[:, 2, :].conj() + zero_mode[:, 0, :] * zero_mode[:, 3, :].conj()), dim=-1)
+        pol = 2*torch.mean(torch.real(torch_majorana_polarization_product(zero_mode, representation)), dim=-1)
     if axis == 'y':
-        pol = 2*torch.sum(torch.imag(zero_mode[:, 1, :] * zero_mode[:, 2, :].conj() + zero_mode[:, 0, :] * zero_mode[:, 3, :].conj()), dim=-1)
-    return pol / (num_eigs + eps)
+        pol = 2*torch.mean(torch.imag(torch_majorana_polarization_product(zero_mode, representation)), dim=-1)
+    return pol
+
+
+def torch_majorana_polarization_product(zero_mode: np.ndarray, representation: Representation = Representation.second_quantized_plus_minus_up_down):
+    if representation == Representation.majorana_plus_minus_up_down:
+        return zero_mode[:, 1, :] * zero_mode[:, 3, :].conj() - zero_mode[:, 0, :] * zero_mode[:, 2, :].conj() # just guessing
+    if representation == Representation.second_quantized_polarization:
+        '''Seems invalid for QDH (that's good actually)'''
+        return zero_mode[:, 1, :] * zero_mode[:, 2, :].conj() + zero_mode[:, 0, :] * zero_mode[:, 3, :].conj()
+    if representation == Representation.second_quantized_plus_minus_up_down:
+        return zero_mode[:, 1, :] * zero_mode[:, 3, :].conj() - zero_mode[:, 0, :] * zero_mode[:, 2, :].conj() # reversing conjugate makes the polarization flip signs - to discuss with Jarek

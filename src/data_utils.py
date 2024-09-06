@@ -1,4 +1,3 @@
-import abc
 from collections import defaultdict
 from functools import reduce
 import json
@@ -12,25 +11,13 @@ import torch
 from torchvision.transforms import Normalize
 from tqdm import tqdm
 
+from src.hamiltonian.hamiltonian import Hamiltonian, Representation
+
 DICTIONARY_NAME = 'dictionary.txt'
 PARAMS_DICTIONARY_NAME = 'params_dictionary.txt'
 MATRICES_DIR_NAME = 'matrices'
 EIGVALS_DIR_NAME = 'eigvals'
 EIGVEC_DIR_NAME = 'eigvec'
-
-
-class Hamiltonian(abc.ABC):
-    @abc.abstractmethod
-    def get_hamiltonian(self) -> np.ndarray:
-        pass
-
-    @abc.abstractmethod
-    def get_label(self) -> str:
-        pass
-
-    @abc.abstractmethod
-    def set_parameter(self, parameter_name: str, value: t.Any):
-        pass
 
 
 class HamiltionianDataset(Dataset):
@@ -224,12 +211,13 @@ def generate_data(
     directory: str,
     eig_decomposition: bool = False,
     format: str = 'numpy',
+    representation: Representation = Representation.default,
 ):
     for i, params in tqdm(enumerate(param_list), 'Generating data'):
         idx = i
         filename = 'data_' + str(idx)
         model = hamiltionian(**params)
-        matrix = model.get_hamiltonian()
+        matrix = model.get_hamiltonian(representation)
         try:
             label = model.get_label()
         except:

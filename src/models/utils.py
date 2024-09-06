@@ -12,20 +12,84 @@ from torch.distributions.kl import kl_divergence
 from torchvision.transforms import Normalize
 
 from src.data_utils import Denormalize
+from src.torch_utils import torch_majorana_polarization
+from src.hamiltonian.hamiltonian_torch_handlers import get_strip, get_matrix_from_strips
 
 def majorana_eigvals_feature_matching(x_hat: torch.Tensor, zero_eigvals_threshold: float = 0.015):
     x_hat_complex = torch.complex(x_hat[:, 0, :, :], x_hat[:, 1, :, :])
-    eigvals = torch.abs(torch.linalg.eigvalsh(x_hat_complex))
-    min_eigvals, _ = torch.min(eigvals, dim=-1, keepdim=True)
+    eigvals = torch.linalg.eigvalsh(x_hat_complex)
+    abs_eigvals = torch.abs(eigvals)
+    # min_eigvals, _ = torch.min(eigvals, dim=-1, keepdim=True)
+    # positive_eigvals = torch.maximum(eigvals, torch.zeros_like(eigvals))
+    # negative_eigvals = torch.minimum(eigvals, torch.zeros_like(eigvals))
+    # # get min larger than zero positive eigvals
+    # masked_positive_eigvals = torch.where(positive_eigvals > 0, positive_eigvals, torch.full_like(positive_eigvals, torch.inf))
+    # masked_negative_eigvals = torch.where(negative_eigvals < 0, negative_eigvals, torch.full_like(negative_eigvals, -torch.inf))
+
+    # closeness_loss = torch.exp(2*(torch.min(masked_positive_eigvals, dim=-1).values - torch.max(masked_negative_eigvals, dim=-1).values) + 1)
+    
+    # top_min_eigvals = torch.topk(masked_positive_eigvals, 2, dim=-1, largest=False).values
+    # min_eigvals = top_min_eigvals[:, 0]
+    # first_non_zero_eigvals = top_min_eigvals[:, 1]
+    # gap = first_non_zero_eigvals - min_eigvals
+    # gap_loss = torch.exp(7 - 2*gap)
+    # first_non_zero_eigvals_loss = torch.exp(2*first_non_zero_eigvals + 1)
+
+    sorted_eigvals = torch.sort(abs_eigvals, dim=-1, descending=False).values
+    zero_eigvals = sorted_eigvals[:, :2]
+    non_zero_eigvals = sorted_eigvals[:, 2:]
     # eigvals_threshold = (min_eigvals + zero_eigvals_threshold).detach()
     # zero_eigvals = eigvals[eigvals < eigvals_threshold]
-    # zero_eigvals_loss = torch.exp(zero_eigvals - zero_eigvals_threshold) # normalized to 1 at the threshold
-    zero_eigvals_loss = torch.exp(min_eigvals)
+    # zero_eigvals_weight = 10**(-torch.log10(min_eigvals.mean())).detach()
+    # zero_eigvals_weight = torch.maximum(zero_eigvals_weight, 2*torch.ones_like(zero_eigvals_weight))
+    zero_eigvals_loss = torch.exp(2*zero_eigvals + 1) # normalized to 1 at the threshold
+    # zero_eigvals_loss = torch.exp(sorted_eigvals[:, :2] + 1)
     # non_zero_eigvals = eigvals[eigvals >= eigvals_threshold]
     # non_zero_eigvals_loss = -torch.log(non_zero_eigvals/(100*zero_eigvals_threshold*math.e)) # normalized to 0 at the 10*threshold
-    mean_eigvals = torch.mean(eigvals, dim=-1, keepdim=True)
-    non_zero_eigvals_loss = -torch.log(mean_eigvals)
-    return zero_eigvals_loss.mean() + non_zero_eigvals_loss.mean() + torch.exp(eigvals.var())
+    # non_min_eigvals = sorted_eigvals[:, 2:]
+    # mean_eigvals = torch.mean(non_min_eigvals, dim=-1, keepdim=True)
+
+    # non_zero_eigvals_loss = -torch.log(eigvals.mean(dim=-1))
+    non_zero_eigvals_loss = torch.exp(10 - 2*non_zero_eigvals.min(dim=-1).values)
+    var = non_zero_eigvals.var(dim=-1)
+    var_loss = torch.exp(var)
+    reg_loss = non_zero_eigvals_loss.mean() + var_loss.mean() + zero_eigvals_loss.mean()
+
+    polarization_loss = torch_total_polarization_loss(x_hat, axis='x')
+    scaled_pol_loss = torch.exp(8 + 10 * polarization_loss)
+    # new loss
+    # loss = torch.square(10*min_eigvals).mean() - torch.square(eigvals.mean(dim=-1)).mean() + eigvals.var(dim=-1).mean() 
+    return reg_loss + scaled_pol_loss
+
+
+def torch_total_polarization_loss(x_hat: torch.Tensor, axis='total') -> torch.Tensor:
+    h = x_hat[:, 0] + 1j*x_hat[:, 1]
+    mp_tot = torch_majorana_polarization(h, axis=axis, site='all', num_mzm=2)
+    values_tot = torch.stack(list(mp_tot.values()), dim=-1)
+    mp_tot_sum_left = torch.sum(values_tot[:, :values_tot.shape[-1]//2], dim=-1)
+    mp_tot_sum_right = torch.sum(values_tot[:, values_tot.shape[-1]//2:], dim=-1)
+    if axis == 'total':
+        return -torch.mean(mp_tot_sum_left + mp_tot_sum_right)
+    else:
+        return torch.mean(mp_tot_sum_left * mp_tot_sum_right)
+
+
+def batch_variance_loss(x_hat: torch.Tensor, block_size: int = 4):
+    diagonal_strip = get_strip(x_hat, 0, fill_mode='hamiltonian', block_size=block_size)
+    first_interaction_strip = get_strip(x_hat, 1, fill_mode='hamiltonian', block_size=block_size)
+    batch_var = diagonal_strip.var(dim=0) + first_interaction_strip.var(dim=0)
+    return batch_var.mean()
+
+
+def add_hermitian_strip_noise_to_hamiltonian(x_hat: torch.Tensor, noise_level: float = 0.1, num_strips: int = 1, block_size: int = 4):
+    assert num_strips >= 1, 'Number of strips should be greater than 1'
+    strips_noise = torch.randn(x_hat.shape[0], x_hat.shape[1]*num_strips, block_size, x_hat.shape[3]).to(x_hat.device)
+    noise = get_matrix_from_strips(strips_noise, x_hat.shape[-1] // block_size, block_size)
+    # make noise hermitian
+    noise = (noise + noise.transpose(-1, -2)) / 2
+    noise[:, 1::2] = torch.triu(noise)[:, 1::2] + torch.tril(noise, diagonal=-1)[:, 1::2] * -1
+    x_hat_noisy = x_hat + noise * noise_level
+    return x_hat_noisy
 
 
 def diagonal_loss(x_hat: torch.Tensor, x: torch.Tensor, criterion: t.Callable, block_size: int = 4):

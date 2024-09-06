@@ -4,8 +4,8 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 
-from src.models.utils import generate_sample_from_mean_and_covariance, majorana_eigvals_feature_matching
-from src.torch_utils import torch_total_polarization_loss
+from src.models.utils import generate_sample_from_mean_and_covariance, majorana_eigvals_feature_matching, batch_variance_loss, add_hermitian_strip_noise_to_hamiltonian
+from src.models.utils import torch_total_polarization_loss
 from src.models.base_models import MLP
 
 
@@ -251,6 +251,7 @@ def train_gan(
     generator_repeats: int = 1, # param effective for WGAN-GP
     use_majoranas_feature_matching: bool = False,
     feature_matching_loss_weight: float = 1, 
+    relative_noise_strength: float = 0.1, # param effective for no-discriminator strategy
 ):
     generator.to(device)
     discriminator.to(device)
@@ -342,8 +343,11 @@ def train_gan(
         if strategy == 'no-discriminator':
             generator_optimizer.zero_grad()
             x_hat = generate_fake_data(generator, x.shape[0], device, init_distribution, cov_matrix)
-            feature_matching_loss = majorana_eigvals_feature_matching(x_hat, zero_eigvals_threshold= 0.015)
-            generator_loss = feature_matching_loss
+            noise_level = relative_noise_strength * x_hat.max().detach()
+            x_hat_noisy = add_hermitian_strip_noise_to_hamiltonian(x_hat, noise_level, num_strips=2)
+            feature_matching_loss = majorana_eigvals_feature_matching(x_hat_noisy, zero_eigvals_threshold= 0.015)
+            # batch_var_loss = batch_variance_loss(x_hat)
+            generator_loss = feature_matching_loss # - batch_var_loss
             generator_loss.backward()
             generator_optimizer.step()
 
