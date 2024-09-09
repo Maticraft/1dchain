@@ -5,7 +5,7 @@ import typing as t
 import numpy as np
 import matplotlib.pyplot as plt
 
-from src.hamiltonian.hamiltonian import IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, Hamiltonian, Representation
+from src.hamiltonian.hamiltonian import IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, Hamiltonian, RepresentationMapping
 from src.hamiltonian.hamiltonian_torch_handlers import get_strip, BlockExtractor
 
 
@@ -47,7 +47,7 @@ def majorana_polarization(
     threshold: float = 1.e-5,
     axis: str = 'total',
     site: t.Optional[t.Union[int, str]] = 'avg',
-    representation: Representation = Representation.default
+    representation_mapping: RepresentationMapping = RepresentationMapping.default
 ):
     eigvals, eigvecs = np.linalg.eigh(H)
     zm = eigvecs[:, np.abs(eigvals) < threshold]
@@ -59,12 +59,12 @@ def majorana_polarization(
 
     if type(site) == int:
         zm_site = zm[4*site:4*(site+1), :]
-        return majorana_polarization_site(zm_site, axis=axis, representation=representation)
+        return majorana_polarization_site(zm_site, axis=axis, representation_mapping=representation_mapping)
 
     P_m = {}
     for i in range(zm.shape[0] // 4):
         zm_site_i = zm[4*i:4*(i+1), :]
-        P_m[i] = majorana_polarization_site(zm_site_i, axis=axis, representation=representation)
+        P_m[i] = majorana_polarization_site(zm_site_i, axis=axis, representation_mapping=representation_mapping)
         
     if site == 'avg':
         return np.mean(list(P_m.values()))
@@ -76,32 +76,34 @@ def majorana_polarization(
         raise ValueError('site must be one of "avg", "all", or an integer')
 
 
-def majorana_polarization_site(zero_mode: np.ndarray, axis: str = 'total', representation: Representation = Representation.default):
+def majorana_polarization_site(zero_mode: np.ndarray, axis: str = 'total', representation_mapping: RepresentationMapping = RepresentationMapping.default):
     if axis == 'total':
-        return 2*np.mean(np.abs(majorana_polarization_product(zero_mode, representation)))
+        return 2*np.mean(np.abs(majorana_polarization_product(zero_mode, representation_mapping)))
     if axis == 'x':
-        return 2*np.mean(np.real(majorana_polarization_product(zero_mode, representation)))
+        return 2*np.mean(np.real(majorana_polarization_product(zero_mode, representation_mapping)))
     if axis == 'y':
-        return 2*np.mean(np.imag(majorana_polarization_product(zero_mode, representation)))
+        return 2*np.mean(np.imag(majorana_polarization_product(zero_mode, representation_mapping)))
     
 
-def majorana_polarization_product(zero_mode: np.ndarray, representation: Representation = Representation.second_quantized_plus_minus_up_down):
-    if representation == Representation.majorana_plus_minus_up_down:
+def majorana_polarization_product(zero_mode: np.ndarray, representation_mapping: RepresentationMapping = RepresentationMapping.default):
+    if representation_mapping == RepresentationMapping.majorana_plus_minus_up_down:
         return zero_mode[1, :] * zero_mode[3, :].conj() - zero_mode[0, :] * zero_mode[2, :].conj() # just guessing
-    if representation == Representation.second_quantized_polarization:
+    if representation_mapping == RepresentationMapping.second_quantized_polarization:
         '''Seems invalid for QDH (that's good actually)'''
         return zero_mode[1, :] * zero_mode[2, :].conj() + zero_mode[0, :] * zero_mode[3, :].conj()
-    if representation == Representation.second_quantized_plus_minus_up_down:
+    if representation_mapping == RepresentationMapping.second_quantized_plus_minus_up_down:
         return zero_mode[1, :] * zero_mode[3, :].conj() - zero_mode[0, :] * zero_mode[2, :].conj() # reversing conjugate makes the polarization flip signs - to discuss with Jarek
+    else:
+        raise ValueError(f'Representation mapping {representation_mapping} not supported')
 
 
 def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: np.ndarray, filename: str, **kwargs: t.Dict[str, t.Any]):
-    representation = kwargs.get('representation', Representation.default)
+    representation_mapping = kwargs.get('representation_mapping', RepresentationMapping.default)
     energies = []
     for x in xparams:
         ladder = deepcopy(model)
         ladder.set_parameter(xaxis, x)
-        H = ladder.get_hamiltonian(representation)
+        H = ladder.get_hamiltonian(representation_mapping)
         energies.append(np.linalg.eigvalsh(H))
     energies = np.array(energies)
 
@@ -142,8 +144,8 @@ def plot_eigvals_levels(
     save_path: str,
     **kwargs: t.Dict[str, t.Any],
 ):
-    representation = kwargs.get('representation', Representation.default)
-    H = model.get_hamiltonian(representation)
+    representation_mapping = kwargs.get('representation_mapping', RepresentationMapping.default)
+    H = model.get_hamiltonian(representation_mapping)
     eigvals = np.linalg.eigvalsh(H)
     
     if 'ylim' in kwargs:
@@ -218,8 +220,8 @@ def plot_majorana_polarization(
 
     string_num = kwargs.get('string_num', 1)
 
-    representation = kwargs.get('representation', Representation.default)
-    H = model.get_hamiltonian(representation)
+    representation_mapping = kwargs.get('representation_mapping', RepresentationMapping.default)
+    H = model.get_hamiltonian(representation_mapping)
     eigvals, eigvecs = np.linalg.eigh(H)
 
     zm_eigvals = eigvals[np.abs(eigvals) < threshold]
@@ -232,7 +234,7 @@ def plot_majorana_polarization(
             majorana_polarization_site(
                 np.expand_dims(zm_nambu[site], axis=1),
                 axis=polaxis,
-                representation=representation
+                representation_mapping=representation_mapping
             ) 
             for site in range(H.shape[0] // 4)
         ]
@@ -246,7 +248,7 @@ def plot_majorana_polarization(
         site_plot(P_m_summed[:, j], f'{dirpath}/polarization_summed_string_{j}.png', 'Summed over eigenvalues', 'Majorana polarization', **kwargs)
 
 
-def plot_site_varying_matrix_elements(model: Hamiltonian, property_name: str, dirpath: str, representation: Representation = Representation.default):
+def plot_site_varying_matrix_elements(model: Hamiltonian, property_name: str, dirpath: str, representation_mapping: RepresentationMapping = RepresentationMapping.default):
     # matrix structure
     # mu + B                   | S/2*(cos(phi)-isin(phi)) | 0                                | delta 
     # S/2*(cos(phi)+isin(phi)) | mu -B                    | -delta                           | 0
@@ -278,7 +280,7 @@ def plot_site_varying_matrix_elements(model: Hamiltonian, property_name: str, di
 
     site_elements = []
     for element_ids, sign in zip(property_to_element_ids[property_name], property_to_sign[property_name]):
-        hamiltonian_matrix = model.get_hamiltonian(representation=representation)
+        hamiltonian_matrix = model.get_hamiltonian(representation_mapping=representation_mapping)
         matrix_elements = extract_matrix_elements(hamiltonian_matrix, element_ids, site_shift)
         matrix_array = np.array(matrix_elements) * sign
         site_elements.append(np.abs(matrix_array))
@@ -299,15 +301,15 @@ def extract_matrix_elements(hamiltonian_matrix: np.ndarray, element_ids: t.Tuple
 
 
 def plot_site_constant_matrix_elements(model: Hamiltonian, property_name: str, dirpath: str, **kwargs: t.Dict[str, t.Any]):
-    representation = kwargs.get('representation', Representation.default)
+    representation_mapping = kwargs.get('representation_mapping', RepresentationMapping.default)
     try:
-        site_real_elements = extract_property_strip(model, property_name, part='real', representation=representation)
+        site_real_elements = extract_property_strip(model, property_name, part='real', representation_mapping=representation_mapping)
         site_plot(site_real_elements, f'{dirpath}/{property_name}_real.png', f'{property_name} real part', f'{property_name} real part', **kwargs)
     except KeyError:
         pass
 
     try:
-        site_imag_elements = extract_property_strip(model, property_name, part='imag', representation=representation)
+        site_imag_elements = extract_property_strip(model, property_name, part='imag', representation_mapping=representation_mapping)
         site_plot(site_imag_elements, f'{dirpath}/{property_name}_imag.png', f'{property_name} imaginary part', f'{property_name} imaginary part', **kwargs)
     except KeyError:
         pass
@@ -315,22 +317,22 @@ def plot_site_constant_matrix_elements(model: Hamiltonian, property_name: str, d
 
 def plot_interaction_constant_matrix_elements(model: Hamiltonian, property_name: str, dirpath: str, **kwargs: t.Dict[str, t.Any]):
     interaction_level = kwargs.get('interaction_level', 1)
-    representation = kwargs.get('representation', Representation.default)
+    representation_mapping = kwargs.get('representation_mapping', RepresentationMapping.default)
     try:
-        site_real_elements = extract_property_strip(model, property_name, part='real', interaction_level=interaction_level, representation=representation)
+        site_real_elements = extract_property_strip(model, property_name, part='real', interaction_level=interaction_level, representation_mapping=representation_mapping)
         site_plot(site_real_elements, f'{dirpath}/{property_name}_real.png', f'{property_name} real part', f'{property_name} real part', **kwargs)
     except KeyError:
         pass
 
     try:
-        site_imag_elements = extract_property_strip(model, property_name, part='imag', interaction_level=interaction_level, representation=representation)
+        site_imag_elements = extract_property_strip(model, property_name, part='imag', interaction_level=interaction_level, representation_mapping=representation_mapping)
         site_plot(site_imag_elements, f'{dirpath}/{property_name}_imag.png', f'{property_name} imaginary part', f'{property_name} imaginary part', **kwargs)
     except KeyError:
         pass
 
 
-def extract_property_strip(model: Hamiltonian, property_name: str, part: str = 'real', interaction_level: int = 0, block_size: int = 4, representation: Representation = Representation.default):
-    torch_hamiltonian = model.get_hamiltonian_tensor(representation).unsqueeze(0)
+def extract_property_strip(model: Hamiltonian, property_name: str, part: str = 'real', interaction_level: int = 0, block_size: int = 4, representation_mapping: RepresentationMapping = RepresentationMapping.default):
+    torch_hamiltonian = model.get_hamiltonian_tensor(representation_mapping).unsqueeze(0)
     strip = get_strip(torch_hamiltonian, interaction_level, fill_mode='hamiltonian', block_size=block_size)
     if part == 'real':
         property_block_name = REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR[property_name]

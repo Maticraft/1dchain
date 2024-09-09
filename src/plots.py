@@ -30,10 +30,13 @@ def plot_dataset_samples(
         raise ValueError(f'Number of samples ({num_samples}) is larger than the dataset size ({len(dataset)})')
 
     plotted_ids = []
+    if 'ids' in kwargs:
+        data_ids = kwargs['ids']
+    else:
+        data_ids = np.random.choice(len(dataset), num_samples, replace=False)
+
     for i in range(num_samples):
-        idx = np.random.randint(len(dataset))
-        while idx in plotted_ids:
-            idx = np.random.randint(len(dataset))
+        idx = data_ids[i]
         (tensor, y), _ = dataset[idx]
         if kwargs.get('label', None) is not None:
             while y.item() != kwargs['label'] or idx in plotted_ids:
@@ -86,12 +89,14 @@ def plot_dataset_continous_samples(
     num_hamiltonians = kwargs.get('num_hamiltonians', 2)
     num_steps = kwargs.get('num_steps', 10)
     eps = np.linspace(0, 1, num_steps)
+    if 'ids' in kwargs:
+        data_ids = kwargs['ids']
+    else:
+        data_ids = np.random.choice(len(dataset), num_samples*num_hamiltonians, replace=False)
     for i in tqdm(range(num_samples), desc='Plotting samples'):
         hamiltonians = []
-        for _ in range(num_hamiltonians):
-            idx = np.random.randint(len(dataset))
-            while idx in plotted_ids:
-                idx = np.random.randint(len(dataset))
+        for j in range(num_hamiltonians):
+            idx = data_ids[i*num_hamiltonians + j]
             (tensor, y), _ = dataset[idx]
             if kwargs.get('label', None) is not None:
                 while y.item() != kwargs['label'] or idx in plotted_ids:

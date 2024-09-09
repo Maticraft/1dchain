@@ -4,7 +4,7 @@ import typing as t
 import torch
 import numpy as np
 
-from src.hamiltonian.hamiltonian import Hamiltonian, Representation
+from src.hamiltonian.hamiltonian import Hamiltonian, RepresentationMapping
 from src.hamiltonian.utils import count_mzm_states, majorana_polarization
 
 
@@ -74,7 +74,8 @@ def torch_majorana_polarization(
     H: torch.Tensor,
     axis: str = 'total',
     site: str = 'avg',
-    num_mzm: int = 4
+    num_mzm: int = 4,
+    representation_mapping: RepresentationMapping = RepresentationMapping.default
 ):
     eigvals, eigvecs = torch.linalg.eig(H)    
     zm_indices = torch.topk(torch.abs(eigvals), num_mzm, largest=False, dim=-1).indices
@@ -83,7 +84,7 @@ def torch_majorana_polarization(
     P_m = {}
     for i in range(zm.shape[1] // 4):
         zm_site_i = zm[:, 4*i:4*(i+1), :]
-        P_m[i] = torch_majorana_polarization_site(zm_site_i, axis=axis)
+        P_m[i] = torch_majorana_polarization_site(zm_site_i, axis=axis, representation_mapping=representation_mapping)
         
     if site == 'avg':
         return torch.mean(torch.stack(list(P_m.values()), dim=-1), dim=-1)
@@ -95,22 +96,24 @@ def torch_majorana_polarization(
         raise ValueError('site must be one of "avg", "all", or an integer')
 
 
-def torch_majorana_polarization_site(zero_mode: torch.Tensor, axis: str = 'total', representation: Representation = Representation.default):
+def torch_majorana_polarization_site(zero_mode: torch.Tensor, axis: str = 'total', representation_mapping: RepresentationMapping = RepresentationMapping.default):
     pol = 0
     if axis == 'total':
-        pol = 2*torch.mean(torch.abs(torch_majorana_polarization_product(zero_mode, representation)), dim=-1)
+        pol = 2*torch.mean(torch.abs(torch_majorana_polarization_product(zero_mode, representation_mapping)), dim=-1)
     if axis == 'x':
-        pol = 2*torch.mean(torch.real(torch_majorana_polarization_product(zero_mode, representation)), dim=-1)
+        pol = 2*torch.mean(torch.real(torch_majorana_polarization_product(zero_mode, representation_mapping)), dim=-1)
     if axis == 'y':
-        pol = 2*torch.mean(torch.imag(torch_majorana_polarization_product(zero_mode, representation)), dim=-1)
+        pol = 2*torch.mean(torch.imag(torch_majorana_polarization_product(zero_mode, representation_mapping)), dim=-1)
     return pol
 
 
-def torch_majorana_polarization_product(zero_mode: np.ndarray, representation: Representation = Representation.second_quantized_plus_minus_up_down):
-    if representation == Representation.majorana_plus_minus_up_down:
+def torch_majorana_polarization_product(zero_mode: np.ndarray, representation_mapping: RepresentationMapping = RepresentationMapping.second_quantized_plus_minus_up_down):
+    if representation_mapping == RepresentationMapping.majorana_plus_minus_up_down:
         return zero_mode[:, 1, :] * zero_mode[:, 3, :].conj() - zero_mode[:, 0, :] * zero_mode[:, 2, :].conj() # just guessing
-    if representation == Representation.second_quantized_polarization:
+    if representation_mapping == RepresentationMapping.second_quantized_polarization:
         '''Seems invalid for QDH (that's good actually)'''
         return zero_mode[:, 1, :] * zero_mode[:, 2, :].conj() + zero_mode[:, 0, :] * zero_mode[:, 3, :].conj()
-    if representation == Representation.second_quantized_plus_minus_up_down:
+    if representation_mapping == RepresentationMapping.second_quantized_plus_minus_up_down:
         return zero_mode[:, 1, :] * zero_mode[:, 3, :].conj() - zero_mode[:, 0, :] * zero_mode[:, 2, :].conj() # reversing conjugate makes the polarization flip signs - to discuss with Jarek
+    else:
+        raise ValueError('Invalid representation mapping')

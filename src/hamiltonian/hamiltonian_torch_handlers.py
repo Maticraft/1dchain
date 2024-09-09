@@ -61,7 +61,7 @@ class BlockConstructor:
         
 
     @classmethod
-    def generate_block_sequence(cls, block_params_sequence: torch.Tensor, pauli_block_names: t.List[str]):
+    def generate_block_sequence(cls, block_params_sequence: torch.Tensor, pauli_block_names: t.List[str], lower_block_transpose: bool = False):
         '''
         assumes:
           block_params_sequence.shape = (block_params_num, batch_size, seq_size)
@@ -69,13 +69,13 @@ class BlockConstructor:
         returns:
           torch.Tensor of shape (batch_size, 4, 4*seq_size)
         '''
-        blocks = [cls._block_generator(block_sequence, *get_block_pair(pair_name)) for block_sequence, pair_name in zip(block_params_sequence, pauli_block_names)]
+        blocks = [cls._block_generator(block_sequence, *get_block_pair(pair_name), lower_block_transpose) for block_sequence, pair_name in zip(block_params_sequence, pauli_block_names)]
         if len(blocks) > 0:
             return sum(blocks)
         return torch.zeros((block_params_sequence.shape[1], 4, 4*block_params_sequence.shape[2])).to(block_params_sequence.device)
     
     @staticmethod
-    def _block_generator(x: torch.Tensor, block_a: torch.Tensor, block_b: torch.Tensor):
+    def _block_generator(x: torch.Tensor, block_a: torch.Tensor, block_b: torch.Tensor, lower_block_transpose: bool = False):
         '''
         assumes:
           x.shape = (batch_size, seq_size)
@@ -86,6 +86,9 @@ class BlockConstructor:
         '''
         x_broadcast = x.unsqueeze(-1).unsqueeze(-1)
         block = torch.kron(block_a.to(x.device), block_b.to(x.device))
+        if lower_block_transpose:
+            block[2:, :2] = block[2:, :2].T.clone()
+            block[2:, 2:] = block[2:, 2:].T.clone()
         block_expanded = block.unsqueeze(0).unsqueeze(0).expand(x.shape[0], x.shape[1], -1, -1)
         full_block = x_broadcast*block_expanded
         return torch.cat([full_block[:, i, :, :] for i in range(full_block.shape[1])], dim=-1)
@@ -93,10 +96,10 @@ class BlockConstructor:
     @classmethod
     def _construct_interactions_blocks(cls, real_interactions: torch.Tensor, imag_interactions: torch.Tensor, real_pauli_block_names: t.List[str], imag_pauli_block_names: t.List[str], interaction_strip_idx: int = 0, block_size: int = 4):
         '''
-        interactions.shape = (batch_size, real/imag part, interaction_params_per_strip, N)
+        interactions.shape = (batch_size, interaction_params_per_strip, N)
         '''
-        interaction_strip_real = cls.generate_block_sequence(real_interactions, real_pauli_block_names)
-        interaction_strip_imag = cls.generate_block_sequence(imag_interactions, imag_pauli_block_names)
+        interaction_strip_real = cls.generate_block_sequence(real_interactions.transpose(0, 1), real_pauli_block_names)
+        interaction_strip_imag = cls.generate_block_sequence(imag_interactions.transpose(0, 1), imag_pauli_block_names)
         upper_interaction_strip = torch.stack([interaction_strip_real, interaction_strip_imag], dim=1) # of shape (batch_size, 2, 4, 4*N)
         periodic_interactions_offset = (interaction_strip_idx + 1) * block_size
         lower_interaction_strip = cls._generate_lower_strip_from_upper_strip(upper_interaction_strip, periodic_interactions_offset)
@@ -124,8 +127,8 @@ class BlockConstructor:
         '''
         assumes on_site_blocks.shape = (batch_size, total_on_site_params, seq_size)
         '''
-        real_blocks = cls.generate_block_sequence(real_on_site_blocks, real_pauli_block_names)
-        imaginary_blocks = cls.generate_block_sequence(imag_on_site_blocks, imag_pauli_block_names)
+        real_blocks = cls.generate_block_sequence(real_on_site_blocks.transpose(0, 1), real_pauli_block_names)
+        imaginary_blocks = cls.generate_block_sequence(imag_on_site_blocks.transpose(0, 1), imag_pauli_block_names)
         return torch.stack([real_blocks, imaginary_blocks], dim=1)
 
 

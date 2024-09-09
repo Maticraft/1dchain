@@ -11,7 +11,7 @@ import torch
 from torchvision.transforms import Normalize
 from tqdm import tqdm
 
-from src.hamiltonian.hamiltonian import Hamiltonian, Representation
+from src.hamiltonian.hamiltonian import Hamiltonian, RepresentationMapping, REPRESENTATION_MAPPING_FUNCTION
 
 DICTIONARY_NAME = 'dictionary.txt'
 PARAMS_DICTIONARY_NAME = 'params_dictionary.txt'
@@ -33,6 +33,7 @@ class HamiltionianDataset(Dataset):
         format: str = 'numpy',
         normalization_mean: t.Tuple[float, float] = (0., 0.),
         normalization_std: t.Tuple[float, float] = (1., 1.),
+        representation_mapping: RepresentationMapping = RepresentationMapping.none,
         **kwargs,
     ):
         dic_path = os.path.join(data_dir, DICTIONARY_NAME)
@@ -46,6 +47,7 @@ class HamiltionianDataset(Dataset):
         self.eig_vals_num = kwargs.get('eigvals_num', 4)
         self.format = format
         self.normalization = Normalize(normalization_mean, normalization_std)
+        self.representation_mapping = representation_mapping
       
     def __len__(self) -> int:
         if self.data_limit != None:
@@ -59,6 +61,8 @@ class HamiltionianDataset(Dataset):
             idx = idx.tolist()
 
         tensor = self.load_data(MATRICES_DIR_NAME, idx, self.format)
+        if self.representation_mapping != RepresentationMapping.none:
+            tensor = torch.from_numpy(REPRESENTATION_MAPPING_FUNCTION[self.representation_mapping](tensor.numpy()))
         tensor = torch.stack((tensor.real, tensor.imag), dim=0)
         tensor = self.normalization(tensor)
 
@@ -211,7 +215,7 @@ def generate_data(
     directory: str,
     eig_decomposition: bool = False,
     format: str = 'numpy',
-    representation: Representation = Representation.default,
+    representation: RepresentationMapping = RepresentationMapping.default,
 ):
     for i, params in tqdm(enumerate(param_list), 'Generating data'):
         idx = i

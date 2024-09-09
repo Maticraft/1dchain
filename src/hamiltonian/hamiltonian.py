@@ -51,32 +51,70 @@ def transform_default_representation_to_majorana_plus_minus_up_down(hamiltonian:
     hamiltonian_majorana = np.zeros_like(hamiltonian)
     for i in range(0, hamiltonian.shape[-2], 4):
         for j in range(0, hamiltonian.shape[-1], 4):
-            block = hamiltonian[..., i:i+4, j:j+4]
+            block = hamiltonian[..., i:i+4, j:j+4].copy()
             # if i == j:
             #     block_majorana = T_gamma_a_plus @ block @ T_a_gamma
             # else:
             #     block_majorana = T_gamma_a_plus @ block @ T_a_gamma
             #     block_majorana = block_majorana.conj()
-            block_majorana = T_gamma_a @ block @ T_a_gamma # np.triu(T_gamma_a_plus @ block @ T_a_gamma_plus, k = 1)
-            # reconstructed_block = np.triu(block_majorana, k = 0) - np.triu(block_majorana, k = 1).T # does not work for t blocks (actually it work if conjugate is eliminated)
+            block_majorana = T_gamma_a @ block @ T_a_gamma
+            reconstructed_block = np.triu(block_majorana, k = 0) - np.triu(block_majorana, k = 0).T # does not work for t blocks (actually it work if conjugate is eliminated)
             hamiltonian_majorana[..., i:i+4, j:j+4] = block_majorana
     return hamiltonian_majorana
 
 
-class Representation(str, Enum):
+def transform_majorana_plus_minus_up_down_representation_to_default(hamiltonian: np.ndarray) -> np.ndarray:
+    '''
+    transform the default representation to the majorana_plus_minus_up_down representation
+    '''
+    T_gamma_a = np.array(
+        [
+            # a_minus_up, a_minus_down, a_plus_up, a_plus_down
+            [1., 0, 1., 0],         # gamma_plus_up
+            [0, 1., 0, 1.],         # gamma_plus_down
+            [1.j, 0, -1.j, 0],      # gamma_minus_up
+            [0, 1.j, 0, -1.j]       # gamma_minus_down
+        ]
+    )
+    T_a_gamma = 0.5*np.array(
+        [
+            # gamma_plus_up, gamma_plus_down, gamma_minus_up, gamma_minus_down
+            [1., 0, -1.j, 0],       # a_minus_up
+            [0, 1., 0, -1.j],       # a_minus_down
+            [1., 0, 1.j, 0],        # a_plus_up
+            [0, 1., 0, 1.j]         # a_plus_down
+        ]
+    )
+
+    # For each 4 x 4 block in the Hamiltonian, apply the transformation T_gamma_a_plus @ block @ T_a_gamma_minus
+    hamiltonian_majorana = np.zeros_like(hamiltonian)
+    for i in range(0, hamiltonian.shape[-2], 4):
+        for j in range(0, hamiltonian.shape[-1], 4):
+            block = hamiltonian[..., i:i+4, j:j+4].copy()
+            block_majorana = T_a_gamma @ block @ T_gamma_a
+            hamiltonian_majorana[..., i:i+4, j:j+4] = block_majorana
+    return hamiltonian_majorana
+
+
+class RepresentationMapping(str, Enum):
     second_quantized_plus_minus_up_down = 'second_quantized_plus_minus_up_down'  # [a_plus_up, a_plus_down, a_minus_up, a_minus_down]
     second_quantized_polarization = 'second_quantized_polarization'  # only for tests for majorana polarization [a_plus_up, a_plus_down, -a_minus_down, a_minus_up]
     majorana_plus_minus_up_down = 'majorana_plus_minus_up_down'  # [gamma_plus_up, gamma_plus_down, gamma_minus_up, gamma_minus_down]
+    inverse_majorana_plus_minus_up_down = 'inverse_majorana_plus_minus_up_down'  # creating default representation from majorana_plus_minus_up_down
+    none = 'none'
+
     default = second_quantized_plus_minus_up_down
 
     def __str__(self):
         return self.value
 
 
-REPRESENTATION_MAPPING_FACTORY = {
-    Representation.second_quantized_plus_minus_up_down: transform_default_representation_to_second_quantized_plus_minus_up_down,
-    Representation.majorana_plus_minus_up_down: transform_default_representation_to_majorana_plus_minus_up_down,
-    Representation.second_quantized_polarization: transform_default_representation_to_second_quantized_plus_minus_up_down
+REPRESENTATION_MAPPING_FUNCTION = {
+    RepresentationMapping.second_quantized_plus_minus_up_down: transform_default_representation_to_second_quantized_plus_minus_up_down,
+    RepresentationMapping.majorana_plus_minus_up_down: transform_default_representation_to_majorana_plus_minus_up_down,
+    RepresentationMapping.second_quantized_polarization: transform_default_representation_to_second_quantized_plus_minus_up_down,
+    RepresentationMapping.inverse_majorana_plus_minus_up_down: transform_majorana_plus_minus_up_down_representation_to_default,
+    RepresentationMapping.none: lambda x: x
 }
 
 
@@ -85,15 +123,13 @@ class Hamiltonian(abc.ABC):
     def get_hamiltonian_matrix(self) -> np.ndarray:
         pass
 
-    def get_hamiltonian(self, representation: Representation = Representation.default) -> np.ndarray:
+    def get_hamiltonian(self, representation_mapping: RepresentationMapping = RepresentationMapping.none) -> np.ndarray:
         hamiltonian = self.get_hamiltonian_matrix()
-        if representation == Representation.default:
-            return hamiltonian
-        hamiltonian_in_representation = REPRESENTATION_MAPPING_FACTORY[representation](hamiltonian)
+        hamiltonian_in_representation = REPRESENTATION_MAPPING_FUNCTION[representation_mapping](hamiltonian)
         return hamiltonian_in_representation
 
-    def get_hamiltonian_tensor(self, representation: Representation = Representation.default) -> torch.Tensor:
-        hamiltonian = self.get_hamiltonian(representation)
+    def get_hamiltonian_tensor(self, representation_mapping: RepresentationMapping = RepresentationMapping.none) -> torch.Tensor:
+        hamiltonian = self.get_hamiltonian(representation_mapping)
         complex_hamiltonian = torch.from_numpy(hamiltonian).type(torch.complex64)
         return torch.stack((complex_hamiltonian.real, complex_hamiltonian.imag), dim=0)
 

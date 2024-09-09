@@ -13,9 +13,10 @@ from torchvision.transforms import Normalize
 
 from src.data_utils import Denormalize
 from src.torch_utils import torch_majorana_polarization
+from src.hamiltonian.hamiltonian import RepresentationMapping
 from src.hamiltonian.hamiltonian_torch_handlers import get_strip, get_matrix_from_strips
 
-def majorana_eigvals_feature_matching(x_hat: torch.Tensor, zero_eigvals_threshold: float = 0.015):
+def majorana_eigvals_feature_matching(x_hat: torch.Tensor, zero_eigvals_threshold: float = 0.015, representation_mapping: RepresentationMapping = RepresentationMapping.default):
     x_hat_complex = torch.complex(x_hat[:, 0, :, :], x_hat[:, 1, :, :])
     eigvals = torch.linalg.eigvalsh(x_hat_complex)
     abs_eigvals = torch.abs(eigvals)
@@ -55,16 +56,16 @@ def majorana_eigvals_feature_matching(x_hat: torch.Tensor, zero_eigvals_threshol
     var_loss = torch.exp(var)
     reg_loss = non_zero_eigvals_loss.mean() + var_loss.mean() + zero_eigvals_loss.mean()
 
-    polarization_loss = torch_total_polarization_loss(x_hat, axis='x')
+    polarization_loss = torch_total_polarization_loss(x_hat, axis='x', representation_mapping=representation_mapping)
     scaled_pol_loss = torch.exp(8 + 10 * polarization_loss)
     # new loss
     # loss = torch.square(10*min_eigvals).mean() - torch.square(eigvals.mean(dim=-1)).mean() + eigvals.var(dim=-1).mean() 
     return reg_loss + scaled_pol_loss
 
 
-def torch_total_polarization_loss(x_hat: torch.Tensor, axis='total') -> torch.Tensor:
+def torch_total_polarization_loss(x_hat: torch.Tensor, axis='total', representation_mapping: RepresentationMapping = RepresentationMapping.default) -> torch.Tensor:
     h = x_hat[:, 0] + 1j*x_hat[:, 1]
-    mp_tot = torch_majorana_polarization(h, axis=axis, site='all', num_mzm=2)
+    mp_tot = torch_majorana_polarization(h, axis=axis, site='all', num_mzm=2, representation_mapping=representation_mapping)
     values_tot = torch.stack(list(mp_tot.values()), dim=-1)
     mp_tot_sum_left = torch.sum(values_tot[:, :values_tot.shape[-1]//2], dim=-1)
     mp_tot_sum_right = torch.sum(values_tot[:, values_tot.shape[-1]//2:], dim=-1)
