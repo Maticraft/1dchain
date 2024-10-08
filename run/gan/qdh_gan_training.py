@@ -9,6 +9,7 @@ from src.data_utils import HamiltionianDataset, calculate_mean_and_std, Denormal
 from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from src.hamiltonian.quantum_dots_chain import QuantumDotsHamiltonian, QuantumDotsHamiltonianParameters, DefaultParameters, AtomicUnits
 from src.models.gan import Generator
+from src.models.majorana_representation_generator import MajoranaRepresentationHamiltonianGenerator
 from src.models.distribution_preserving_autoencoder import DistributionPreservingEncoder, DistributionPreservingHamiltonianGenerator
 from src.models.hamiltonian_generator import QuantumDotsHamiltonianGenerator
 from src.models.gan import train_gan

@@ -5,7 +5,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 import torch
 
-from src.data_utils import HamiltionianDataset
+from src.data_utils import HamiltionianDataset, calculate_mean_and_std
 from src.hamiltonian.hamiltonian import RepresentationMapping
 from src.hamiltonian.quantum_dots_chain import AtomicUnits
 from src.models.files import load_general_params, load_ae_model
@@ -23,7 +23,7 @@ xnorm = 1/AtomicUnits.Eh
 ynorm = 1/AtomicUnits.Eh
 
 # Paths
-data_path = './data/quantum_dots/7dots2levels_simplified'
+data_path = './data/quantum_dots/7dots2levels_fixed_balanced'
 data_mean_std_path = f'{data_path}/mean_std.pkl'
 
 # test_dir_name = 'tests_subspace_{}_latent_ep{}'
@@ -32,8 +32,15 @@ test_dir_name = 'samples'
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 label_idx = (3, 4, 7)
 
-with open(data_mean_std_path, 'rb') as f:
-    mean, std = pickle.load(f)
+try:
+    with open(data_mean_std_path, 'rb') as f:
+        mean, std = pickle.load(f)
+except:
+    data = HamiltionianDataset(data_path, label_idx=(3, 4), format='csr', threshold=mzm_threshold)
+    data_loader = DataLoader(data, batch_size=64)
+    mean, std = calculate_mean_and_std(data_loader, device=device)
+    with open(data_mean_std_path, 'wb') as f:
+        pickle.dump((mean, std), f)
 
 save_path = os.path.join(data_path, test_dir_name)
 os.makedirs(save_path, exist_ok=True)

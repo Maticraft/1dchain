@@ -4,7 +4,7 @@ from tqdm import tqdm
 import numpy as np
 
 from src.data_utils import Denormalize
-from src.hamiltonian.hamiltonian import Representation
+from src.hamiltonian.hamiltonian import RepresentationMapping
 from src.hamiltonian.utils import plot_majorana_polarization, plot_eigvals_levels, plot_site_constant_matrix_elements, plot_interaction_constant_matrix_elements
 from src.hamiltonian.quantum_dots_chain import AtomicUnits, MZM_THRESHOLD
 from src.models.gan import Generator
@@ -109,5 +109,5 @@ for i in tqdm(range(num_plots), desc='Plotting generator eigvals'):
     plot_matrix(H.get_hamiltonian().imag, os.path.join(site_elements_sub_dir, f"random_hamiltonian_imag.png"), vmin=-vscale, vmax=vscale)
 
     polarization_sub_path = os.path.join(site_elements_sub_dir, polarization_sub_dir)
-    plot_majorana_polarization(H, polarization_sub_path, threshold = majorana_threshold, string_num=1, polaxis='x', representation=Representation.majorana_plus_minus_up_down)
+    plot_majorana_polarization(H, polarization_sub_path, threshold = majorana_threshold, string_num=1, polaxis='x', representation=RepresentationMapping.majorana_plus_minus_up_down)
     plot_eigvals_levels(H, os.path.join(site_elements_sub_dir, 'eigvals_levels.png'), ylim=ylim, ynorm=ynorm)

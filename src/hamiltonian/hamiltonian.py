@@ -58,7 +58,7 @@ def transform_default_representation_to_majorana_plus_minus_up_down(hamiltonian:
             #     block_majorana = T_gamma_a_plus @ block @ T_a_gamma
             #     block_majorana = block_majorana.conj()
             block_majorana = T_gamma_a @ block @ T_a_gamma
-            reconstructed_block = np.triu(block_majorana, k = 0) - np.triu(block_majorana, k = 0).T # does not work for t blocks (actually it work if conjugate is eliminated)
+            # reconstructed_block = np.triu(block_majorana, k = 0) - np.triu(block_majorana, k = 1).T # does not work for t blocks (actually it work if conjugate is eliminated)
             hamiltonian_majorana[..., i:i+4, j:j+4] = block_majorana
     return hamiltonian_majorana
 

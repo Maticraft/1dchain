@@ -34,6 +34,8 @@ class MLP(nn.Module):
             return nn.Tanh()
         elif activation == 'self':
             return self._get_activation(self.activation)
+        elif activation == 'none':
+            return nn.Identity()
         else:
             return ValueError(f'Activation function: {activation} not implemented')
     

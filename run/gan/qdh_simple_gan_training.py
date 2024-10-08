@@ -71,7 +71,6 @@ encoder_params = {
     'activation': 'leaky_relu',
     'use_strips': True,
     'lr': 1.e-4,
-
 }
 
 decoder_params = {

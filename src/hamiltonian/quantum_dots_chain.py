@@ -209,7 +209,7 @@ class QuantumDotsHamiltonian(Hamiltonian):
         sigma_z = np.array([[1, 0], [0, -1]])
         sigma_vector = np.array([sigma_x, sigma_y, sigma_z])
         lambda_vector = par.l[i]*np.array([np.sin(par.l_rho[i])*np.cos(par.l_ksi[i]), np.sin(par.l_rho[i])*np.sin(par.l_ksi[i]), np.cos(par.l_rho[i])])
-        hopping_2x2 = -par.t[i]*np.exp(np.sum(1.j*lambda_vector.reshape(-1, 1, 1)*sigma_vector, axis=0))
+        hopping_2x2 = -par.t[i]*np.exp(1.j*np.sum(lambda_vector.reshape(-1, 1, 1)*sigma_vector, axis=0))
 
         hopping[:2, :2] = hopping_2x2
         hopping[2:, 2:] = -np.conjugate(hopping_2x2)
@@ -317,7 +317,7 @@ def generate_parameters(n_samples: int, num_verified_majoranas: int = 0):
             hamiltonian = QuantumDotsHamiltonian(params)
             label = hamiltonian.get_label()
             label = label.split(', ')
-            if float(label[2]) * float(label[3]) < -MZM_THRESHOLD:
+            if float(label[4]) >= 2:
                 total_num_hamiltonians += 1
                 num_hamiltonians_with_majoranas + 1
                 yield {'parameters': params.to_dict()}  
@@ -329,6 +329,6 @@ def generate_parameters(n_samples: int, num_verified_majoranas: int = 0):
     return parameters
 
 if __name__ == '__main__':
-    N = 1000000
+    N = 10000
     parameters = generate_parameters(N, num_verified_majoranas=N//2)
-    generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/7dots2levels_large_balanced', eig_decomposition=False, format='csr')
+    generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/7dots2levels_fixed_balanced', eig_decomposition=False, format='csr')
