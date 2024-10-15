@@ -11,6 +11,7 @@ from src.models.hamiltonian_generator import HamiltonianGenerator, HamiltonianGe
 from src.models.eigvals_autoencoder import EigvalsPositionalDecoder, EigvalsPositionalEncoder
 from src.models.ensemble_autoencoder import DecoderEnsemble, EncoderEnsemble
 from src.models.gan import Discriminator, Generator, EigvalsDiscriminator
+from src.models.majorana_representation_generator import MajoranaRepresentationHamiltonianGenerator
 from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
 from src.models.vae import VariationalPositionalEncoder
 from src.models.distribution_preserving_autoencoder import DistributionPreservingEncoder, DistributionPreservingHamiltonianGenerator, VariationalDistributionPreservingEncoder
@@ -57,6 +58,7 @@ MODEL_TO_NAMES = {
     DistributionPreservingEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),
     DistributionPreservingHamiltonianGenerator: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
     VariationalDistributionPreservingEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),
+    MajoranaRepresentationHamiltonianGenerator: (GENERATOR_PARAMS_NAME, GENERATOR_NAME, GENERATOR_DIR),
 }
 
 def load_autoencoder(root_dir: str, epoch: int) -> t.Tuple[Encoder, Decoder]:

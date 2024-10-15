@@ -9,6 +9,7 @@ PAULI_BLOCKS = {
     'iy': torch.tensor([[0, 1], [-1, 0]]),
     'z': torch.tensor([[1, 0], [0, -1]]),
 }
+ALL_PAIRS = ['11', '1x', '1iy', '1z', 'x1', 'xx', 'xiy', 'xz', 'iy1', 'iyx', 'iyiy', 'iyz', 'z1', 'zx', 'ziy', 'zz']
 
 
 class BlockExtractor:

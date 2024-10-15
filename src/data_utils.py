@@ -46,6 +46,7 @@ class HamiltionianDataset(Dataset):
         self.eig_dec = eig_decomposition
         self.eig_vals_num = kwargs.get('eigvals_num', 4)
         self.format = format
+        self.gt_threshold = kwargs.get('gt_threshold', False)
         self.normalization = Normalize(normalization_mean, normalization_std)
         self.representation_mapping = representation_mapping
       
@@ -107,7 +108,10 @@ class HamiltionianDataset(Dataset):
         elif type(label_idx) == tuple:
             label = reduce(lambda x, y: x * y, [l for i in label_idx for l in self.get_label(idx, i)])
             # label = float(self.dictionary[idx][label_idx[0]]) * float(self.dictionary[idx][label_idx[1]])
-            label = [1. if label < -self.threshold else 0.]
+            if self.gt_threshold:
+                label = [1. if label > self.threshold else 0.]
+            else:
+                label = [1. if label < -self.threshold else 0.]
         elif type(label_idx) == list:
             label = [self.get_label(idx, i) for i in label_idx]
             # make list flat if it is nested
