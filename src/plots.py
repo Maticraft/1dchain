@@ -11,7 +11,7 @@ from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 
 from src.hamiltonian.hamiltonian import IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, Hamiltonian
-from src.hamiltonian.utils import plot_eigvals_levels, extract_property_strip
+from src.hamiltonian.utils import plot_eigvals_levels, extract_property_strip, plot_majorana_polarization
 from src.hamiltonian.hamiltonian_torch_handlers import BlockConstructor
 from src.data_utils import HamiltionianDataset, Denormalize
 from src.models.gan import Generator
@@ -74,7 +74,13 @@ def plot_dataset_sample(tensor: torch.Tensor, sample_idx: int, save_path: str, *
     plot_eigvals_levels(H, save_path.format(f'{sample_idx}_eigvals'), **kwargs)
     plot_matrix(np.real(H.get_hamiltonian()), save_path.format(f'{sample_idx}_matrix_real'), **kwargs)
     plot_matrix(np.imag(H.get_hamiltonian()), save_path.format(f'{sample_idx}_matrix_imag'), **kwargs)
-        
+    pol_kwargs = {
+        'threshold': kwargs.get('threshold', 0.05),
+        'polaxis': kwargs.get('polaxis', 'y'),
+        'string_num': kwargs.get('string_num', 1),
+    }
+    plot_majorana_polarization(H, save_path.format(f'{sample_idx}_polarization'), **pol_kwargs)
+
 
 def plot_dataset_continous_samples(
     dataset: HamiltionianDataset,

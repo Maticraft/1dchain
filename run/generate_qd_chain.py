@@ -6,13 +6,13 @@ import src.hamiltonian.quantum_dots_chain as qd_chain
 from src.hamiltonian.utils import plot_eigvals, plot_majorana_polarization
 from src.plots import plot_matrix
 
-dir_name = 'test_representation'
+dir_name = 'test_representation_old'
 os.makedirs(dir_name, exist_ok=True)
 
 defaults = qd_chain.DefaultParameters()
-# defaults.l_ksi_default = 0.3
-# defaults.l_rho_default = 0.6
-# defaults.l_default = 0.9
+defaults.l_ksi_default = 2.3
+defaults.l_rho_default = 1.6
+defaults.l_default = 1.9
 parameters = qd_chain.QuantumDotsHamiltonianParameters(no_dots=7, no_levels=2, default_parameters=defaults)
 system = qd_chain.QuantumDotsHamiltonian(parameters)
 

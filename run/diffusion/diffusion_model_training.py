@@ -9,7 +9,8 @@ from src.data_utils import HamiltionianDataset, calculate_mean_and_std, Denormal
 from src.hamiltonian.hamiltonian import RepresentationMapping
 from src.hamiltonian.quantum_dots_chain import AtomicUnits
 from src.hamiltonian.hamiltonian_torch_handlers import ALL_PAIRS
-from src.models.diffusion import NoiseGenerator, DiffusionAutoencoder, train_diffusion_model, sample_ddpm
+from src.models.noise_generatiron import NoiseGenerator
+from src.models.diffusion import DiffusionAutoencoder, train_diffusion_model, sample_ddpm
 from src.models.distribution_preserving_autoencoder import DistributionPreservingEncoder, DistributionPreservingHamiltonianGenerator
 from src.models.files import save_autoencoder_params, save_autoencoder, save_data_list, get_full_model_config, load_latent_distribution, save_latent_distribution, load_covariance_matrix, save_covariance_matrix
 from src.plots import plot_convergence, plot_matrix, plot_generator_eigvals

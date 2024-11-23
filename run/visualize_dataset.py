@@ -5,6 +5,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 import torch
 
+from src.hamiltonian import quantum_dots_chain as qd_chain
 from src.data_utils import HamiltionianDataset, calculate_mean_and_std
 from src.hamiltonian.hamiltonian import RepresentationMapping
 from src.hamiltonian.quantum_dots_chain import AtomicUnits
@@ -13,7 +14,7 @@ from src.plots import plot_dataset_samples, plot_dataset_continous_samples
 from src.models.positional_autoencoder import PositionalEncoder
 from src.models.hamiltonian_generator import HamiltonianGeneratorV2, QuantumDotsHamiltonianGenerator
 
-model_dir = './autoencoder/quantum_dots/7dots2levels_defaults/100/pos_encoder_qdh_generator'
+# model_dir = './autoencoder/quantum_dots/3dots1level/100/pos_encoder_qdh_generator'
 epoch = 200
 mzm_threshold = 0.02
 num_samples = 10
@@ -23,13 +24,14 @@ xnorm = 1/AtomicUnits.Eh
 ynorm = 1/AtomicUnits.Eh
 
 # Paths
-data_path = './data/quantum_dots/7dots2levels_fixed_balanced'
+data_path = './data/quantum_dots/3dots1level_majoranas_gap_pol_verified'
 data_mean_std_path = f'{data_path}/mean_std.pkl'
 
 # test_dir_name = 'tests_subspace_{}_latent_ep{}'
 test_dir_name = 'samples'
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cpu')
 label_idx = (3, 4, 7)
 
 try:
@@ -53,12 +55,12 @@ save_path_org_rep = os.path.join(save_path, 'original_representation')
 os.makedirs(save_path_org_rep, exist_ok=True)
 data = HamiltionianDataset(data_path, data_limit=100, label_idx=label_idx, eig_decomposition=False, format='csr', threshold=mzm_threshold)
 ids = np.random.choice(len(data), num_samples, replace=False)
-plot_dataset_samples(data, save_path_org_rep, num_samples=num_samples, plot_reconstructed_eigvals=False,  device=device, ylim=(-2.5, 2.5), vmin=-vscale, vmax=vscale, xnorm=xnorm, ynorm=ynorm, normalization_mean=mean, normalization_std=std, ids=ids)
+plot_dataset_samples(data, save_path_org_rep, num_samples=num_samples, plot_reconstructed_eigvals=False,  device=device, ylim=(-2.5, 2.5), vmin=-vscale, vmax=vscale, xnorm=xnorm, ynorm=ynorm, normalization_mean=mean, normalization_std=std, ids=ids, threshold=qd_chain.MZM_THRESHOLD, polaxis='y', string_num=1)
 ids2 = np.random.choice(len(data), num_samples*num_hamiltonians, replace=False)
 plot_dataset_continous_samples(data, save_path_org_rep, num_samples=num_samples, ylim=(-2.5, 2.5), xnorm=xnorm, ynorm=ynorm, normalization_mean=mean, normalization_std=std, ids=ids2)
 
 data_majorana_rep = HamiltionianDataset(data_path, data_limit=100, label_idx=label_idx, eig_decomposition=False, format='csr', threshold=mzm_threshold, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down)
 save_path_majorana_rep = os.path.join(save_path, 'majorana_representation')
 os.makedirs(save_path_majorana_rep, exist_ok=True)
-plot_dataset_samples(data_majorana_rep, save_path_majorana_rep, num_samples=num_samples, plot_reconstructed_eigvals=False,  device=device, ylim=(-2.5, 2.5), vmin=-vscale, vmax=vscale, xnorm=xnorm, ynorm=ynorm, normalization_mean=mean, normalization_std=std, ids=ids)
+plot_dataset_samples(data_majorana_rep, save_path_majorana_rep, num_samples=num_samples, plot_reconstructed_eigvals=False,  device=device, ylim=(-2.5, 2.5), vmin=-vscale, vmax=vscale, xnorm=xnorm, ynorm=ynorm, normalization_mean=mean, normalization_std=std, ids=ids, threshold=qd_chain.MZM_THRESHOLD, polaxis='x', string_num=1)
 plot_dataset_continous_samples(data_majorana_rep, save_path_majorana_rep, num_samples=num_samples, ylim=(-2.5, 2.5), xnorm=xnorm, ynorm=ynorm, normalization_mean=mean, normalization_std=std, ids=ids2)

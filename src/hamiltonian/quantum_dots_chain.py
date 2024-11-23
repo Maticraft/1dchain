@@ -108,7 +108,16 @@ class QuantumDotsHamiltonianParameters:
         self.l = np.ones(self.no_dots)*self.def_par.l_default
         self.l_rho = np.ones(self.no_dots)*self.def_par.l_rho_default
         self.l_ksi = np.ones(self.no_dots)*self.def_par.l_ksi_default
-        
+
+    def set_random_reduced_parameters(self):
+        self.mu = rand_sample(self.no_dots, range=self.def_par.mu_range)
+        self.t = rand_sample(self.no_dots, range=self.def_par.t_range)
+        self.t[0] = self.def_par.t_default # enforce that all parameters are set with respect to the first dot hopping
+        self.b = np.ones(self.no_dots)*rand_sample(range=self.def_par.b_range)
+        self.d = np.ones(self.no_dots)*rand_sample(range=self.def_par.d_range)
+        self.ph_d = rand_sample(range=self.def_par.ph_d_range)
+        self.l = np.ones(self.no_dots)*self.def_par.l_default
+
     def set_random_parameters_const(self):
         self.mu = np.ones(self.no_dots)*rand_sample(range=self.def_par.mu_range)
         self.t = np.ones(self.no_dots)*rand_sample(range=self.def_par.t_range)
@@ -213,6 +222,7 @@ class QuantumDotsHamiltonian(Hamiltonian):
 
         hopping[:2, :2] = hopping_2x2
         hopping[2:, 2:] = -np.conjugate(hopping_2x2)
+
         if par.no_levels > 1:
             hopping = np.kron(np.eye(par.no_levels), hopping)
         return hopping #+ np.conjugate(hopping.T)
@@ -224,9 +234,9 @@ class QuantumDotsHamiltonian(Hamiltonian):
         hamiltonian = np.zeros((self.dim,self.dim), dtype=np.complex128)
         for i in range(self.parameters.no_dots-1):
             hamiltonian[i*self.dim0:(i+1)*self.dim0, (i+1)*self.dim0:(i+2)*self.dim0] += self.hopping_matrix(i)
+        hamiltonian += np.conjugate(np.triu(hamiltonian)).T
         for i in range(self.parameters.no_dots):
             hamiltonian[i*self.dim0:(i+1)*self.dim0, i*self.dim0:(i+1)*self.dim0] += self.onsite_matrix(i) 
-        hamiltonian += np.conjugate(np.triu(hamiltonian, k=self.dimB)).T
         return hamiltonian
     
     def set_parameter(self, parameter_name: str, value: float):
@@ -264,7 +274,7 @@ class QuantumDotsHamiltonian(Hamiltonian):
         band_gap = calculate_gap(self.H)
         num_mzm = count_mzm_states(self.H, threshold=MZM_THRESHOLD)
         if num_mzm > 0:
-            mzm_gap = calculate_mzm_main_bands_gap(self.H, mzm_threshold=MZM_THRESHOLD)
+            mzm_gap = calculate_mzm_main_bands_gap(self.H, mzm_threshold=None, num_majoranas=2)
         else:
             mzm_gap = 0
         return f"{mp_tot_sum_left}, {mp_tot_sum_right}, {mp_y_sum_left}, {mp_y_sum_right}, {num_mzm}, {band_gap}, {mzm_gap}"
@@ -309,15 +319,16 @@ class Plotting:
 def generate_parameters(n_samples: int, num_verified_majoranas: int = 0):
     num_hamiltonians_with_majoranas = 0
     total_num_hamiltonians = 0
-    default_params = DefaultParameters(mu_max=10., t_max=5., b_max=5, d_max=5, lambda_max=1)
-    params = QuantumDotsHamiltonianParameters(no_dots=7, no_levels=2, default_parameters=default_params)
+    default_params = DefaultParameters(mu_max=1., t_max=1., b_max=1, d_max=1, lambda_max=1)
+    params = QuantumDotsHamiltonianParameters(no_dots=3, no_levels=1, default_parameters=default_params)
     while total_num_hamiltonians < n_samples:
-        params.set_random_parameters_const()
+        # params.set_random_parameters_const()
+        params.set_random_reduced_parameters()
         if num_verified_majoranas > num_hamiltonians_with_majoranas:
             hamiltonian = QuantumDotsHamiltonian(params)
             label = hamiltonian.get_label()
             label = label.split(', ')
-            if float(label[4]) >= 2:
+            if (float(label[0]) * float(label[1]) >= 0.1) and (100*float(label[5]) < float(label[6])):
                 total_num_hamiltonians += 1
                 num_hamiltonians_with_majoranas + 1
                 yield {'parameters': params.to_dict()}  
@@ -330,5 +341,5 @@ def generate_parameters(n_samples: int, num_verified_majoranas: int = 0):
 
 if __name__ == '__main__':
     N = 10000
-    parameters = generate_parameters(N, num_verified_majoranas=N//2)
-    generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/7dots2levels_fixed_balanced', eig_decomposition=False, format='csr')
+    parameters = generate_parameters(N, num_verified_majoranas=N)
+    generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/3dots1level_majoranas_gap_pol_verified', eig_decomposition=False, format='csr')

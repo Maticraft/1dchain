@@ -1,3 +1,4 @@
+from abc import abstractmethod, ABC
 import typing as t
 
 import torch
@@ -5,9 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 
-from src.hamiltonian.hamiltonian import RepresentationMapping
-from src.models.majorana_representation_generator import MajoranaRepresentationHamiltonianConstructor
-from src.torch_utils import TorchHamiltonian
+from src.models.noise_generatiron import NoiseGenerator
 
 
 class Embedding(nn.Module):
@@ -19,20 +18,12 @@ class Embedding(nn.Module):
         return self.embedding(x)
     
 
-class NoiseGenerator(nn.Module):
-    def __init__(self, min_inter_site_interaction_range: int, max_inter_site_interaction_range: int, representation_mapping: RepresentationMapping = RepresentationMapping.none):
-        super(NoiseGenerator, self).__init__()
-        self.majorana_rep_ham_constructor = MajoranaRepresentationHamiltonianConstructor(min_inter_site_interaction_range, max_inter_site_interaction_range)
-        self.block_size = 4
-        self.representation_mapping = representation_mapping
+class DiffusionModel(ABC, nn.Module):
+    @abstractmethod
+    def forward(self, x: torch.Tensor, time_step: torch.Tensor, context_vector: t.Optional[torch.Tensor] = None) -> torch.Tensor:
+        pass
 
-    def generate_noise(self, n_samples: int, matrix_dim: int, device: torch.device) -> torch.Tensor:
-        random_hamiltonian_tensor = self.majorana_rep_ham_constructor.generate_random_hamiltonian(num_samples=n_samples, seq_size=matrix_dim // self.block_size)
-        hamiltonians = [TorchHamiltonian.from_2channel_tensor(h).get_hamiltonian_tensor(self.representation_mapping) for h in random_hamiltonian_tensor]
-        return torch.stack(hamiltonians).to(device)
-
-
-class DiffusionAutoencoder(nn.Module):
+class DiffusionAutoencoder(DiffusionModel):
     def __init__(self, encoder: nn.Module, decoder: nn.Module, latent_shapes: t.Tuple[int, ...] = (100,), n_context_feat: t.Optional[int] = None):
         super(DiffusionAutoencoder, self).__init__()
         self.latent_shapes = latent_shapes
@@ -42,7 +33,7 @@ class DiffusionAutoencoder(nn.Module):
         if self.n_context_feat is not None:
             self.context_embeddings = nn.ModuleList([Embedding(self.n_context_feat, latent_shape) for latent_shape in self.latent_shapes])
         else:
-            self.context_embeddings = [lambda x: torch.ones(1, latent_shape) for latent_shape in self.latent_shapes]
+            self.context_embeddings = [lambda x, latent_shape=latent_shape: torch.ones(1, latent_shape) for latent_shape in self.latent_shapes]
         self.encoder = encoder # if UNet like model, then encoder should return a tuple of tensors representing outputs for subsequent skip layers
         self.decoder = decoder # if UNet like model, then decoder should accept a tuple of tensors representing inputs for subsequent skip layers
 
@@ -75,7 +66,7 @@ def unsqueeze_like(x: torch.Tensor, target: torch.Tensor, start_dim: int = 2):
 
 
 def train_diffusion_model(
-    model: DiffusionAutoencoder,
+    model: DiffusionModel,
     noise_generator: NoiseGenerator,
     train_loader: torch.utils.data.DataLoader,
     optimizer: torch.optim.Optimizer,

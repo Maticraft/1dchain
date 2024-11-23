@@ -21,10 +21,19 @@ def calculate_gap(H: np.ndarray):
     return np.min(positive_eigvals) - np.max(negative_eigvals)
 
 
-def calculate_mzm_main_bands_gap(H: np.ndarray, mzm_threshold: float = 1.e-5):
+def calculate_mzm_main_bands_gap(H: np.ndarray, mzm_threshold: t.Optional[float] = 1.e-5, num_majoranas: t.Optional[int] = None):
     eigvals = np.linalg.eigvalsh(H)
-    mzms = eigvals[np.abs(eigvals) < mzm_threshold]
-    not_mzms = eigvals[np.abs(eigvals) >= mzm_threshold]
+    if mzm_threshold is not None and num_majoranas is not None:
+        mzms = np.sort(eigvals[np.abs(eigvals) < mzm_threshold])[:num_majoranas]
+        not_mzms = eigvals[np.abs(eigvals) >= mzm_threshold]
+    elif mzm_threshold is not None:
+        mzms = eigvals[np.abs(eigvals) < mzm_threshold]
+        not_mzms = eigvals[np.abs(eigvals) >= mzm_threshold]
+    elif num_majoranas is not None:
+        mzms = np.sort(np.abs(eigvals))[:num_majoranas]
+        not_mzms = np.sort(np.abs(eigvals))[num_majoranas:]
+    else:
+        raise ValueError('Either mzm_threshold or num_majoranas must be provided')
     return np.min(np.abs(not_mzms)) - np.max(np.abs(mzms))
 
 

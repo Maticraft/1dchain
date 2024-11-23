@@ -1,4 +1,5 @@
 from collections import defaultdict
+from copy import deepcopy
 from functools import reduce
 import json
 import os
@@ -128,12 +129,9 @@ class HamiltionianDataset(Dataset):
 
 
     def load_dict(self, filepath: str) -> t.List[t.List[str]]:
-      
         with open(filepath, 'r') as dictionary:
             data = dictionary.readlines()
-
         parsed_data = [row.rstrip("\n").split(', ') for row in data]
-
         return parsed_data
     
 
@@ -211,6 +209,144 @@ class HamiltionianParamsDataset(Dataset):
         else:
             raise ValueError("Wrong label_key type")
         return torch.tensor(label)
+    
+
+class NoisyParametersHamiltonianDataset(Dataset):
+    def __init__(
+        self,
+        data_dir: str,
+        hamiltionian_class: t.Type[Hamiltonian],
+        params_noise_config: t.Dict[str, float],
+        data_limit: t.Optional[int] = None,
+        label_idx: t.Union[int, t.Tuple[int, int]] = 1,
+        threshold: float = 1.e-5,
+        format: str = 'numpy',
+        normalization_mean: t.Tuple[float, float] = (0., 0.),
+        normalization_std: t.Tuple[float, float] = (1., 1.),
+        representation_mapping: RepresentationMapping = RepresentationMapping.none,
+        **kwargs,
+    ):
+        param_dict_path = os.path.join(data_dir, PARAMS_DICTIONARY_NAME)
+        self.params_dictionary = self.load_params_dict(param_dict_path)
+        label_dict_path = os.path.join(data_dir, DICTIONARY_NAME)
+        self.dictionary = self.load_label_dict(label_dict_path)
+        self.data_dir = data_dir
+        self.data_limit = data_limit
+        self.threshold = threshold
+        self.format = format
+        self.label_idx = label_idx
+        self.hamiltionian_class = hamiltionian_class
+        self.representation_mapping = representation_mapping
+        self.normalization = Normalize(normalization_mean, normalization_std)
+        self.params_noise_config = params_noise_config
+
+    def load_label_dict(self, filepath: str) -> t.List[t.List[str]]:
+        with open(filepath, 'r') as dictionary:
+            data = dictionary.readlines()
+        parsed_data = [row.rstrip("\n").split(', ') for row in data]
+        return parsed_data
+
+    def load_params_dict(self, filepath: str) -> t.List[t.List[str]]:
+        with open(filepath, 'r') as dictionary:
+            data = dictionary.readlines()
+        parsed_data = [row.rstrip("\n").split(', ', maxsplit=1) for row in data]
+        return parsed_data
+
+    def __len__(self) -> int:
+        if self.data_limit != None:
+            return self.data_limit
+        else:
+            return len(self.dictionary)
+
+    def __getitem__(self, idx: t.Union[int, torch.Tensor]) -> t.Tuple[torch.Tensor, torch.Tensor]:
+        hamiltonian_params = self.load_params(idx)
+        tensor = self.generate_hamiltonian_tensor(hamiltonian_params)
+
+        hamiltonian_noisy_params = self.add_noise_to_params(hamiltonian_params, self.params_noise_config)
+        noisy_tensor = self.generate_hamiltonian_tensor(hamiltonian_noisy_params)
+
+        label = self.get_label(idx, self.label_idx)
+        return (tensor, noisy_tensor), label
+
+    def generate_hamiltonian_tensor(self, hamiltonian_params):
+        model = self.hamiltionian_class(**hamiltonian_params)
+        tensor = model.get_hamiltonian_tensor(representation_mapping=self.representation_mapping)
+        tensor = self.normalization(tensor)
+        return tensor
+    
+    def load_params(self, idx: int) -> t.Dict[str, t.Any]:
+        '''
+        Example of dictionary entry (from QDH dataset):
+        {
+            "parameters": {
+                "no_dots": 3,
+                "no_levels": 1,
+                "def_par": {
+                    "mu_default": 0.0,
+                    "mu_range": [-3.6749303600696764e-05, 3.6749303600696764e-05],
+                    "dot_split": 3.6749303600696764e-05,
+                    "t_default": 7.349860720139353e-06,
+                    "t_range": [0.0, 3.6749303600696764e-05],
+                    "b_default": 1.8374651800348382e-05,
+                    "b_range": [-3.6749303600696764e-05, 3.6749303600696764e-05],
+                    "d_default": 1.8374651800348382e-05,
+                    "d_range": [0.0, 3.6749303600696764e-05],
+                    "ph_d_default": 0.0,
+                    "ph_d_range": [-3.141592653589793, 3.141592653589793],
+                    "l_default": 0.6283185307179586,
+                    "l_range": [0.0, 6.283185307179586],
+                    "l_rho_default": 1.5707963267948966,
+                    "l_rho_range": [0.0, 3.141592653589793],
+                    "l_ksi_default": 0.0,
+                    "l_ksi_range": [0.0, 6.283185307179586]
+                },
+                "mu": [4.2469372988207406e-06, 1.8172838637974256e-05, 2.5629978219913487e-05],
+                "t": [7.349860720139353e-06, 7.10811336119953e-06, 2.3596521488823145e-06],
+                "b": [4.667710259132149e-06, 4.667710259132149e-06, 4.667710259132149e-06],
+                "d": [1.245189236429985e-05, 1.245189236429985e-05, 1.245189236429985e-05],
+                "ph_d": 0.1446565075238544,
+                "l": [0.6283185307179586, 0.6283185307179586, 0.6283185307179586],
+                "l_rho": [1.5707963267948966, 1.5707963267948966, 1.5707963267948966],
+                "l_ksi": [0.0, 0.0, 0.0]
+            }
+        }
+
+        '''
+        return json.loads(self.params_dictionary[idx][1])
+    
+    def add_noise_to_params(self, params: t.Dict[str, t.Any], params_noise_strength: t.Dict[str, t.Any]) -> t.Dict[str, t.Any]:
+        noisy_params = deepcopy(params)
+        for key, value in params_noise_strength.items():
+            if isinstance(value, dict):
+                noisy_params[key] = self.add_noise_to_params(params[key], value)
+            else:
+                params_array = np.array(noisy_params[key])
+                noisy_params[key] = (1 - value[0]) * params_array + value[0]*np.random.normal(0, value[1], params_array.shape)
+        return noisy_params
+    
+    def get_label(self, idx: int, label_idx: t.Union[int, t.Tuple, t.List]) -> t.Union[float, t.List[float]]:
+        if type(label_idx) == int:
+            label = [float(self.dictionary[idx][label_idx])]
+        elif type(label_idx) == tuple:
+            label = reduce(lambda x, y: x * y, [l for i in label_idx for l in self.get_label(idx, i)])
+            # label = float(self.dictionary[idx][label_idx[0]]) * float(self.dictionary[idx][label_idx[1]])
+            if self.gt_threshold:
+                label = [1. if label > self.threshold else 0.]
+            else:
+                label = [1. if label < -self.threshold else 0.]
+        elif type(label_idx) == list:
+            label = [self.get_label(idx, i) for i in label_idx]
+            # make list flat if it is nested
+            flat_label = []
+            for sublist in label:
+                if type(sublist) == list:
+                    flat_label.extend(sublist)
+                else:
+                    flat_label.append(sublist)
+            label = flat_label
+        else:
+            raise ValueError("Wrong label_idx type")
+        return label
 
   
 def generate_data(

@@ -10,10 +10,12 @@ from src.hamiltonian.hamiltonian import RepresentationMapping
 from src.hamiltonian.quantum_dots_chain import AtomicUnits
 from src.hamiltonian.hamiltonian_torch_handlers import ALL_PAIRS
 from src.models.autoencoder import Encoder
-from src.models.diffusion import NoiseGenerator, DiffusionAutoencoder, train_diffusion_model, sample_ddpm
+from src.models.noise_generatiron import NoiseGenerator
+from src.models.diffusion import DiffusionAutoencoder, train_diffusion_model, sample_ddpm
 from src.models.positional_autoencoder import PositionalEncoder
 from src.models.files import save_autoencoder_params, save_autoencoder, save_data_list, get_full_model_config, load_latent_distribution, save_latent_distribution, load_covariance_matrix, save_covariance_matrix
-from src.models.majorana_representation_generator import MajoranaRepresentationHamiltonianGenerator, BaselineHiddenRepresentationGenerator
+from src.models.majorana_representation_encoder import MajoranaRepresentationHamiltonianEncoder, BaselineHiddenRepresentationEncoder, SiteIndependentHiddenRepresentationEncoder, UNetLikeSiteIndependentHiddenRepresentationEncoder
+from src.models.majorana_representation_generator import MajoranaRepresentationHamiltonianGenerator, BaselineHiddenRepresentationGenerator, SiteIndependentRepresentationGenerator, UNetLikeSiteIndependentHiddenRepresentationGenerator
 from src.plots import plot_convergence, plot_matrix, plot_generator_eigvals
 from src.hamiltonian.utils import plot_eigvals_levels
 from src.torch_utils import TorchHamiltonian
@@ -40,63 +42,51 @@ vscale = 1/AtomicUnits.Eh
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Model name
-model_name = 'QDH-1lvl-no-interlevel_pos-encoder-majorana-gen_lr1e-3_overfit'
+model_name = 'QDH-1lvl-no-interlevel_site_constant_majorana-unet-site-constant-deep6x256_lr1e-4_overfit'
 
 # Params
 params = {
-    'epochs': 200,
+    'epochs': 1000,
     'batch_size': 64,
     'N': 14,
-    'in_channels': 6,
     'block_size': 4,
-    'representation_dim': 100,
+    'representation_dim': 256,
     'strategy': 'no-discriminator',
-    'gp_weight': 0.,
-    'discriminator_iters': 1,
-    'generator_iters': 1,
-    'start_training_mode': 'generator',
     'data_label': None,
-    'use_feature_matching': True,
-    'feature_matching_weight': 1.,
-    'relative_noise_strength': 0.
+    'latent_shapes': (256, 256, 256, 256, 256, 256),
 }
 
 # Architecture
+hidden_representation_encoder_params = {
+    'unet_layers': 6,
+    'seq_size': 14,
+    'unet_hidden_size': 256,
+    'hidden_representation_size': 256,
+    'output_size': params['representation_dim'],
+    'repeat_along_seq': True,
+}
+hidden_representation_encoder = UNetLikeSiteIndependentHiddenRepresentationEncoder(**hidden_representation_encoder_params)
 encoder_params = {
-    'kernel_size': (1, 3),
-    'kernel_size1': (4, 4),
-    'stride': (1, 1),
-    'stride1': 4,
-    'dilation': 1,
-    'dilation1': 1,
-    'fc_num': 4,
-    'conv_num': 3,
-    'kernel_num': 64,
-    'kernel_num1': 64,
-    'hidden_size': 512,
-    'activation': 'leaky_relu',
-    'use_strips': True,
+    'hidden_representation_encoder': hidden_representation_encoder,
+    'min_inter_site_interaction_range': 2,
+    'max_inter_site_interaction_range': 3,
     'lr': 1.e-4,
 }
 
 hidden_representation_generator_params = {
-    'num_hidden_mlps': 10,
-    'layers_num': 5,
+    'hidden_representation_size': 256,
+    'unet_layers': 4,
     'input_size': params['representation_dim'],
-    'hidden_size': 64,
-    'output_size': 14,
-    'activation': 'relu',
-    'final_activation': 'none'
+    'unet_hidden_size': 256,
+    'seq_size': 14,
+    'repeat_along_seq': True,
 }
-hidden_representation_generator = BaselineHiddenRepresentationGenerator(**hidden_representation_generator_params)
+hidden_representation_generator = UNetLikeSiteIndependentHiddenRepresentationGenerator(**hidden_representation_generator_params)
 generator_params = {
     'hidden_representation_generator': hidden_representation_generator,
     'min_inter_site_interaction_range': 2,
     'max_inter_site_interaction_range': 3,
-    'lr': 1.e-3,
-    'skip_noise_converter': True,
-    'training_switch_loss_ratio': 1.2,
-    'nn_in_features_split_index': 32,
+    'lr': 1.e-4,
 }
 
 
@@ -131,17 +121,15 @@ print('Data std:', std)
 data = HamiltionianDataset(data_path, label_idx=1, format='csr', threshold=0.4, gt_threshold=True, normalization_mean=mean, normalization_std=std, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down)
 train_data = Subset(data, range(len(data) // 2, len(data) // 2 + 1))
 
-sampler = RandomSampler(train_data, replacement=True, num_samples=20)
+sampler = RandomSampler(train_data, replacement=True, num_samples=1000)
 train_loader = DataLoader(train_data, params['batch_size'], sampler=sampler)
 
-encoder = Encoder((params['in_channels'], params['N'], params['block_size']), params['representation_dim'], **encoder_params)
+encoder = MajoranaRepresentationHamiltonianEncoder(**encoder_params)
+generator = MajoranaRepresentationHamiltonianGenerator(**generator_params)
 
-generator_config = get_full_model_config(params, generator_params)
-generator = MajoranaRepresentationHamiltonianGenerator(**generator_config)
+autoencoder = DiffusionAutoencoder(encoder, generator, latent_shapes=params['latent_shapes'])
 
-autoencoder = DiffusionAutoencoder(encoder, generator, latent_shapes=(params['representation_dim'],))
-
-noise_generator = NoiseGenerator(min_inter_site_interaction_range=2, max_inter_site_interaction_range=3, representation_mapping=RepresentationMapping.none)
+noise_generator = NoiseGenerator(min_inter_site_interaction_range=2, max_inter_site_interaction_range=3, representation_mapping=RepresentationMapping.none, site_constant=True)
 
 print(autoencoder)
 
@@ -160,14 +148,12 @@ for epoch in range(0, params['epochs'] + 1):
         device,
         epoch,
     )
-    save_autoencoder(encoder, generator, root_dir, epoch)
     save_data_list([epoch, train_loss], loss_path)
-
-    # Plot sample hamiltonian
-    generator.to(device)
     
-    # sample every 10 epochs
-    if epoch % 10 == 0:
+    # sample and save every 50 epochs
+    if epoch % 50 == 0:
+        save_autoencoder(encoder, generator, root_dir, epoch)
+        generator.to(device)
         test_matrix_path = os.path.join(root_dir, 'tests', f'test_{epoch}')
         os.makedirs(test_matrix_path, exist_ok=True)
         num_states = 5
