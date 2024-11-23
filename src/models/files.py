@@ -11,10 +11,12 @@ from src.models.hamiltonian_generator import HamiltonianGenerator, HamiltonianGe
 from src.models.eigvals_autoencoder import EigvalsPositionalDecoder, EigvalsPositionalEncoder
 from src.models.ensemble_autoencoder import DecoderEnsemble, EncoderEnsemble
 from src.models.gan import Discriminator, Generator, EigvalsDiscriminator
+from src.models.majorana_representation_encoder import MajoranaRepresentationHamiltonianEncoder
 from src.models.majorana_representation_generator import MajoranaRepresentationHamiltonianGenerator
 from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
 from src.models.vae import VariationalPositionalEncoder
 from src.models.distribution_preserving_autoencoder import DistributionPreservingEncoder, DistributionPreservingHamiltonianGenerator, VariationalDistributionPreservingEncoder
+from src.models.diffusion_transformer import DiT
 
 GENERAL_PARAMS_NAME = 'general_params.json'
 CLASSIFIER_PARAMS_NAME = 'classifier_params.json'
@@ -22,16 +24,19 @@ ENCODER_PARAMS_NAME = 'encoder_params.json'
 DECODER_PARAMS_NAME = 'decoder_params.json'
 GENERATOR_PARAMS_NAME = 'generator_params.json'
 DISCRIMINATOR_PARAMS_NAME = 'discriminator_params.json'
+DIT_PARAMS_NAME = 'dit_params.json'
 CLASSIFIER_DIR = 'classifier'
 ENCODER_DIR = 'encoder'
 DECODER_DIR = 'decoder'
 GENERATOR_DIR = 'generator'
 DISCRIMINATOR_DIR = 'discriminator'
+DIT_DIR = 'dit'
 CLASSIFIER_NAME = 'classifier{}.pt'
 ENCODER_NAME = 'encoder{}.pt'
 DECODER_NAME = 'decoder{}.pt'
 GENERATOR_NAME = 'generator{}.pt'
 DISCRIMINATOR_NAME = 'discriminator{}.pt'
+DIT_NAME = 'dit{}.pt'
 LATENT_DISTRIBUTION_NAME = 'latent_distribution.txt'
 COVARIANCE_MATRIX_NAME = 'covariance_matrix.txt'
 DELIMITER = '  '
@@ -58,7 +63,9 @@ MODEL_TO_NAMES = {
     DistributionPreservingEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),
     DistributionPreservingHamiltonianGenerator: (DECODER_PARAMS_NAME, DECODER_NAME, DECODER_DIR),
     VariationalDistributionPreservingEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),
+    MajoranaRepresentationHamiltonianEncoder: (ENCODER_PARAMS_NAME, ENCODER_NAME, ENCODER_DIR),
     MajoranaRepresentationHamiltonianGenerator: (GENERATOR_PARAMS_NAME, GENERATOR_NAME, GENERATOR_DIR),
+    DiT: (DIT_PARAMS_NAME, DIT_NAME, DIT_DIR),
 }
 
 def load_autoencoder(root_dir: str, epoch: int) -> t.Tuple[Encoder, Decoder]:
@@ -231,6 +238,17 @@ def save_gan_params(
     params_list = [general_params, generator_params, discriminator_params]
     params_dirs = ['', GENERATOR_DIR, DISCRIMINATOR_DIR]
     params_save_names = [GENERAL_PARAMS_NAME, GENERATOR_PARAMS_NAME, DISCRIMINATOR_PARAMS_NAME]
+    save_all_params(params_list, params_dirs, params_save_names, root_dir)
+
+
+def save_dit_params(
+    general_params: t.Dict[str, t.Any],
+    dit_params: t.Dict[str, t.Any],
+    root_dir: str,
+):
+    params_list = [general_params, dit_params]
+    params_dirs = ['', DIT_DIR]
+    params_save_names = [GENERAL_PARAMS_NAME, DIT_PARAMS_NAME]
     save_all_params(params_list, params_dirs, params_save_names, root_dir)
 
 
