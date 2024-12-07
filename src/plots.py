@@ -10,10 +10,11 @@ import torch.nn as nn
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 
+from src.data.datasets import HamiltionianDataset
 from src.hamiltonian.hamiltonian import IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, Hamiltonian
 from src.hamiltonian.utils import plot_eigvals_levels, extract_property_strip, plot_majorana_polarization
 from src.hamiltonian.hamiltonian_torch_handlers import BlockConstructor
-from src.data_utils import HamiltionianDataset, Denormalize
+from src.data.utils import Denormalize
 from src.models.gan import Generator
 from src.models.utils import get_eigvals, reconstruct_hamiltonian
 from src.models.files import DELIMITER

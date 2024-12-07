@@ -3,7 +3,7 @@ import pickle
 from tqdm import tqdm
 import numpy as np
 
-from src.data_utils import Denormalize
+from src.data.utils import Denormalize
 from src.hamiltonian.hamiltonian import RepresentationMapping
 from src.hamiltonian.utils import plot_majorana_polarization, plot_eigvals_levels, plot_site_constant_matrix_elements, plot_interaction_constant_matrix_elements
 from src.hamiltonian.quantum_dots_chain import AtomicUnits, MZM_THRESHOLD

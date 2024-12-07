@@ -155,6 +155,7 @@ class DiT(DiffusionModel):
     def __init__(
         self,
         input_size=32,
+        output_size=32,
         patch_size=2,
         hidden_size=1152,
         depth=28,
@@ -174,17 +175,17 @@ class DiT(DiffusionModel):
         self.patch_size = patch_size
         self.num_heads = num_heads
 
-        # self.x_embedder = PatchEmbed(input_size, patch_size, in_channels, hidden_size, bias=True)
+        self.x_embedder = PatchEmbed(input_size, patch_size, 1, hidden_size, bias=True)
+        self.num_patches = self.x_embedder.num_patches
         # works only for patch size = 4
         self.hamiltonian_embeddder = MajoranaRepresentationPatchEmbed(hidden_size, min_inter_site_interaction_range, max_inter_site_interaction_range)
         
         self.t_embedder = FreqEmbedder(hidden_size, period=timesteps)
         # self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob)
         self.polarization_embedder = FreqEmbedder(hidden_size // 2, period=0.5)
-        # num_patches = self.x_embedder.num_patches
         self.seq_size = input_size // patch_size
         self.interaction_range = max_inter_site_interaction_range - min_inter_site_interaction_range
-        self.num_patches = self.seq_size * (self.interaction_range * self.hamiltonian_embeddder.num_inter_site_params + self.hamiltonian_embeddder.num_on_site_params)
+        # self.num_patches = self.seq_size * (self.interaction_range * self.hamiltonian_embeddder.num_inter_site_params + self.hamiltonian_embeddder.num_on_site_params)
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches, hidden_size), requires_grad=False)
 
@@ -193,6 +194,8 @@ class DiT(DiffusionModel):
         ])
 
         total_params = self.hamiltonian_embeddder.num_on_site_params + (self.hamiltonian_embeddder.num_inter_site_params * self.interaction_range)
+        self.in_to_out_coverter = nn.Linear(self.seq_size ** 2, (output_size // patch_size) * total_params)
+
         self.final_layer = FinalLayer(hidden_size, total_params)
         self.hamiltonian_unpatch = MajoranaRepresentationUnpatch(total_params, min_inter_site_interaction_range, max_inter_site_interaction_range)
         self.initialize_weights()
@@ -211,6 +214,9 @@ class DiT(DiffusionModel):
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
         # Initialize patch_embed like nn.Linear (instead of nn.Conv2d):
+        w = self.x_embedder.proj.weight.data
+        nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
+
         w = self.hamiltonian_embeddder.on_site_converter.weight.data
         nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
         # nn.init.constant_(self.hamiltonian_embeddder.on_site_converter.bias, 0)
@@ -260,8 +266,8 @@ class DiT(DiffusionModel):
         time_step: (N, 1) tensor of diffusion timesteps
         context_vector: (N, 2) tensor of polarization (left and right)
         """
-        # x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
-        x = self.hamiltonian_embeddder(x) + self.pos_embed
+        x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+        # x = self.hamiltonian_embeddder(x) + self.pos_embed
         t = self.t_embedder(time_step.squeeze(-1))                   # (N, D)
         # y = self.y_embedder(context_vector.long().squeeze(-1), self.training)    # (N, D)
         # y_0 = self.polarization_embedder(context_vector[..., 0])    # (N, D / 2)
@@ -270,7 +276,8 @@ class DiT(DiffusionModel):
         c = t  #+ y                              # (N, D)
         for block in self.blocks:
             x = block(x, c)                      # (N, T, D)
-        x = self.final_layer(x, c)                # (N, T, total_params)
+        x = self.in_to_out_coverter(x.transpose(1, 2)).transpose(1, 2)  # (N, T2, D)
+        x = self.final_layer(x, c)                # (N, T2, total_params)
         x = self.hamiltonian_unpatch(x)                 # (N, out_channels, H, W)
         return x
 

@@ -2,7 +2,7 @@ import os
 from tqdm import tqdm
 import numpy as np
 
-from src.data_utils import HamiltionianDataset
+from src.data.datasets import HamiltionianDataset
 from src.hamiltonian.utils import plot_majorana_polarization, plot_eigvals_levels
 from src.models.gan import Generator
 from src.models.files import load_generator, load_latent_distribution, load_autoencoder_params, get_full_model_config, load_gan_submodel_state_dict, load_covariance_matrix, load_positional_autoencoder

@@ -5,8 +5,9 @@ from seaborn import heatmap
 from torch.utils.data import DataLoader, Subset
 import torch
 
+from src.data.datasets import HamiltionianDataset, HamiltionianParamsDataset
 from src.hamiltonian.quantum_dots_chain import MZM_THRESHOLD
-from src.data_utils import HamiltionianDataset, HamiltionianParamsDataset, calculate_mean_and_std
+from src.data.utils import calculate_mean_and_std
 from src.models.utils import calculate_latent_space_distribution, calculate_classifier_distance
 from src.models.files import load_classifier, load_variational_positional_autoencoder, load_positional_autoencoder, load_general_params, save_latent_distribution, save_covariance_matrix, load_ae_model
 from src.plots import plot_dim_red_full_space, plot_dim_red_freq_block, plot_latent_space_distribution

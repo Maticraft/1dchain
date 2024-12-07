@@ -6,8 +6,9 @@ from torch.utils.data import random_split, DataLoader, Subset, RandomSampler
 import torch
 from torchvision.transforms import Normalize
 
-from src.data.datasets import HamiltonianFromParametersDataset
+from src.data.datasets import HamiltionianDataset
 from src.data.utils import calculate_mean_and_std, Denormalize
+from src.hamiltonian.conductance import plot_conductance_map
 from src.hamiltonian.hamiltonian import RepresentationMapping
 from src.hamiltonian.quantum_dots_chain import AtomicUnits, DefaultParameters, QuantumDotsHamiltonianParameters, QuantumDotsHamiltonian
 from src.hamiltonian.utils import plot_eigvals_levels
@@ -21,9 +22,9 @@ from src.hamiltonian.utils import plot_eigvals_levels
 from src.torch_utils import TorchHamiltonian
 
 # Paths
-data_path = './data/quantum_dots/3dots1level_majoranas_gap_pol_verified'
+data_path = './data/quantum_dots/3dots1level_majoranas_gap_pol_verified_with_conductance'
 data_mean_std_path = f'{data_path}/mean_std.pkl'
-save_dir = './param_denoiser/quantum_dots/3dots1level_majoranas_gap_pol_verified'
+save_dir = './conductance/quantum_dots/3dots1level_majoranas_gap_pol_verified'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 distribution_dir_name = 'tests_majoranas_latent_ep_{}'
@@ -43,23 +44,24 @@ vscale = 1/AtomicUnits.Eh
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Model name
-model_name = 'QDH-1lvl-no-interlevel_DiT_28_ham_flat_param_noise_strength_percentage0_1_lr1e-4decreasing'
+model_name = 'QDH-1lvl-no-interlevel_DiT_12_ham_flat_param_lr1e-4decreasing'
 
 # Params
 params = {
     'epochs': 500,
-    'batch_size': 64,
+    'batch_size': 32,
     'lr': 1e-4,
     'max_noise_amplitude': 0.1,
 }
 
 # Architecture
 dit_config = {
-    'input_size': 12,
+    'input_size': 200,
+    'output_size': 12,
     'patch_size': 4,
-    'hidden_size': 1024,
-    'depth': 16,
-    'num_heads': 16,
+    'hidden_size': 256,
+    'depth': 6,
+    'num_heads': 8,
     'mlp_ratio': 4.0,
     'class_dropout_prob': 0.1,
     'num_classes': 2,
@@ -67,6 +69,7 @@ dit_config = {
     'min_inter_site_interaction_range': 1,
     'max_inter_site_interaction_range': 2,
 }
+
 
 
 # Set the root dir
@@ -83,28 +86,12 @@ tests_sub_path = os.path.join(root_dir, tests_sub_dir)
 if not os.path.isdir(tests_sub_path):
     os.makedirs(tests_sub_path)
 
-
-defaults = DefaultParameters()
-l = params['max_noise_amplitude']
-params_noise_config = {
-    'parameters': {
-        "mu": (l, defaults.mu_range[1]),
-        "t": (l, defaults.t_range[1]),
-        "b": (l, defaults.b_range[1]),
-        "d": (l, defaults.d_range[1]),
-        "ph_d": (l, defaults.ph_d_range[1]),
-        "l": (l, defaults.l_range[1]),
-        "l_rho": (l, defaults.l_rho_range[1]),
-        "l_ksi": (l, defaults.l_ksi_range[1]),
-    }
-}
-
 # Try to load data statistics
 try:
     with open(data_mean_std_path, 'rb') as f:
         mean, std = pickle.load(f)
 except:
-    data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, params_noise_config, label_idx=[1, 2], format='csr', threshold=0.05,representation_mapping=RepresentationMapping.majorana_plus_minus_up_down)
+    data = HamiltionianDataset(data_path, label_idx=[1, 2], format='csr', threshold=0.05, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down)
     data_loader = DataLoader(data, params['batch_size'])
     mean, std = calculate_mean_and_std(data_loader, device=device)
     with open(data_mean_std_path, 'wb') as f:
@@ -113,7 +100,7 @@ except:
 print('Data mean:', mean)
 print('Data std:', std)
 
-data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, params_noise_config, label_idx=[1, 2], format='csr', threshold=0.05, gt_threshold=True, normalization_mean=mean, normalization_std=std, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down)
+data = HamiltionianDataset(data_path, cmap='cmap0', label_idx=[1, 2], format='csr', threshold=0.05, gt_threshold=True, normalization_mean=mean, normalization_std=std, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down)
 
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size
@@ -149,6 +136,7 @@ for epoch in range(0, params['epochs'] + 1):
         test_loader,
         device,
         epoch,
+        reference_loss=False
     )
     scheduler.step()
     save_data_list([epoch, train_loss, test_loss, test_ref_loss], loss_path)
@@ -176,38 +164,23 @@ for epoch in range(0, params['epochs'] + 1):
         test_matrix_path = os.path.join(epoch_dir, hamiltonian_plot_name)
         plot_matrix(h_torch_denormalized[0].detach().cpu().numpy(), test_matrix_path.format('ref_real'), vmin=-vscale, vmax=vscale)
         plot_matrix(h_torch_denormalized[1].detach().cpu().numpy(), test_matrix_path.format('ref_imag'), vmin=-vscale, vmax=vscale)
-
         
-        for dir_path in [amplitude_noise_dir, full_noise_dir]:
-            eigvals_dit_path = os.path.join(dir_path, eigvals_plot_name.format(f'DiT'))
-            eigvals_noisy_path = os.path.join(dir_path, eigvals_plot_name.format(f'noisy'))
+        eigvals_dit_path = os.path.join(epoch_dir, eigvals_plot_name.format(f'DiT'))
+        eigvals_noisy_path = os.path.join(epoch_dir, eigvals_plot_name.format(f'noisy'))
 
-            if 'full_noise' in dir_path:
-                default_params = DefaultParameters(mu_max=1., t_max=1., b_max=1, d_max=1, lambda_max=1)
-                hamiltonian_params = QuantumDotsHamiltonianParameters(no_dots=3, no_levels=1, default_parameters=default_params)
-                random_hamiltonian_params = hamiltonian_params.set_random_parameters_free()
-                hamiltonian = QuantumDotsHamiltonian(hamiltonian_params)
-                h_torch_noisy = hamiltonian.get_hamiltonian_tensor(representation_mapping=RepresentationMapping.majorana_plus_minus_up_down).unsqueeze(0).to(device)
-                h_torch_noisy = Normalize(mean, std)(h_torch_noisy)
-            else:
-                h_torch_noisy = test_data[0][0][1].unsqueeze(0).to(device)
+        h_torch_noisy = test_data[0][0][1].unsqueeze(0).to(device)
 
-            noise_amplitude = torch.zeros(1, 1).to(device)
-            h_denoised = model(h_torch_noisy, noise_amplitude, None)
-            h_denoised = Denormalize(mean=mean, std=std)(h_denoised)[0]
-            
-            h_noisy_denormalized = Denormalize(mean=mean, std=std)(h_torch_noisy)[0]
-            ham_noised = TorchHamiltonian.from_2channel_tensor(h_noisy_denormalized)
-            plot_eigvals_levels(ham_noised, save_path=eigvals_noisy_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm)
-            
-            ham_denoised = TorchHamiltonian.from_2channel_tensor(h_denoised)
-            plot_eigvals_levels(ham_denoised, save_path=eigvals_dit_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm)
-            
-            test_matrix_path = os.path.join(dir_path, hamiltonian_plot_name)
-            plot_matrix(h_denoised[0].detach().cpu().numpy(), test_matrix_path.format('denoised_real'), vmin=-vscale, vmax=vscale)
-            plot_matrix(h_denoised[1].detach().cpu().numpy(), test_matrix_path.format('denoised_imag'), vmin=-vscale, vmax=vscale)
-            plot_matrix(h_noisy_denormalized[0].detach().cpu().numpy(), test_matrix_path.format('noisy_real'), vmin=-vscale, vmax=vscale)
-            plot_matrix(h_noisy_denormalized[1].detach().cpu().numpy(), test_matrix_path.format('noisy_imag'), vmin=-vscale, vmax=vscale)
+        noise_amplitude = torch.zeros(1, 1).to(device)
+        h_denoised = model(h_torch_noisy, noise_amplitude, None)
+        h_denoised = Denormalize(mean=mean, std=std)(h_denoised)[0]
+        
+        ham_denoised = TorchHamiltonian.from_2channel_tensor(h_denoised)
+        plot_eigvals_levels(ham_denoised, save_path=eigvals_dit_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm)
+        
+        test_matrix_path = os.path.join(epoch_dir, hamiltonian_plot_name)
+        plot_matrix(h_denoised[0].detach().cpu().numpy(), test_matrix_path.format('denoised_real'), vmin=-vscale, vmax=vscale)
+        plot_matrix(h_denoised[1].detach().cpu().numpy(), test_matrix_path.format('denoised_imag'), vmin=-vscale, vmax=vscale)
+        plot_conductance_map(h_torch_noisy[0, 0].detach().cpu().numpy(), os.path.join(epoch_dir, 'conductance_map.png'), xlabel="$V$ [mV]", ylabel="$E_F$ [meV]")
 
 
 plot_convergence(loss_path, convergence_path, read_label=True)

@@ -4,7 +4,8 @@ import pickle
 from tqdm import tqdm
 import numpy as np
 
-from src.data_utils import HamiltionianDataset, Denormalize
+from src.data.datasets import HamiltionianDataset
+from src.data.utils import Denormalize
 from src.hamiltonian.quantum_dots_chain import AtomicUnits, MZM_THRESHOLD, DefaultParameters, QuantumDotsHamiltonian, QuantumDotsHamiltonianParameters
 from src.hamiltonian.utils import plot_majorana_polarization, plot_eigvals_levels
 from src.models.gan import Generator

@@ -4,7 +4,7 @@ from tqdm import tqdm
 
 from run.simpleML_training import MODEL_NAME, MODEL_SAVE_DIR
 from src.hamiltonian.hamiltonian import Hamiltonian
-from src.data_utils import generate_data
+from src.data.utils import generate_data
 from src.hamiltonian.utils import count_mzm_states, majorana_polarization, calculate_gap, calculate_mzm_main_bands_gap, are_majoranas_in_hamiltonian
 
 DEFAULT_PARAMS = {'N': 70, 'M': 2, 'delta': 0.3, 'mu': 0.9, 'J': 1., 'delta_q': np.pi, 't': 1}

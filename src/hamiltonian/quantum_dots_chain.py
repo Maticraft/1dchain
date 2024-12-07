@@ -7,10 +7,8 @@ import json
 import numpy as np
 from scipy.linalg import eigh
 import matplotlib.pyplot as plt
-from matplotlib import colors
 
 from src.hamiltonian.hamiltonian import Hamiltonian
-from src.data_utils import generate_data
 from src.hamiltonian.utils import count_mzm_states, majorana_polarization, calculate_gap, calculate_mzm_main_bands_gap
 
 def abs2(c: np.ndarray): return c.real**2 + c.imag**2
@@ -239,8 +237,10 @@ class QuantumDotsHamiltonian(Hamiltonian):
             hamiltonian[i*self.dim0:(i+1)*self.dim0, i*self.dim0:(i+1)*self.dim0] += self.onsite_matrix(i) 
         return hamiltonian
     
-    def set_parameter(self, parameter_name: str, value: float):
-        setattr(self.parameters, parameter_name, np.ones(self.parameters.no_dots)*value)
+    def set_parameter(self, parameter_name: str, value: t.Union[float, np.ndarray]):
+        if isinstance(value, float):
+            value = np.ones(self.parameters.no_dots)*value
+        setattr(self.parameters, parameter_name, value)
         self.H = self.full_hamiltonian()
     
     def parameter_sweeping(self, parameter_name: str, start: float, stop: float, num: int = 101):
@@ -337,9 +337,3 @@ def generate_parameters(n_samples: int, num_verified_majoranas: int = 0):
                 yield {'parameters': params.to_dict()}
         else:
             yield {'parameters': params.to_dict()}
-    return parameters
-
-if __name__ == '__main__':
-    N = 10000
-    parameters = generate_parameters(N, num_verified_majoranas=N)
-    generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/3dots1level_majoranas_gap_pol_verified', eig_decomposition=False, format='csr')

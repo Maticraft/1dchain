@@ -5,7 +5,7 @@ from torch.utils.data import random_split, DataLoader
 import torch
 
 from src.models.classifier import Classifier, test_generator_with_classifier
-from src.data_utils import HamiltionianDataset
+from src.data.datasets import HamiltionianDataset
 from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from src.models.gan import Generator, test_noise_controller
 from src.models.gan import train_noise_controller

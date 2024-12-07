@@ -5,8 +5,9 @@ import numpy as np
 from torch.utils.data import DataLoader
 import torch
 
+from src.data.datasets import HamiltionianDataset
 from src.hamiltonian import quantum_dots_chain as qd_chain
-from src.data_utils import HamiltionianDataset, calculate_mean_and_std
+from src.data.utils import calculate_mean_and_std
 from src.hamiltonian.hamiltonian import RepresentationMapping
 from src.hamiltonian.quantum_dots_chain import AtomicUnits
 from src.models.files import load_general_params, load_ae_model
@@ -24,7 +25,7 @@ xnorm = 1/AtomicUnits.Eh
 ynorm = 1/AtomicUnits.Eh
 
 # Paths
-data_path = './data/quantum_dots/3dots1level_majoranas_gap_pol_verified'
+data_path = './data/quantum_dots/3dots1level_majoranas_gap_pol_verified_with_conductance'
 data_mean_std_path = f'{data_path}/mean_std.pkl'
 
 # test_dir_name = 'tests_subspace_{}_latent_ep{}'

@@ -6,7 +6,7 @@ import torch
 
 from src.models.autoencoder import test_autoencoder, train_autoencoder
 from src.models.classifier import Classifier, MultiClassifier, test_encoder_with_classifier
-from src.data_utils import HamiltionianDataset
+from src.data.datasets import HamiltionianDataset
 from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from src.models.eigvals_autoencoder import EigvalsPositionalDecoder
 from src.models.classifier import train_encoder_with_classifier

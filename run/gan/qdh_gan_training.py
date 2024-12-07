@@ -5,7 +5,8 @@ import numpy as np
 from torch.utils.data import random_split, DataLoader, Subset
 import torch
 
-from src.data_utils import HamiltionianDataset, calculate_mean_and_std, Denormalize
+from src.data.datasets import HamiltionianDataset
+from src.data.utils import calculate_mean_and_std, Denormalize
 from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from src.hamiltonian.quantum_dots_chain import QuantumDotsHamiltonian, QuantumDotsHamiltonianParameters, DefaultParameters, AtomicUnits
 from src.models.gan import Generator

@@ -4,7 +4,7 @@ import numpy as np
 from torch.utils.data import random_split, DataLoader
 import torch
 
-from src.data_utils import HamiltionianDataset
+from src.data.datasets import HamiltionianDataset
 from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
 from src.models.autoencoder import Encoder, test_autoencoder
 from src.models.autoencoder import train_autoencoder

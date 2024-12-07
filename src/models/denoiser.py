@@ -7,7 +7,9 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 from src.models.noise_generatiron import NoiseGenerator
-from src.hamiltonian.hamiltonian import RepresentationMapping
+from src.hamiltonian.quantum_dots_chain import AtomicUnits
+from src.hamiltonian.conductance import torch_conductance_map0
+from src.hamiltonian.hamiltonian import transform_majorana_plus_minus_up_down_representation_to_default
 from src.models.majorana_representation_generator import MajoranaRepresentationHamiltonianConstructor
 from src.torch_utils import TorchHamiltonian
 
@@ -141,6 +143,7 @@ def test_denoising_param_model(
     test_loader: torch.utils.data.DataLoader,
     device: torch.device,
     epoch: int,
+    reference_loss: bool = True,
 ) -> nn.Module:
 
     model.to(device)
@@ -149,19 +152,101 @@ def test_denoising_param_model(
     total_loss = 0.
     total_ref_loss = 0.
 
+    with torch.no_grad():
+        print(f'Epoch: {epoch}')
+        for (_, x, x_perturbed), _ in tqdm(test_loader, 'Testing denoising model'):
+            x = x.to(device)
+            x_perturbed = x_perturbed.to(device)
+            
+            noise_coeff = torch.zeros(x.shape[0], 1).to(device)
+            denoised_x = model(x_perturbed, noise_coeff, None)
+            
+            # loss is mean squared error between the predicted and true noise
+            loss = F.mse_loss(denoised_x, x)
+            total_loss += loss.item()
+            if reference_loss:
+                ref_loss = F.mse_loss(x_perturbed, x)
+                total_ref_loss += ref_loss.item()
+
+    total_loss /= len(test_loader)
+    total_ref_loss /= len(test_loader)
+    print(f'Test loss: {total_loss}, Reference loss: {total_ref_loss}')
+    print()
+    return total_loss, total_ref_loss
+
+
+def train_denoising_conductance_param_model(
+    model: nn.Module,
+    train_loader: torch.utils.data.DataLoader,
+    optimizer: torch.optim.Optimizer,
+    device: torch.device,
+    epoch: int,
+    denormalize: t.Callable,
+    cmap_config: t.Dict[str, t.Any],
+) -> nn.Module:
+
+    model.to(device)
+    model.train()
+
+    total_loss = 0.
+
     print(f'Epoch: {epoch}')
-    for (x, x_perturbed), _ in tqdm(test_loader, 'Testing denoising model'):
-        x = x.to(device)
+    for (_, x, x_perturbed), _ in tqdm(train_loader, 'Training denoising model'):
+        optimizer.zero_grad()
+        x = x.to(device).squeeze(1)
         x_perturbed = x_perturbed.to(device)
-        
+
         noise_coeff = torch.zeros(x.shape[0], 1).to(device)
-        denoised_x = model(x_perturbed, noise_coeff, None)
-        
+        torch_h = model(x_perturbed, noise_coeff, None)
+        torch_h = denormalize(torch_h)
+        mapped_h_predicted = transform_majorana_plus_minus_up_down_representation_to_default(torch.complex(torch_h[:, 0], torch_h[:, 1]))
+        predicted_cmap = torch_conductance_map0(mapped_h_predicted, **cmap_config)
         # loss is mean squared error between the predicted and true noise
-        loss = F.mse_loss(denoised_x, x)
-        ref_loss = F.mse_loss(x_perturbed, x)
+        loss = F.mse_loss(predicted_cmap, x)
         total_loss += loss.item()
-        total_ref_loss += ref_loss.item()
+        loss.backward()
+        
+        optimizer.step()
+
+    total_loss /= len(train_loader)
+    print(f'Train loss: {total_loss}')
+    print()
+    return total_loss
+
+
+def test_denoising_conductance_param_model(
+    model: nn.Module,
+    test_loader: torch.utils.data.DataLoader,
+    device: torch.device,
+    epoch: int,
+    denormalize: t.Callable,
+    cmap_config: t.Dict[str, t.Any],
+    reference_loss: bool = True,
+) -> nn.Module:
+
+    model.to(device)
+    model.eval()
+
+    total_loss = 0.
+    total_ref_loss = 0.
+
+    with torch.no_grad():
+        print(f'Epoch: {epoch}')
+        for (_, x, x_perturbed), _ in tqdm(test_loader, 'Testing denoising model'):
+            x = x.to(device).squeeze(1)
+            x_perturbed = x_perturbed.to(device)
+            
+            noise_coeff = torch.zeros(x.shape[0], 1).to(device)
+            torch_h = model(x_perturbed, noise_coeff, None)
+            torch_h = denormalize(torch_h)
+            mapped_h_predicted = transform_majorana_plus_minus_up_down_representation_to_default(torch.complex(torch_h[:, 0], torch_h[:, 1]))
+            predicted_cmap = torch_conductance_map0(mapped_h_predicted, **cmap_config)
+        # loss is mean squared error between the predicted and true noise
+        loss = F.mse_loss(predicted_cmap, x)
+        total_loss += loss.item()
+        if reference_loss:
+            ref_loss = F.mse_loss(x_perturbed.squeeze(1), x)
+            total_ref_loss += ref_loss.item()
 
     total_loss /= len(test_loader)
     total_ref_loss /= len(test_loader)

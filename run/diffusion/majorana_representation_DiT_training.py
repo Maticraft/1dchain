@@ -5,7 +5,8 @@ import numpy as np
 from torch.utils.data import random_split, DataLoader, Subset, RandomSampler
 import torch
 
-from src.data_utils import HamiltionianDataset, calculate_mean_and_std, Denormalize
+from src.data.datasets import HamiltionianDataset
+from src.data.utils import calculate_mean_and_std, Denormalize
 from src.hamiltonian.hamiltonian import RepresentationMapping
 from src.hamiltonian.quantum_dots_chain import AtomicUnits
 from src.models.noise_generatiron import NoiseGenerator

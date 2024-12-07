@@ -1,24 +1,18 @@
-from collections import defaultdict
 from copy import deepcopy
-from functools import reduce
+from src.data.utils import DICTIONARY_NAME, EIGVALS_DIR_NAME, EIGVEC_DIR_NAME, CONDUCTANCE_CMAP_0_DIR_NAME, CONDUCTANCE_CMAP_1_DIR_NAME, MATRICES_DIR_NAME, PARAMS_DICTIONARY_NAME, save_matrix
+from src.hamiltonian.conductance import torch_conductance_map0, Transport
+from src.hamiltonian.hamiltonian import REPRESENTATION_MAPPING_FUNCTION, Hamiltonian, RepresentationMapping
+
+import numpy as np
+import torch
+from scipy import sparse
+from torch.utils.data import Dataset
+from torchvision.transforms import Normalize
+
 import json
 import os
 import typing as t
-
-import numpy as np
-from scipy import sparse
-from torch.utils.data import Dataset, DataLoader
-import torch
-from torchvision.transforms import Normalize
-from tqdm import tqdm
-
-from src.hamiltonian.hamiltonian import Hamiltonian, RepresentationMapping, REPRESENTATION_MAPPING_FUNCTION
-
-DICTIONARY_NAME = 'dictionary.txt'
-PARAMS_DICTIONARY_NAME = 'params_dictionary.txt'
-MATRICES_DIR_NAME = 'matrices'
-EIGVALS_DIR_NAME = 'eigvals'
-EIGVEC_DIR_NAME = 'eigvec'
+from functools import reduce
 
 
 class HamiltionianDataset(Dataset):
@@ -31,6 +25,7 @@ class HamiltionianDataset(Dataset):
         threshold: float = 1.e-5,
         eigvals: bool = False,
         eig_decomposition: bool = False,
+        cmap: str = 'none',
         format: str = 'numpy',
         normalization_mean: t.Tuple[float, float] = (0., 0.),
         normalization_std: t.Tuple[float, float] = (1., 1.),
@@ -50,7 +45,8 @@ class HamiltionianDataset(Dataset):
         self.gt_threshold = kwargs.get('gt_threshold', False)
         self.normalization = Normalize(normalization_mean, normalization_std)
         self.representation_mapping = representation_mapping
-      
+        self.cmap = cmap
+
     def __len__(self) -> int:
         if self.data_limit != None:
             return self.data_limit
@@ -98,11 +94,20 @@ class HamiltionianDataset(Dataset):
         else:
             eig_dec = torch.zeros((1, tensor.shape[1])), torch.zeros((tensor.shape[0], tensor.shape[1]))
 
-        label = self.get_label(idx, self.label_idx)
-        label = torch.tensor(label)
+        if self.cmap != 'none':
+            if self.cmap == 'cmap0':
+                cmap = self.load_data(CONDUCTANCE_CMAP_0_DIR_NAME, idx, self.format)
+            elif self.cmap == 'cmap1':
+                cmap = self.load_data(CONDUCTANCE_CMAP_1_DIR_NAME, idx, self.format)
+            else:
+                raise ValueError(f"Wrong cmap value: {self.cmap}")
+            label = cmap.to(torch.float32).unsqueeze(0)
+        else:
+            label = self.get_label(idx, self.label_idx)
+            label = torch.tensor(label)
 
         return (tensor, label), eig_dec
-    
+
     def get_label(self, idx: int, label_idx: t.Union[int, t.Tuple, t.List]) -> t.Union[float, t.List[float]]:
         if type(label_idx) == int:
             label = [float(self.dictionary[idx][label_idx])]
@@ -133,7 +138,7 @@ class HamiltionianDataset(Dataset):
             data = dictionary.readlines()
         parsed_data = [row.rstrip("\n").split(', ') for row in data]
         return parsed_data
-    
+
 
     def load_data(self, dir: str, idx: int, format: str):
         if format == 'numpy':
@@ -146,7 +151,7 @@ class HamiltionianDataset(Dataset):
         else:
             raise ValueError("Wrong format")
         return torch.from_numpy(data).type(torch.complex64)
-    
+
 
 class HamiltionianParamsDataset(Dataset):
     def __init__(
@@ -186,7 +191,7 @@ class HamiltionianParamsDataset(Dataset):
             data = dictionary.readlines()
         parsed_data = [row.rstrip("\n").split(', ', maxsplit=1) for row in data]
         return parsed_data
-    
+
     def load_data(self, dir: str, idx: int, format: str) -> torch.Tensor:
         if format == 'numpy':
             data_path = os.path.join(self.data_dir, dir, self.dictionary[idx][0] + '.npy')
@@ -198,7 +203,7 @@ class HamiltionianParamsDataset(Dataset):
         else:
             raise ValueError("Wrong format")
         return torch.from_numpy(data).type(torch.complex64)
-    
+
     def parse_label(self, idx: int) -> torch.Tensor:
         if type(self.label_key) == str:
             label = json.loads(self.dictionary[idx][1])[self.label_key]
@@ -209,14 +214,14 @@ class HamiltionianParamsDataset(Dataset):
         else:
             raise ValueError("Wrong label_key type")
         return torch.tensor(label)
-    
 
-class NoisyParametersHamiltonianDataset(Dataset):
+
+class HamiltonianFromParametersDataset(Dataset):
     def __init__(
         self,
         data_dir: str,
         hamiltionian_class: t.Type[Hamiltonian],
-        params_noise_config: t.Dict[str, float],
+        params_noise_config: t.Optional[t.Dict[str, float]] = None,
         data_limit: t.Optional[int] = None,
         label_idx: t.Union[int, t.Tuple[int, int]] = 1,
         threshold: float = 1.e-5,
@@ -224,6 +229,9 @@ class NoisyParametersHamiltonianDataset(Dataset):
         normalization_mean: t.Tuple[float, float] = (0., 0.),
         normalization_std: t.Tuple[float, float] = (1., 1.),
         representation_mapping: RepresentationMapping = RepresentationMapping.none,
+        conductance_config: t.Optional[t.Dict[str, t.Any]] = None,
+        noisy_conductance: bool = False,
+        target_condcuctance: bool = False,
         **kwargs,
     ):
         param_dict_path = os.path.join(data_dir, PARAMS_DICTIONARY_NAME)
@@ -239,6 +247,9 @@ class NoisyParametersHamiltonianDataset(Dataset):
         self.representation_mapping = representation_mapping
         self.normalization = Normalize(normalization_mean, normalization_std)
         self.params_noise_config = params_noise_config
+        self.conductance_config = conductance_config
+        self.noisy_conductance = noisy_conductance
+        self.target_condcuctance = target_condcuctance
 
     def load_label_dict(self, filepath: str) -> t.List[t.List[str]]:
         with open(filepath, 'r') as dictionary:
@@ -260,20 +271,47 @@ class NoisyParametersHamiltonianDataset(Dataset):
 
     def __getitem__(self, idx: t.Union[int, torch.Tensor]) -> t.Tuple[torch.Tensor, torch.Tensor]:
         hamiltonian_params = self.load_params(idx)
-        tensor = self.generate_hamiltonian_tensor(hamiltonian_params)
+        tensors = [self.generate_hamiltonian_tensor(hamiltonian_params)]
+        if self.target_condcuctance:
+            model = self.hamiltionian_class(**hamiltonian_params)
+            tensor = model.get_hamiltonian_tensor()
+            tensor_complex = torch.complex(tensor[0], tensor[1])
+            cmap0 = torch_conductance_map0(tensor_complex.unsqueeze(0), **self.conductance_config['cmap0'])
+            tensors.append(cmap0)
 
-        hamiltonian_noisy_params = self.add_noise_to_params(hamiltonian_params, self.params_noise_config)
-        noisy_tensor = self.generate_hamiltonian_tensor(hamiltonian_noisy_params)
+
+        if self.params_noise_config is not None:
+            hamiltonian_noisy_params = self.add_noise_to_params(hamiltonian_params, self.params_noise_config)
+            if not self.noisy_conductance:
+                noisy_tensor = self.generate_hamiltonian_tensor(hamiltonian_noisy_params)
+                tensors.append(noisy_tensor)
+
+        if self.conductance_config is not None:
+            if 'cmap0' in self.conductance_config:
+                if self.noisy_conductance:
+                    model = self.hamiltionian_class(**hamiltonian_noisy_params)
+                    tensor = model.get_hamiltonian_tensor()
+                else:
+                    model = self.hamiltionian_class(**hamiltonian_params)
+                    tensor = model.get_hamiltonian_tensor()
+                tensor_complex = torch.complex(tensor[0], tensor[1])
+                cmap0 = torch_conductance_map0(tensor_complex.unsqueeze(0), **self.conductance_config['cmap0'])
+                tensors.append(cmap0)
+            if 'cmap1' in self.conductance_config:
+                model = self.hamiltionian_class(**hamiltonian_params)
+                transport = Transport(model, self.conductance_config['gamma'])
+                cmap1 = transport.c_map1(**self.conductance_config['cmap1'])
+                tensors.append(torch.from_numpy(cmap1).to(torch.float32).unsqueeze(0))
 
         label = self.get_label(idx, self.label_idx)
-        return (tensor, noisy_tensor), label
+        return tensors, label
 
     def generate_hamiltonian_tensor(self, hamiltonian_params):
         model = self.hamiltionian_class(**hamiltonian_params)
         tensor = model.get_hamiltonian_tensor(representation_mapping=self.representation_mapping)
         tensor = self.normalization(tensor)
         return tensor
-    
+
     def load_params(self, idx: int) -> t.Dict[str, t.Any]:
         '''
         Example of dictionary entry (from QDH dataset):
@@ -313,7 +351,7 @@ class NoisyParametersHamiltonianDataset(Dataset):
 
         '''
         return json.loads(self.params_dictionary[idx][1])
-    
+
     def add_noise_to_params(self, params: t.Dict[str, t.Any], params_noise_strength: t.Dict[str, t.Any]) -> t.Dict[str, t.Any]:
         noisy_params = deepcopy(params)
         for key, value in params_noise_strength.items():
@@ -323,7 +361,7 @@ class NoisyParametersHamiltonianDataset(Dataset):
                 params_array = np.array(noisy_params[key])
                 noisy_params[key] = (1 - value[0]) * params_array + value[0]*np.random.normal(0, value[1], params_array.shape)
         return noisy_params
-    
+
     def get_label(self, idx: int, label_idx: t.Union[int, t.Tuple, t.List]) -> t.Union[float, t.List[float]]:
         if type(label_idx) == int:
             label = [float(self.dictionary[idx][label_idx])]
@@ -347,103 +385,3 @@ class NoisyParametersHamiltonianDataset(Dataset):
         else:
             raise ValueError("Wrong label_idx type")
         return label
-
-  
-def generate_data(
-    hamiltionian: t.Type[Hamiltonian],
-    param_list: t.List[t.Dict[str, t.Any]],
-    directory: str,
-    eig_decomposition: bool = False,
-    format: str = 'numpy',
-    representation: RepresentationMapping = RepresentationMapping.default,
-):
-    for i, params in tqdm(enumerate(param_list), 'Generating data'):
-        idx = i
-        filename = 'data_' + str(idx)
-        model = hamiltionian(**params)
-        matrix = model.get_hamiltonian(representation)
-        try:
-            label = model.get_label()
-        except:
-            continue
-
-        if eig_decomposition:
-            try:
-                eigvals, eigvec = np.linalg.eigh(matrix)
-            except:
-                continue
-        else:
-            eigvals, eigvec = None, None
-
-        save_data(matrix, label, directory, filename, eigvals, eigvec, format, params)
-
-
-def save_data(
-    matrix: np.ndarray,
-    label: str,
-    root_dir: str,
-    filename: str,
-    eigvals: t.Optional[np.ndarray] = None,
-    eigvec: t.Optional[np.ndarray] = None,
-    format: str = 'numpy',
-    params: t.Optional[t.Dict[str, t.Any]] = None,
-):
-    if not os.path.isdir(root_dir):
-        os.makedirs(root_dir)
-
-    save_matrix(matrix, root_dir, MATRICES_DIR_NAME, filename, format)
-
-    if eigvals is not None:
-        save_matrix(eigvals, root_dir, EIGVALS_DIR_NAME, filename, format)
-    if eigvec is not None:
-        save_matrix(eigvec, root_dir, EIGVEC_DIR_NAME, filename, format)
-
-    with open(os.path.join(root_dir, DICTIONARY_NAME), 'a') as dictionary:
-        dictionary.write(f'{filename}, {label}\n')
-
-    if params is not None:
-        with open(os.path.join(root_dir, PARAMS_DICTIONARY_NAME), 'a') as params_file:
-            params_str = json.dumps(params)
-            params_file.write(f'{filename}, {params_str}\n')
-
-
-def save_matrix(matrix: np.ndarray, root_dir: str, folder_name: str, file_name: str, format: str = 'numpy'):
-    matrix_dir = os.path.join(root_dir, folder_name)
-    if not os.path.isdir(matrix_dir):
-        os.makedirs(matrix_dir)
-    if format == 'numpy':
-        matrix_name = os.path.join(matrix_dir, file_name + '.npy')
-        np.save(matrix_name, matrix)
-    elif format == 'csr':
-        matrix_name = os.path.join(matrix_dir, file_name + '.npz')
-        sparse.save_npz(matrix_name, sparse.csr_matrix(matrix))
-    else:
-        raise ValueError("Wrong format")
-    
-
-def calculate_mean_and_std(
-    data_loader: DataLoader,
-    device: torch.device,
-    callable: t.Optional[t.Callable] = None
-):
-    # calculate latent space distribution (mean and std)
-    mean = defaultdict(float)
-    std = defaultdict(float)
-    for (data, _), _ in tqdm(data_loader, 'Collecting data statistics...'):
-        data = data.to(device)
-        if callable is not None:
-            data = callable(data)
-        for channel in range(data.shape[1]):
-            mean[channel] += data[:, channel].mean().item()
-            std[channel] += data[:, channel].std().item()
-    for channel in mean.keys():
-        mean[channel] /= len(data_loader)
-        std[channel] /= len(data_loader)
-    return tuple(mean.values()), tuple(std.values())
-
-
-class Denormalize(Normalize):
-    def __init__(self, mean: t.Tuple[float, ...], std: t.Tuple[float, ...]):
-        mean = torch.tensor(mean)
-        std = torch.tensor(std)
-        super().__init__((-mean/std).tolist(), (1./std).tolist())

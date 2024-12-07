@@ -6,7 +6,8 @@ from torch.utils.data import random_split, DataLoader, Subset, RandomSampler
 import torch
 from torchvision.transforms import Normalize
 
-from src.data_utils import HamiltionianDataset, calculate_mean_and_std, Denormalize
+from src.data.datasets import HamiltionianDataset
+from src.data.utils import calculate_mean_and_std, Denormalize
 from src.hamiltonian.hamiltonian import RepresentationMapping
 from src.hamiltonian.quantum_dots_chain import AtomicUnits, DefaultParameters, QuantumDotsHamiltonianParameters, QuantumDotsHamiltonian
 from src.hamiltonian.utils import plot_eigvals_levels
@@ -47,7 +48,7 @@ model_name = 'QDH-1lvl-no-interlevel_DiT_28_ham_flat_param_mock_noise_strength_p
 # Params
 params = {
     'epochs': 500,
-    'batch_size': 64,
+    'batch_size': 12,
     'lr': 1e-4,
     'max_noise_amplitude': 0.2,
     'mock_model_noise_strength_input': True,

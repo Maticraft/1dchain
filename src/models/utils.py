@@ -11,7 +11,7 @@ from torch.distributions.multivariate_normal import MultivariateNormal
 from torch.distributions.kl import kl_divergence
 from torchvision.transforms import Normalize
 
-from src.data_utils import Denormalize
+from src.data.utils import Denormalize
 from src.torch_utils import torch_majorana_polarization
 from src.hamiltonian.hamiltonian import RepresentationMapping
 from src.hamiltonian.hamiltonian_torch_handlers import get_strip, get_matrix_from_strips
