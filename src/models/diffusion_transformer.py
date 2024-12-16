@@ -167,25 +167,34 @@ class DiT(DiffusionModel):
         min_inter_site_interaction_range=2,
         max_inter_site_interaction_range=3,
         timesteps=500,
+        input_embedder='patch',
+        **kwargs
     ):
         super().__init__()
+        self.input_embedder = input_embedder
         self.learn_sigma = learn_sigma
         # self.in_channels = in_channels
         # self.out_channels = in_channels * 2 if learn_sigma else in_channels
         self.patch_size = patch_size
         self.num_heads = num_heads
+        self.seq_size = input_size // patch_size
 
-        self.x_embedder = PatchEmbed(input_size, patch_size, 1, hidden_size, bias=True)
-        self.num_patches = self.x_embedder.num_patches
-        # works only for patch size = 4
-        self.hamiltonian_embeddder = MajoranaRepresentationPatchEmbed(hidden_size, min_inter_site_interaction_range, max_inter_site_interaction_range)
+        if self.input_embedder == 'patch':
+            self.x_embedder = PatchEmbed(input_size, patch_size, 1, hidden_size, bias=True)
+            self.num_patches = self.x_embedder.num_patches
         
+        if self.input_embedder == 'hamiltonian':
+            # works only for patch size = 4
+            assert patch_size == 4, 'Hamiltonian embedder only works for patch size 4'
+            self.hamiltonian_embeddder = MajoranaRepresentationPatchEmbed(hidden_size, min_inter_site_interaction_range, max_inter_site_interaction_range)
+            interaction_range = max_inter_site_interaction_range - min_inter_site_interaction_range        
+            self.num_patches = self.seq_size * (interaction_range * self.hamiltonian_embeddder.num_inter_site_params + self.hamiltonian_embeddder.num_on_site_params)
+            # total_params = self.hamiltonian_embeddder.num_on_site_params + (self.hamiltonian_embeddder.num_inter_site_params * interaction_range)
+
+
         self.t_embedder = FreqEmbedder(hidden_size, period=timesteps)
         # self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob)
         self.polarization_embedder = FreqEmbedder(hidden_size // 2, period=0.5)
-        self.seq_size = input_size // patch_size
-        self.interaction_range = max_inter_site_interaction_range - min_inter_site_interaction_range
-        # self.num_patches = self.seq_size * (self.interaction_range * self.hamiltonian_embeddder.num_inter_site_params + self.hamiltonian_embeddder.num_on_site_params)
         # Will use fixed sin-cos embedding:
         self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches, hidden_size), requires_grad=False)
 
@@ -193,11 +202,9 @@ class DiT(DiffusionModel):
             DiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio) for _ in range(depth)
         ])
 
-        total_params = self.hamiltonian_embeddder.num_on_site_params + (self.hamiltonian_embeddder.num_inter_site_params * self.interaction_range)
-        self.in_to_out_coverter = nn.Linear(self.seq_size ** 2, (output_size // patch_size) * total_params)
-
-        self.final_layer = FinalLayer(hidden_size, total_params)
-        self.hamiltonian_unpatch = MajoranaRepresentationUnpatch(total_params, min_inter_site_interaction_range, max_inter_site_interaction_range)
+        self.hamiltonian_unpatch = MajoranaRepresentationUnpatch(mlp_ratio, min_inter_site_interaction_range, max_inter_site_interaction_range, **kwargs)
+        self.in_to_out_coverter = nn.Linear(self.seq_size ** 2, (output_size // self.hamiltonian_unpatch.block_size) * self.hamiltonian_unpatch.num_total_params)
+        self.final_layer = FinalLayer(hidden_size, int(mlp_ratio*self.hamiltonian_unpatch.num_total_params))
         self.initialize_weights()
 
     def initialize_weights(self):
@@ -214,21 +221,23 @@ class DiT(DiffusionModel):
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
         # Initialize patch_embed like nn.Linear (instead of nn.Conv2d):
-        w = self.x_embedder.proj.weight.data
-        nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
-
-        w = self.hamiltonian_embeddder.on_site_converter.weight.data
-        nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
-        # nn.init.constant_(self.hamiltonian_embeddder.on_site_converter.bias, 0)
-
-        for conv in self.hamiltonian_embeddder.inter_site_converters:
-            w = conv.weight.data
+        if self.input_embedder == 'patch':
+            w = self.x_embedder.proj.weight.data
             nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
-            # nn.init.constant_(conv.bias, 0)
 
-        # Initialize label embedding table:
-        nn.init.normal_(self.hamiltonian_embeddder.on_site_embedding_table.weight, std=0.02)
-        nn.init.normal_(self.hamiltonian_embeddder.inter_site_embedding_table.weight, std=0.02)
+        if self.input_embedder == 'hamiltonian':
+            w = self.hamiltonian_embeddder.on_site_converter.weight.data
+            nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
+            # nn.init.constant_(self.hamiltonian_embeddder.on_site_converter.bias, 0)
+
+            for conv in self.hamiltonian_embeddder.inter_site_converters:
+                w = conv.weight.data
+                nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
+                # nn.init.constant_(conv.bias, 0)
+
+            # Initialize label embedding table:
+            nn.init.normal_(self.hamiltonian_embeddder.on_site_embedding_table.weight, std=0.02)
+            nn.init.normal_(self.hamiltonian_embeddder.inter_site_embedding_table.weight, std=0.02)
 
         # Initialize polarization embedding MLP:
         nn.init.normal_(self.polarization_embedder.mlp[0].weight, std=0.02)
@@ -266,8 +275,10 @@ class DiT(DiffusionModel):
         time_step: (N, 1) tensor of diffusion timesteps
         context_vector: (N, 2) tensor of polarization (left and right)
         """
-        x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
-        # x = self.hamiltonian_embeddder(x) + self.pos_embed
+        if self.input_embedder == 'patch':
+            x = self.x_embedder(x) + self.pos_embed  # (N, T, D), where T = H * W / patch_size ** 2
+        if self.input_embedder == 'hamiltonian':
+            x = self.hamiltonian_embeddder(x) + self.pos_embed
         t = self.t_embedder(time_step.squeeze(-1))                   # (N, D)
         # y = self.y_embedder(context_vector.long().squeeze(-1), self.training)    # (N, D)
         # y_0 = self.polarization_embedder(context_vector[..., 0])    # (N, D / 2)

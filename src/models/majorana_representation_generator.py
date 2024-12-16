@@ -220,9 +220,9 @@ class MajoranaRepresentationHamiltonianConstructor(nn.Module):
         **kwargs: t.Any
     ):
         super(MajoranaRepresentationHamiltonianConstructor, self).__init__()
-        self.on_site_block_names = ['xiy', 'iy1', 'iyz', 'ziy']
+        self.on_site_block_names = kwargs['on_site_block_names'] if 'on_site_block_names' in kwargs else ['xiy', 'iy1', 'iyz', 'ziy']
         self.num_on_site_params = len(self.on_site_block_names)
-        self.inter_site_block_names = ['1x', '1iy', '1z', 'iy1', 'iyx']
+        self.inter_site_block_names = kwargs['inter_site_block_names'] if 'inter_site_block_names' in kwargs else ['1x', '1iy', '1z', 'iy1', 'iyx']
         self.num_inter_site_params = len(self.inter_site_block_names)
         self.min_inter_site_interaction_range = min_inter_site_interaction_range # 1 for on site only, 2 for nearest neighbors, 3 for next nearest neighbors, etc.
         self.max_inter_site_interaction_range = max_inter_site_interaction_range # 1 for on site only, 2 for nearest neighbors, 3 for next nearest neighbors, etc.
@@ -300,20 +300,22 @@ class MajoranaRepresentationHamiltonianConstructor(nn.Module):
 class MajoranaRepresentationUnpatch(nn.Module):
     def __init__(
         self,
-        in_size: int,
+        in_to_out_ratio: int,
         min_inter_site_interaction_range: int = 1,
         max_inter_site_interaction_range: int = 2,
         **kwargs: t.Any
     ):
         super(MajoranaRepresentationUnpatch, self).__init__()
+        self.block_size = 4
         self.min_inter_site_interaction_range = min_inter_site_interaction_range
         self.max_inter_site_interaction_range = max_inter_site_interaction_range
-        self.hamiltonian_constructor = MajoranaRepresentationHamiltonianConstructor(min_inter_site_interaction_range, max_inter_site_interaction_range)
+        self.hamiltonian_constructor = MajoranaRepresentationHamiltonianConstructor(min_inter_site_interaction_range, max_inter_site_interaction_range, **kwargs)
         self.num_inter_site_params = self.hamiltonian_constructor.num_inter_site_params
         self.num_on_site_params = self.hamiltonian_constructor.num_on_site_params
         self.interaction_range = max_inter_site_interaction_range - min_inter_site_interaction_range
-        self.seq_size_multiplication_factor = self.interaction_range * self.num_inter_site_params + self.num_on_site_params
+        self.num_total_params = self.interaction_range * self.num_inter_site_params + self.num_on_site_params
 
+        in_size = int(in_to_out_ratio * self.num_total_params)
         self.on_site_converter = nn.Conv1d(in_size, 1, 1)
         self.inter_site_converters = nn.ModuleList([
             nn.Conv1d(in_size, 1, kernel_size=1, stride=1)
@@ -328,7 +330,7 @@ class MajoranaRepresentationUnpatch(nn.Module):
           :hamiltonian matrix: torch.Tensor with shape (..., 2, 4 x seq_size, 4 x seq_size)
         '''
         x = x.transpose(-1, -2)
-        seq_size = x.shape[-1] // self.seq_size_multiplication_factor
+        seq_size = x.shape[-1] // self.num_total_params
         x_on_site = self.on_site_converter(x[..., :seq_size * self.num_on_site_params]).squeeze(-2)
         on_site_params = torch.unflatten(x_on_site, dim=-1, sizes=(self.num_on_site_params, seq_size))
 

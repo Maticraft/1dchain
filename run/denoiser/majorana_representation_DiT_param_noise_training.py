@@ -8,9 +8,10 @@ from torchvision.transforms import Normalize
 
 from src.data.datasets import HamiltonianFromParametersDataset
 from src.data.utils import calculate_mean_and_std, Denormalize
-from src.hamiltonian.hamiltonian import RepresentationMapping
-from src.hamiltonian.quantum_dots_chain import AtomicUnits, DefaultParameters, QuantumDotsHamiltonianParameters, QuantumDotsHamiltonian
-from src.hamiltonian.utils import plot_eigvals_levels
+from src.hamiltonian.conductance import plot_conductance_map, torch_conductance_map0, torch_conductance_map2
+from src.hamiltonian.hamiltonian import RepresentationMapping, transform_majorana_plus_minus_up_down_representation_to_default
+from src.hamiltonian.quantum_dots_chain import AtomicUnits, DefaultParameters, QuantumDotsHamiltonianParameters, QuantumDotsHamiltonian, MZM_THRESHOLD
+from src.hamiltonian.utils import plot_eigvals_levels, plot_majorana_polarization
 from src.models.noise_generatiron import NoiseGenerator
 from src.models.diffusion import DiffusionAutoencoder
 from src.models.denoiser import train_denoising_param_model, test_denoising_param_model
@@ -99,6 +100,20 @@ params_noise_config = {
     }
 }
 
+conductance_config = {
+    'cmap2': {
+        'i':0,
+        'j':0,
+        'gamma': 0.1,
+        'b_range': (0./AtomicUnits.Eh, 2./AtomicUnits.Eh),
+        'ef_range': (-2./AtomicUnits.Eh, 2./AtomicUnits.Eh),
+        'b_num': 200,
+        'ef_num': 200
+    }
+}
+x_tick_range = conductance_config['cmap2']['b_range']
+y_tick_range = conductance_config['cmap2']['ef_range']
+
 # Try to load data statistics
 try:
     with open(data_mean_std_path, 'rb') as f:
@@ -156,6 +171,11 @@ for epoch in range(0, params['epochs'] + 1):
     # sample and save every 10 epochs
     if epoch % 10 == 0:
         save_model(model, root_dir, epoch)
+        
+        # ------------------------------------------------------------------------------
+        # Visualize the results
+        # ------------------------------------------------------------------------------
+        
         model.eval()
         model.to(device)
         epoch_dir = os.path.join(tests_sub_path, f'epoch_{epoch}')
@@ -172,11 +192,28 @@ for epoch in range(0, params['epochs'] + 1):
         h_torch_denormalized = Denormalize(mean=mean, std=std)(h_torch_normalized)[0]
         test_hamiltonian = TorchHamiltonian.from_2channel_tensor(h_torch_denormalized)
         plot_eigvals_levels(test_hamiltonian, save_path=eigvals_test_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm)
+        
+        polarization_sub_path = os.path.join(epoch_dir, 'polarization')
+        plot_majorana_polarization(test_hamiltonian, polarization_sub_path, threshold = MZM_THRESHOLD, string_num=1, polaxis='x', representation=RepresentationMapping.majorana_plus_minus_up_down)
 
         test_matrix_path = os.path.join(epoch_dir, hamiltonian_plot_name)
         plot_matrix(h_torch_denormalized[0].detach().cpu().numpy(), test_matrix_path.format('ref_real'), vmin=-vscale, vmax=vscale)
         plot_matrix(h_torch_denormalized[1].detach().cpu().numpy(), test_matrix_path.format('ref_imag'), vmin=-vscale, vmax=vscale)
 
+        # Reference conductance map
+        mapped_h_ref = transform_majorana_plus_minus_up_down_representation_to_default(torch.complex(h_torch_denormalized[0], h_torch_denormalized[1]))
+        if "cmap0" in conductance_config:
+            ref_cmap = torch_conductance_map0(mapped_h_ref.unsqueeze(0), **conductance_config['cmap0'])
+        if "cmap2" in conductance_config:
+            ref_cmap = torch_conductance_map2(mapped_h_ref.unsqueeze(0), **conductance_config['cmap2'])
+        plot_conductance_map(
+            ref_cmap[0].detach().cpu().numpy(),
+            os.path.join(epoch_dir, 'ref_conductance_map.png'),
+            xtick_range=x_tick_range,
+            ytick_range=y_tick_range,
+            xlabel="$B$ [mV]",
+            ylabel="$E_F$ [meV]"
+        )
         
         for dir_path in [amplitude_noise_dir, full_noise_dir]:
             eigvals_dit_path = os.path.join(dir_path, eigvals_plot_name.format(f'DiT'))
@@ -195,19 +232,62 @@ for epoch in range(0, params['epochs'] + 1):
             noise_amplitude = torch.zeros(1, 1).to(device)
             h_denoised = model(h_torch_noisy, noise_amplitude, None)
             h_denoised = Denormalize(mean=mean, std=std)(h_denoised)[0]
-            
             h_noisy_denormalized = Denormalize(mean=mean, std=std)(h_torch_noisy)[0]
+            
+            # Noisy eigvals plot
             ham_noised = TorchHamiltonian.from_2channel_tensor(h_noisy_denormalized)
             plot_eigvals_levels(ham_noised, save_path=eigvals_noisy_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm)
             
+            # Denoised eigvals plot
             ham_denoised = TorchHamiltonian.from_2channel_tensor(h_denoised)
             plot_eigvals_levels(ham_denoised, save_path=eigvals_dit_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm)
             
             test_matrix_path = os.path.join(dir_path, hamiltonian_plot_name)
-            plot_matrix(h_denoised[0].detach().cpu().numpy(), test_matrix_path.format('denoised_real'), vmin=-vscale, vmax=vscale)
-            plot_matrix(h_denoised[1].detach().cpu().numpy(), test_matrix_path.format('denoised_imag'), vmin=-vscale, vmax=vscale)
+            # Noisy hamiltonian  
             plot_matrix(h_noisy_denormalized[0].detach().cpu().numpy(), test_matrix_path.format('noisy_real'), vmin=-vscale, vmax=vscale)
             plot_matrix(h_noisy_denormalized[1].detach().cpu().numpy(), test_matrix_path.format('noisy_imag'), vmin=-vscale, vmax=vscale)
+
+            # Denoised hamiltonian
+            plot_matrix(h_denoised[0].detach().cpu().numpy(), test_matrix_path.format('denoised_real'), vmin=-vscale, vmax=vscale)
+            plot_matrix(h_denoised[1].detach().cpu().numpy(), test_matrix_path.format('denoised_imag'), vmin=-vscale, vmax=vscale)
+
+            # Noisy polarization
+            noisy_polarization_sub_path = os.path.join(dir_path, 'noisy_polarization')
+            plot_majorana_polarization(ham_noised, noisy_polarization_sub_path, threshold = MZM_THRESHOLD, string_num=1, polaxis='x', representation=RepresentationMapping.majorana_plus_minus_up_down)
+
+            # Denoised polarization
+            denoised_polarization_sub_path = os.path.join(dir_path, 'denoised_polarization')
+            plot_majorana_polarization(ham_denoised, denoised_polarization_sub_path, threshold = MZM_THRESHOLD, string_num=1, polaxis='x', representation=RepresentationMapping.majorana_plus_minus_up_down)
+
+            # Noisy conductance map
+            mapped_h_noisy = transform_majorana_plus_minus_up_down_representation_to_default(torch.complex(h_noisy_denormalized[0], h_noisy_denormalized[1]))
+            if "cmap0" in conductance_config:
+                noisy_cmap = torch_conductance_map0(mapped_h_noisy.unsqueeze(0), **conductance_config['cmap0'])
+            if "cmap2" in conductance_config:
+                noisy_cmap = torch_conductance_map2(mapped_h_noisy.unsqueeze(0), **conductance_config['cmap2'])
+            plot_conductance_map(
+                noisy_cmap[0].detach().cpu().numpy(),
+                os.path.join(epoch_dir, 'noisy_conductance_map.png'),
+                xtick_range=x_tick_range,
+                ytick_range=y_tick_range,
+                xlabel="$B$ [mV]",
+                ylabel="$E_F$ [meV]"
+            )
+
+            # Denoised conductance map
+            mapped_h_denoised = transform_majorana_plus_minus_up_down_representation_to_default(torch.complex(h_denoised[0], h_denoised[1]))
+            if "cmap0" in conductance_config:
+                denoised_cmap = torch_conductance_map0(mapped_h_denoised.unsqueeze(0), **conductance_config['cmap0'])
+            if "cmap2" in conductance_config:
+                denoised_cmap = torch_conductance_map2(mapped_h_denoised.unsqueeze(0), **conductance_config['cmap2'])
+            plot_conductance_map(
+                denoised_cmap[0].detach().cpu().numpy(),
+                os.path.join(epoch_dir, 'denoised_conductance_map.png'),
+                xtick_range=x_tick_range,
+                ytick_range=y_tick_range,
+                xlabel="$B$ [mV]",
+                ylabel="$E_F$ [meV]"
+            )
 
 
 plot_convergence(loss_path, convergence_path, read_label=True)

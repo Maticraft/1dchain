@@ -25,7 +25,7 @@ class BlockExtractor:
         return torch.stack([cls._extract_sequence(x, *get_block_pair(pair_name)) for pair_name in pauli_block_names], dim=1)
 
     @staticmethod
-    def _extract_sequence(x: torch.Tensor, block_a: torch.Tensor, block_b: torch.Tensor):
+    def _extract_sequence(x: torch.Tensor, blocks_a: t.List[torch.Tensor], blocks_b: t.List[torch.Tensor]):
         '''
         assumes:
           x.shape = (batch_size, 4, 4*seq_size)
@@ -35,7 +35,7 @@ class BlockExtractor:
           torch.Tensor of shape (batch_size, seq_size)
         '''
         seq_size = x.shape[-1] // 4
-        block = torch.kron(block_a.to(x.device), block_b.to(x.device))
+        block = torch.stack([torch.kron(block_a.to(x.device), block_b.to(x.device)) for block_a, block_b in zip(blocks_a, blocks_b)], dim=0).sum(dim=0)
         block_expanded = block.unsqueeze(0).expand(x.shape[0], -1, -1).repeat(1, 1, seq_size)
         masked_block = x * block_expanded
         masked_block_reshaped = masked_block.transpose(-1, -2).reshape(-1, seq_size, 4, 4)
@@ -76,7 +76,7 @@ class BlockConstructor:
         return torch.zeros((block_params_sequence.shape[1], 4, 4*block_params_sequence.shape[2])).to(block_params_sequence.device)
     
     @staticmethod
-    def _block_generator(x: torch.Tensor, block_a: torch.Tensor, block_b: torch.Tensor, lower_block_transpose: bool = False):
+    def _block_generator(x: torch.Tensor, blocks_a: t.List[torch.Tensor], blocks_b: t.List[torch.Tensor], lower_block_transpose: bool = False):
         '''
         assumes:
           x.shape = (batch_size, seq_size)
@@ -86,7 +86,7 @@ class BlockConstructor:
           torch.Tensor of shape (batch_size, 4, 4*seq_size)
         '''
         x_broadcast = x.unsqueeze(-1).unsqueeze(-1)
-        block = torch.kron(block_a.to(x.device), block_b.to(x.device))
+        block = torch.stack([torch.kron(block_a.to(x.device), block_b.to(x.device)) for block_a, block_b in zip(blocks_a, blocks_b)], dim=0).sum(dim=0)
         if lower_block_transpose:
             block[2:, :2] = block[2:, :2].T.clone()
             block[2:, 2:] = block[2:, 2:].T.clone()
@@ -136,20 +136,31 @@ class BlockConstructor:
 def get_block_pair(pair_name: str):
     '''
     assumes:
-      pair_name = eg. '1x', 'xx', 'iyz', 'zz'
+      pair_name = eg. '1x 1z', 'xx', 'iyz', 'zz'
+        if pair_name contains 'space' then all blocks withing the pair_name are summed
     returns:
       block_a, block_b
     '''
     block_a_name, block_b_name = parse_string_to_pair(pair_name)
-    return PAULI_BLOCKS[block_a_name], PAULI_BLOCKS[block_b_name]
+    pauli_blocks_a = [PAULI_BLOCKS[block_name] for block_name in block_a_name]
+    pauli_blocks_b = [PAULI_BLOCKS[block_name] for block_name in block_b_name]
+    return pauli_blocks_a, pauli_blocks_b
     
 
 def parse_string_to_pair(string: str):
-    if not 'i' in string:
-        return string[0], string[1]
-    if string[0] == 'i':
-        return string[:2], string[2:]
-    return string[0], string[1:]
+    blocks_a = []
+    blocks_b = []
+    for block in string.split(' '):
+        if not 'i' in block:
+            blocks_a.append(block[0])
+            blocks_b.append(block[1])
+        elif block[0] == 'i':
+            blocks_a.append(block[:2])
+            blocks_b.append(block[2:])
+        else:
+            blocks_a.append(block[0])
+            blocks_b.append(block[1:])
+    return blocks_a, blocks_b
 
 
 def get_matrix_from_strips(strips: torch.Tensor, sites_num: int, block_size: int = 4):

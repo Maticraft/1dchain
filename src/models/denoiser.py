@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from src.models.noise_generatiron import NoiseGenerator
 from src.hamiltonian.quantum_dots_chain import AtomicUnits
-from src.hamiltonian.conductance import torch_conductance_map0
+from src.hamiltonian.conductance import torch_conductance_map0, torch_conductance_map2
 from src.hamiltonian.hamiltonian import transform_majorana_plus_minus_up_down_representation_to_default
 from src.models.majorana_representation_generator import MajoranaRepresentationHamiltonianConstructor
 from src.torch_utils import TorchHamiltonian
@@ -183,6 +183,9 @@ def train_denoising_conductance_param_model(
     epoch: int,
     denormalize: t.Callable,
     cmap_config: t.Dict[str, t.Any],
+    model_prediction: str = 'hamiltonian',
+    use_input_as_target: bool = False,
+    weighting_threhsold: t.Optional[float] = None
 ) -> nn.Module:
 
     model.to(device)
@@ -191,18 +194,38 @@ def train_denoising_conductance_param_model(
     total_loss = 0.
 
     print(f'Epoch: {epoch}')
-    for (_, x, x_perturbed), _ in tqdm(train_loader, 'Training denoising model'):
+    for (h, x, h_perturbed, x_perturbed), _ in tqdm(train_loader, 'Training denoising model'):
         optimizer.zero_grad()
         x = x.to(device).squeeze(1)
         x_perturbed = x_perturbed.to(device)
 
         noise_coeff = torch.zeros(x.shape[0], 1).to(device)
         torch_h = model(x_perturbed, noise_coeff, None)
+        if model_prediction == 'hamiltonian_improvement_mask':
+            h_perturbed = h_perturbed.to(device)
+            multiplication_factor = torch.abs(torch_h)
+            torch_h = h_perturbed + multiplication_factor * h_perturbed
+
         torch_h = denormalize(torch_h)
         mapped_h_predicted = transform_majorana_plus_minus_up_down_representation_to_default(torch.complex(torch_h[:, 0], torch_h[:, 1]))
-        predicted_cmap = torch_conductance_map0(mapped_h_predicted, **cmap_config)
+        if "cmap0" in cmap_config:
+            predicted_cmap = torch_conductance_map0(mapped_h_predicted, **cmap_config["cmap0"])
+        elif "cmap2" in cmap_config:
+            predicted_cmap = torch_conductance_map2(mapped_h_predicted, **cmap_config["cmap2"])
         # loss is mean squared error between the predicted and true noise
-        loss = F.mse_loss(predicted_cmap, x)
+        if use_input_as_target:
+            target = x_perturbed.squeeze(1)
+        else:
+            target = x
+        
+        if weighting_threhsold is not None:
+            mask = torch.abs(target) > weighting_threhsold
+            multiplicator = torch.abs(target).max() / torch.abs(target)
+            weights = torch.where(mask, multiplicator, torch.ones_like(target)).detach()
+            loss = F.mse_loss(predicted_cmap, target, reduction='none')
+            loss = (loss * weights).mean()
+        else:
+            loss = F.mse_loss(predicted_cmap, target)
         total_loss += loss.item()
         loss.backward()
         
@@ -222,6 +245,7 @@ def test_denoising_conductance_param_model(
     denormalize: t.Callable,
     cmap_config: t.Dict[str, t.Any],
     reference_loss: bool = True,
+    model_prediction: str = 'hamiltonian'
 ) -> nn.Module:
 
     model.to(device)
@@ -232,15 +256,24 @@ def test_denoising_conductance_param_model(
 
     with torch.no_grad():
         print(f'Epoch: {epoch}')
-        for (_, x, x_perturbed), _ in tqdm(test_loader, 'Testing denoising model'):
+        for (h, x, h_perturbed, x_perturbed), _ in tqdm(test_loader, 'Testing denoising model'):
             x = x.to(device).squeeze(1)
             x_perturbed = x_perturbed.to(device)
             
             noise_coeff = torch.zeros(x.shape[0], 1).to(device)
             torch_h = model(x_perturbed, noise_coeff, None)
+
+            if model_prediction == 'hamiltonian_improvement_mask':
+                h_perturbed = h_perturbed.to(device)
+                multiplication_factor = torch.abs(torch_h)
+                torch_h = h_perturbed + multiplication_factor * h_perturbed
+
             torch_h = denormalize(torch_h)
             mapped_h_predicted = transform_majorana_plus_minus_up_down_representation_to_default(torch.complex(torch_h[:, 0], torch_h[:, 1]))
-            predicted_cmap = torch_conductance_map0(mapped_h_predicted, **cmap_config)
+            if "cmap0" in cmap_config:
+                predicted_cmap = torch_conductance_map0(mapped_h_predicted, **cmap_config["cmap0"])
+            elif "cmap2" in cmap_config:
+                predicted_cmap = torch_conductance_map2(mapped_h_predicted, **cmap_config["cmap2"])
         # loss is mean squared error between the predicted and true noise
         loss = F.mse_loss(predicted_cmap, x)
         total_loss += loss.item()

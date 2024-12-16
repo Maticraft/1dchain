@@ -106,14 +106,14 @@ class Transport:
         b_num: int = 200,
         ef_num: int = 200,
     ):
-        C_map = []
+        c_map = np.zeros((ef_num, b_num))
         bs = np.linspace(b_range[0], b_range[1], num=b_num, endpoint=True)
         efs = np.linspace(ef_range[0], ef_range[1], num=ef_num, endpoint=True)
-        for b in bs:
-            self.h.set_parameter('b', np.ones(self.s.parameters.no_dots)*b)
-            for ef in efs:
-                C_map.append([b, ef, self.c_ij(i, j, ef)])
-        return np.array(C_map)
+        for y, b in enumerate(bs):
+            self.h.set_parameter('b', b)
+            for x, ef in enumerate(efs):
+                c_map[x, y] = self.c_ij(i, j, ef)
+        return c_map
     
 
 def torch_conductance_map0(
@@ -126,13 +126,45 @@ def torch_conductance_map0(
     mu_num: int = 200,
     n_levels: int = 1,
     gamma: float = 0.1,
-):
+) -> torch.Tensor:
+
     efs = torch.linspace(ef_range[0], ef_range[1], steps=ef_num).to(h_tensor.device)
     mus = torch.linspace(mu_range[0], mu_range[1], steps=mu_num).view(mu_num, 1, 1).expand(mu_num, h_tensor.shape[0], 1).to(h_tensor.device)
     hs = h_tensor.view(1, *h_tensor.shape).expand(mu_num, *h_tensor.shape)
     hs_modified = torch_h_set_mu(hs, mus, use_dot_split=n_levels > 1)
+    return _torch_cmap(hs_modified, efs, i, j, n_levels, gamma)
+
+
+def torch_conductance_map2(
+    h_tensor: torch.Tensor, # must be complex and in standard representation
+    i: float,
+    j: float,
+    ef_range: t.Tuple[float, float] = (-2./au.Eh, 2./au.Eh),
+    b_range: t.Tuple[float, float] = (0./au.Eh, 2./au.Eh),
+    ef_num: int = 200,
+    b_num: int = 200,
+    n_levels: int = 1,
+    gamma: float = 0.1,
+) -> torch.Tensor:
+
+    efs = torch.linspace(ef_range[0], ef_range[1], steps=ef_num).to(h_tensor.device)
+    bs = torch.linspace(b_range[0], b_range[1], steps=b_num).view(b_num, 1, 1).expand(b_num, h_tensor.shape[0], 1).to(h_tensor.device)
+    hs = h_tensor.view(1, *h_tensor.shape).expand(b_num, *h_tensor.shape)
+    hs_modified = torch_h_set_b(hs, bs, use_dot_split=n_levels > 1)
+    return _torch_cmap(hs_modified, efs, i, j, n_levels, gamma)
+
+
+def _torch_cmap(
+    h_tensor: torch.Tensor,
+    efs: torch.Tensor, 
+    i: float,
+    j: float,
+    n_levels: int = 1,
+    gamma: float = 0.1
+) -> torch.Tensor:
+
     w_matrix = torch_w_matrix(h_tensor.shape[-1], gamma, n_levels)
-    s_matrix = torch_s_matrix(hs_modified, efs.view(ef_num, *((1,)*len(hs_modified.shape))), w_matrix)
+    s_matrix = torch_s_matrix(h_tensor, efs.view(efs.shape[0], *((1,)*len(h_tensor.shape))), w_matrix)
 
     dij = torch.eye(2)[i,j]
     n_dots = h_tensor.shape[-1] // (4 * n_levels)
@@ -183,6 +215,38 @@ def torch_h_set_mu(
     modified_h_tensor[..., diag_idx[1::4], diag_idx[1::4]] = -mu - magnetic_field
     modified_h_tensor[..., diag_idx[2::4], diag_idx[2::4]] = mu - magnetic_field
     modified_h_tensor[..., diag_idx[3::4], diag_idx[3::4]] = mu + magnetic_field
+    return modified_h_tensor
+
+
+def torch_h_set_b(
+    h_tensor: torch.Tensor,
+    b: torch.Tensor, # should be either a tensor of shape (..., 1) or (..., n_blocks)
+    use_dot_split: bool = False
+) -> torch.Tensor:
+    assert h_tensor.shape[-1] >= 4, "At least one 4 x 4 block is required"
+    n_blocks = h_tensor.shape[-1] // 4
+    if b.shape[-1] == 1:
+        b = b.expand(*b.shape[:-1], n_blocks)
+
+    mu = torch.stack(
+        [(h_tensor[..., i*4 + 2, i*4 + 2] + h_tensor[..., i*4 + 3, i*4 + 3]) / 2 for i in range(n_blocks)],
+        dim=-1
+    )
+
+    if use_dot_split:
+        dot_splits = torch.stack(
+            [h_tensor[..., i*4, i*4] - h_tensor[..., (i+1)*4, (i+1)*4] for i in range(n_blocks - 1)],
+            dim=-1
+        )
+        dot_splits = torch.cat([torch.zeros_like(dot_splits[..., :1]), dot_splits], dim=-1)
+        mu = mu + dot_splits
+    
+    diag_idx = torch.arange(h_tensor.shape[-1], device=h_tensor.device)
+    modified_h_tensor = h_tensor.clone()
+    modified_h_tensor[..., diag_idx[0::4], diag_idx[0::4]] = -mu + b
+    modified_h_tensor[..., diag_idx[1::4], diag_idx[1::4]] = -mu - b
+    modified_h_tensor[..., diag_idx[2::4], diag_idx[2::4]] = mu - b
+    modified_h_tensor[..., diag_idx[3::4], diag_idx[3::4]] = mu + b
     return modified_h_tensor
 
 
