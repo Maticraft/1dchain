@@ -20,6 +20,7 @@ EIGVALS_DIR_NAME = 'eigvals'
 EIGVEC_DIR_NAME = 'eigvec'
 CONDUCTANCE_CMAP_0_DIR_NAME = 'conductance_cmap_0'
 CONDUCTANCE_CMAP_1_DIR_NAME = 'conductance_cmap_1'
+CONDUCTANCE_CMAP_2_DIR_NAME = 'conductance_cmap_2'
 
 
 def generate_data(
@@ -57,6 +58,9 @@ def generate_data(
             if 'cmap1' in conductance_config:
                 cmap1 = transport.c_map1(**conductance_config['cmap1'])
                 save_matrix(cmap1, directory, CONDUCTANCE_CMAP_1_DIR_NAME, filename, format)
+            if 'cmap2' in conductance_config:
+                cmap2 = transport.c_map2(**conductance_config['cmap2'])
+                save_matrix(cmap2, directory, CONDUCTANCE_CMAP_2_DIR_NAME, filename, format)
 
         save_data(matrix, label, directory, filename, eigvals, eigvec, format, params)
 

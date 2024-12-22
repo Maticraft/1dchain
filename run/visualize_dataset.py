@@ -25,7 +25,7 @@ xnorm = 1/AtomicUnits.Eh
 ynorm = 1/AtomicUnits.Eh
 
 # Paths
-data_path = './data/quantum_dots/3dots1level_majoranas_gap_pol_verified_with_conductance'
+data_path = './data/quantum_dots/3dots1level_majoranas_separated'
 data_mean_std_path = f'{data_path}/mean_std.pkl'
 
 # test_dir_name = 'tests_subspace_{}_latent_ep{}'

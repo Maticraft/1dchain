@@ -328,7 +328,7 @@ def generate_parameters(n_samples: int, num_verified_majoranas: int = 0):
             hamiltonian = QuantumDotsHamiltonian(params)
             label = hamiltonian.get_label()
             label = label.split(', ')
-            if (float(label[0]) * float(label[1]) >= 0.1) and (100*float(label[5]) < float(label[6])):
+            if (float(label[0]) * float(label[1]) >= 0.1) and (float(label[5]) < MZM_THRESHOLD) and (0.4/AtomicUnits.Eh < float(label[6])):
                 total_num_hamiltonians += 1
                 num_hamiltonians_with_majoranas + 1
                 yield {'parameters': params.to_dict()}  

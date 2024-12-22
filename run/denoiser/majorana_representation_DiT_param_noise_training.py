@@ -22,9 +22,9 @@ from src.hamiltonian.utils import plot_eigvals_levels
 from src.torch_utils import TorchHamiltonian
 
 # Paths
-data_path = './data/quantum_dots/3dots1level_majoranas_gap_pol_verified'
+data_path = './data/quantum_dots/3dots1level_majoranas_separated'
 data_mean_std_path = f'{data_path}/mean_std.pkl'
-save_dir = './param_denoiser/quantum_dots/3dots1level_majoranas_gap_pol_verified'
+save_dir = './param_denoiser/quantum_dots/3dots1level_majoranas_separated'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 distribution_dir_name = 'tests_majoranas_latent_ep_{}'
@@ -44,19 +44,20 @@ vscale = 1/AtomicUnits.Eh
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Model name
-model_name = 'QDH-1lvl-no-interlevel_DiT_28_ham_flat_param_noise_strength_percentage0_1_lr1e-4decreasing'
+model_name = 'QDH-1lvl-no-interlevel_DiT_28_ham_flat_param_noise_strength_percentage0_2_lr1e-4decreasing'
 
 # Params
 params = {
     'epochs': 500,
     'batch_size': 64,
     'lr': 1e-4,
-    'max_noise_amplitude': 0.1,
+    'max_noise_amplitude': 0.2,
 }
 
 # Architecture
 dit_config = {
     'input_size': 12,
+    'output_size': 12,
     'patch_size': 4,
     'hidden_size': 1024,
     'depth': 16,
@@ -67,6 +68,7 @@ dit_config = {
     'learn_sigma': False,
     'min_inter_site_interaction_range': 1,
     'max_inter_site_interaction_range': 2,
+    'input_embedder': 'hamiltonian',
 }
 
 
@@ -267,7 +269,7 @@ for epoch in range(0, params['epochs'] + 1):
                 noisy_cmap = torch_conductance_map2(mapped_h_noisy.unsqueeze(0), **conductance_config['cmap2'])
             plot_conductance_map(
                 noisy_cmap[0].detach().cpu().numpy(),
-                os.path.join(epoch_dir, 'noisy_conductance_map.png'),
+                os.path.join(dir_path, 'noisy_conductance_map.png'),
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
@@ -282,7 +284,7 @@ for epoch in range(0, params['epochs'] + 1):
                 denoised_cmap = torch_conductance_map2(mapped_h_denoised.unsqueeze(0), **conductance_config['cmap2'])
             plot_conductance_map(
                 denoised_cmap[0].detach().cpu().numpy(),
-                os.path.join(epoch_dir, 'denoised_conductance_map.png'),
+                os.path.join(dir_path, 'denoised_conductance_map.png'),
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",

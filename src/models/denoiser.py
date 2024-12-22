@@ -154,7 +154,7 @@ def test_denoising_param_model(
 
     with torch.no_grad():
         print(f'Epoch: {epoch}')
-        for (_, x, x_perturbed), _ in tqdm(test_loader, 'Testing denoising model'):
+        for (x, x_perturbed), _ in tqdm(test_loader, 'Testing denoising model'):
             x = x.to(device)
             x_perturbed = x_perturbed.to(device)
             
