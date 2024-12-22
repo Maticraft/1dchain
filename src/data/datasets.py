@@ -1,6 +1,6 @@
 from copy import deepcopy
 from src.data.utils import DICTIONARY_NAME, EIGVALS_DIR_NAME, EIGVEC_DIR_NAME, CONDUCTANCE_CMAP_0_DIR_NAME, CONDUCTANCE_CMAP_1_DIR_NAME, MATRICES_DIR_NAME, PARAMS_DICTIONARY_NAME, save_matrix
-from src.hamiltonian.conductance import torch_conductance_map0, torch_conductance_map2, Transport
+from src.hamiltonian.conductance import generate_conductance_tensor
 from src.hamiltonian.hamiltonian import REPRESENTATION_MAPPING_FUNCTION, Hamiltonian, RepresentationMapping
 
 import numpy as np
@@ -277,49 +277,38 @@ class HamiltonianFromParametersDataset(Dataset):
             model = self.hamiltionian_class(**hamiltonian_params)
             tensor = model.get_hamiltonian_tensor()
             tensor_complex = torch.complex(tensor[0], tensor[1])
-            if 'cmap0' in self.conductance_config:
-                cmap = torch_conductance_map0(tensor_complex.unsqueeze(0), **self.conductance_config['cmap0'])
-            elif 'cmap2' in self.conductance_config:
-                cmap = torch_conductance_map2(tensor_complex.unsqueeze(0), **self.conductance_config['cmap2'])
+            cmap = generate_conductance_tensor(tensor_complex, self.conductance_config)
             tensors.append(cmap)
-
 
         if self.params_noise_config is not None:
             hamiltonian_noisy_params = self.add_noise_to_params(hamiltonian_params, self.params_noise_config)
             noisy_tensor = self.generate_hamiltonian_tensor(hamiltonian_noisy_params)
             tensors.append(noisy_tensor)
         else:
+            hamiltonian_noisy_params = None
             tensors.append(h_tensor)
 
         if self.conductance_config is not None:
-            if 'cmap0' in self.conductance_config:
-                if self.noisy_conductance:
-                    model = self.hamiltionian_class(**hamiltonian_noisy_params)
-                    tensor = model.get_hamiltonian_tensor()
-                else:
-                    model = self.hamiltionian_class(**hamiltonian_params)
-                    tensor = model.get_hamiltonian_tensor()
-                tensor_complex = torch.complex(tensor[0], tensor[1])
-                cmap0 = torch_conductance_map0(tensor_complex.unsqueeze(0), **self.conductance_config['cmap0'])
-                tensors.append(cmap0)
-            if 'cmap1' in self.conductance_config:
-                model = self.hamiltionian_class(**hamiltonian_params)
-                transport = Transport(model, self.conductance_config['gamma'])
-                cmap1 = transport.c_map1(**self.conductance_config['cmap1'])
-                tensors.append(torch.from_numpy(cmap1).to(torch.float32).unsqueeze(0))
-            if 'cmap2' in self.conductance_config:
-                if self.noisy_conductance:
-                    model = self.hamiltionian_class(**hamiltonian_noisy_params)
-                    tensor = model.get_hamiltonian_tensor()
-                else:
-                    model = self.hamiltionian_class(**hamiltonian_params)
-                    tensor = model.get_hamiltonian_tensor()
-                tensor_complex = torch.complex(tensor[0], tensor[1])
-                cmap0 = torch_conductance_map2(tensor_complex.unsqueeze(0), **self.conductance_config['cmap2'])
-                tensors.append(cmap0)
+            cmap = self._generate_input_conductance(hamiltonian_params, hamiltonian_noisy_params, self.conductance_config)
+            tensors.append(cmap)
 
         label = self.get_label(idx, self.label_idx)
         return tensors, label
+
+    def _generate_input_conductance(
+        self,
+        hamiltonian_params: t.Dict[str, t.Any],
+        hamiltonian_noisy_params: t.Optional[t.Dict[str, t.Any]],
+        conductance_config: t.Dict[str, t.Any],
+    ):
+        if hamiltonian_noisy_params is not None:
+            model = self.hamiltionian_class(**hamiltonian_noisy_params)
+        else:
+            model = self.hamiltionian_class(**hamiltonian_params)
+        tensor = model.get_hamiltonian_tensor()
+        tensor_complex = torch.complex(tensor[0], tensor[1])
+        cmap = generate_conductance_tensor(tensor_complex, conductance_config)
+        return cmap
 
     def generate_hamiltonian_tensor(self, hamiltonian_params):
         model = self.hamiltionian_class(**hamiltonian_params)

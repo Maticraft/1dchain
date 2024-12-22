@@ -129,7 +129,7 @@ def torch_conductance_map0(
 ) -> torch.Tensor:
 
     efs = torch.linspace(ef_range[0], ef_range[1], steps=ef_num).to(h_tensor.device)
-    mus = torch.linspace(mu_range[0], mu_range[1], steps=mu_num).view(mu_num, 1, 1).expand(mu_num, h_tensor.shape[0], 1).to(h_tensor.device)
+    mus = torch.linspace(mu_range[0], mu_range[1], steps=mu_num).view(mu_num, *((1,)*len(h_tensor.shape[:-2])), 1).expand(mu_num, *h_tensor.shape[:-2], 1).to(h_tensor.device)
     hs = h_tensor.view(1, *h_tensor.shape).expand(mu_num, *h_tensor.shape)
     hs_modified = torch_h_set_mu(hs, mus, use_dot_split=n_levels > 1)
     return _torch_cmap(hs_modified, efs, i, j, n_levels, gamma)
@@ -148,7 +148,7 @@ def torch_conductance_map2(
 ) -> torch.Tensor:
 
     efs = torch.linspace(ef_range[0], ef_range[1], steps=ef_num).to(h_tensor.device)
-    bs = torch.linspace(b_range[0], b_range[1], steps=b_num).view(b_num, 1, 1).expand(b_num, h_tensor.shape[0], 1).to(h_tensor.device)
+    bs = torch.linspace(b_range[0], b_range[1], steps=b_num).view(b_num, *((1,)*len(h_tensor.shape[:-2])), 1).expand(b_num, *h_tensor.shape[:-2], 1).to(h_tensor.device)
     hs = h_tensor.view(1, *h_tensor.shape).expand(b_num, *h_tensor.shape)
     hs_modified = torch_h_set_b(hs, bs, use_dot_split=n_levels > 1)
     return _torch_cmap(hs_modified, efs, i, j, n_levels, gamma)
@@ -330,3 +330,20 @@ def plot_conductance_map(
     cbar.set_label(r'conductance')
     plt.savefig(filename)
     plt.close()
+
+
+def generate_conductance_tensor(h_torch: torch.Tensor, cmap_config: t.Dict[str, t.Any]) -> torch.Tensor:
+    """
+    h_torch: torch.Tensor - must be denormalized complex hamitlonian tensor in standard representation
+    """
+    if "cmap_list" in cmap_config:
+        predicted_cmap = torch.cat(
+            [generate_conductance_tensor(h_torch, cmap_subconfig) for cmap_subconfig in cmap_config["cmap_list"]],
+            dim=-3
+        )
+        return predicted_cmap
+    if "cmap0" in cmap_config:
+        predicted_cmap = torch_conductance_map0(h_torch.unsqueeze(-3), **cmap_config["cmap0"])
+    elif "cmap2" in cmap_config:
+        predicted_cmap = torch_conductance_map2(h_torch.unsqueeze(-3), **cmap_config["cmap2"])
+    return predicted_cmap

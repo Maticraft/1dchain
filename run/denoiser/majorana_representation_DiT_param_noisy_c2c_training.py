@@ -8,7 +8,7 @@ from torchvision.transforms import Normalize
 
 from src.data.datasets import HamiltonianFromParametersDataset
 from src.data.utils import calculate_mean_and_std, Denormalize
-from src.hamiltonian.conductance import plot_conductance_map, torch_conductance_map0, torch_conductance_map2
+from src.hamiltonian.conductance import plot_conductance_map, torch_conductance_map0, torch_conductance_map2, generate_conductance_tensor
 from src.hamiltonian.hamiltonian import RepresentationMapping, transform_majorana_plus_minus_up_down_representation_to_default
 from src.hamiltonian.quantum_dots_chain import AtomicUnits, DefaultParameters, QuantumDotsHamiltonianParameters, QuantumDotsHamiltonian
 from src.hamiltonian.utils import plot_eigvals_levels
@@ -44,7 +44,7 @@ vscale = 1/AtomicUnits.Eh
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Model name
-model_name = 'QDH-1lvl-no-interlevel_DiT_12_ham_flat_param_c2c_lr1e-4decreasing_HR'
+model_name = 'QDH-1lvl-no-interlevel_DiT_12_ham_flat_param_4maps_c2c_lr1e-4decreasing'
 
 # Params
 params = {
@@ -60,7 +60,8 @@ params = {
 
 # Architecture
 dit_config = {
-    'input_size': 200,
+    'input_size': 100,
+    'input_channels': 4,
     'output_size': 12,
     'patch_size': 4,
     'hidden_size': 256,
@@ -92,18 +93,53 @@ params_noise_config = {
 }
 
 conductance_config = {
-    'cmap2': {
-        'i':0,
-        'j':0,
-        'gamma': 0.1,
-        'b_range': (0./AtomicUnits.Eh, 2./AtomicUnits.Eh),
-        'ef_range': (-2./AtomicUnits.Eh, 2./AtomicUnits.Eh),
-        'b_num': 200,
-        'ef_num': 200
-    }
+    'cmap_list': [
+    {
+        'cmap2': {
+            'i':0,
+            'j':0,
+            'gamma': 0.1,
+            'b_range': (0./AtomicUnits.Eh, 1./AtomicUnits.Eh),
+            'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
+            'b_num': 100,
+            'ef_num': 100
+        },
+    },
+    {
+        'cmap2': {
+            'i':0,
+            'j':1,
+            'gamma': 0.1,
+            'b_range': (0./AtomicUnits.Eh, 1./AtomicUnits.Eh),
+            'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
+            'b_num': 100,
+            'ef_num': 100
+        },
+    },
+    {
+        'cmap2': {
+            'i':1,
+            'j':0,
+            'gamma': 0.1,
+            'b_range': (0./AtomicUnits.Eh, 1./AtomicUnits.Eh),
+            'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
+            'b_num': 100,
+            'ef_num': 100
+        },
+    },
+    {
+        'cmap2': {
+            'i':1,
+            'j':1,
+            'gamma': 0.1,
+            'b_range': (0./AtomicUnits.Eh, 1./AtomicUnits.Eh),
+            'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
+            'b_num': 100,
+            'ef_num': 100
+        },
+    },
+    ],
 }
-x_tick_range = conductance_config['cmap2']['b_range']
-y_tick_range = conductance_config['cmap2']['ef_range']
 
 # Set the root dir
 root_dir = os.path.join(save_dir, f'DiT', model_name)
@@ -221,14 +257,22 @@ for epoch in range(0, params['epochs'] + 1):
         test_matrix_path = os.path.join(epoch_dir, hamiltonian_plot_name)
         plot_matrix(h_predicted[0].detach().cpu().numpy(), test_matrix_path.format('denoised_real'), vmin=-vscale, vmax=vscale)
         plot_matrix(h_predicted[1].detach().cpu().numpy(), test_matrix_path.format('denoised_imag'), vmin=-vscale, vmax=vscale)
-        plot_conductance_map(
-            h_noisy_conductance[0, 0].detach().cpu().numpy(),
-            os.path.join(epoch_dir, 'noisy_conductance_map.png'),
-            xtick_range=x_tick_range,
-            ytick_range=y_tick_range,
-            xlabel="$B$ [mV]",
-            ylabel="$E_F$ [meV]"
-        )
+        
+        for i, cmap_config in enumerate(conductance_config['cmap_list']):
+            noisy_conductance_path = os.path.join(epoch_dir, 'noisy_conductance')
+            os.makedirs(noisy_conductance_path, exist_ok=True)
+            x_tick_range = cmap_config['cmap2']['b_range']
+            y_tick_range = cmap_config['cmap2']['ef_range']
+            i_val = cmap_config['cmap2']['i']
+            j_val = cmap_config['cmap2']['j']
+            plot_conductance_map(
+                h_noisy_conductance[0, i].detach().cpu().numpy(),
+                os.path.join(noisy_conductance_path, f'map_i{i_val}_j{j_val}.png'),
+                xtick_range=x_tick_range,
+                ytick_range=y_tick_range,
+                xlabel="$B$ [mV]",
+                ylabel="$E_F$ [meV]"
+            )
         
         # mapped_h_ref = transform_majorana_plus_minus_up_down_representation_to_default(torch.complex(h_torch_denormalized[0], h_torch_denormalized[1]))
         # ref_cmap = torch_conductance_map0(
@@ -243,29 +287,40 @@ for epoch in range(0, params['epochs'] + 1):
         #     gamma=0.1
         # )
 
-        ref_cmap = test_data[0][0][1].to(device)
-        plot_conductance_map(
-            ref_cmap[0].detach().cpu().numpy(),
-            os.path.join(epoch_dir, 'ref_conductance_map.png'),
-            xtick_range=x_tick_range,
-            ytick_range=y_tick_range,
-            xlabel="$B$ [mV]",
-            ylabel="$E_F$ [meV]"
-        )
+        for i, cmap_config in enumerate(conductance_config['cmap_list']):
+            ref_conductance_path = os.path.join(epoch_dir, 'ref_conductance')
+            os.makedirs(ref_conductance_path, exist_ok=True)
+            x_tick_range = cmap_config['cmap2']['b_range']
+            y_tick_range = cmap_config['cmap2']['ef_range']
+            i_val = cmap_config['cmap2']['i']
+            j_val = cmap_config['cmap2']['j']
+            ref_cmap = test_data[0][0][1].to(device)
+            plot_conductance_map(
+                ref_cmap[i].detach().cpu().numpy(),
+                os.path.join(ref_conductance_path, f'map_i{i_val}_j{j_val}.png'),
+                xtick_range=x_tick_range,
+                ytick_range=y_tick_range,
+                xlabel="$B$ [mV]",
+                ylabel="$E_F$ [meV]"
+            )
 
         mapped_h_predicted = transform_majorana_plus_minus_up_down_representation_to_default(torch.complex(h_predicted[0], h_predicted[1]))
-        if "cmap0" in conductance_config:
-            predicted_cmap = torch_conductance_map0(mapped_h_predicted.unsqueeze(0), **conductance_config['cmap0'])
-        if "cmap2" in conductance_config:
-            predicted_cmap = torch_conductance_map2(mapped_h_predicted.unsqueeze(0), **conductance_config['cmap2'])
-        plot_conductance_map(
-            predicted_cmap[0].detach().cpu().numpy(),
-            os.path.join(epoch_dir, 'predicted_conductance_map.png'),
-            xtick_range=x_tick_range,
-            ytick_range=y_tick_range,
-            xlabel="$B$ [mV]",
-            ylabel="$E_F$ [meV]"
-        )
-
+        predicted_cmap = generate_conductance_tensor(mapped_h_predicted, conductance_config)
+        
+        for i, cmap_config in enumerate(conductance_config['cmap_list']):
+            predicted_conductance_path = os.path.join(epoch_dir, 'predicted_conductance')
+            os.makedirs(predicted_conductance_path, exist_ok=True)
+            x_tick_range = cmap_config['cmap2']['b_range']
+            y_tick_range = cmap_config['cmap2']['ef_range']
+            i_val = cmap_config['cmap2']['i']
+            j_val = cmap_config['cmap2']['j']
+            plot_conductance_map(
+                predicted_cmap[i].detach().cpu().numpy(),
+                os.path.join(predicted_conductance_path, f'map_i{i_val}_j{j_val}.png'),
+                xtick_range=x_tick_range,
+                ytick_range=y_tick_range,
+                xlabel="$B$ [mV]",
+                ylabel="$E_F$ [meV]"
+            )
 
 plot_convergence(loss_path, convergence_path, read_label=True)

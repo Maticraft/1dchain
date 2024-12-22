@@ -6,9 +6,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 
+from src.hamiltonian.conductance import generate_conductance_tensor
 from src.models.noise_generatiron import NoiseGenerator
 from src.hamiltonian.quantum_dots_chain import AtomicUnits
-from src.hamiltonian.conductance import torch_conductance_map0, torch_conductance_map2
 from src.hamiltonian.hamiltonian import transform_majorana_plus_minus_up_down_representation_to_default
 from src.models.majorana_representation_generator import MajoranaRepresentationHamiltonianConstructor
 from src.torch_utils import TorchHamiltonian
@@ -208,10 +208,7 @@ def train_denoising_conductance_param_model(
 
         torch_h = denormalize(torch_h)
         mapped_h_predicted = transform_majorana_plus_minus_up_down_representation_to_default(torch.complex(torch_h[:, 0], torch_h[:, 1]))
-        if "cmap0" in cmap_config:
-            predicted_cmap = torch_conductance_map0(mapped_h_predicted, **cmap_config["cmap0"])
-        elif "cmap2" in cmap_config:
-            predicted_cmap = torch_conductance_map2(mapped_h_predicted, **cmap_config["cmap2"])
+        predicted_cmap = generate_conductance_tensor(mapped_h_predicted, cmap_config)
         # loss is mean squared error between the predicted and true noise
         if use_input_as_target:
             target = x_perturbed.squeeze(1)
@@ -235,7 +232,6 @@ def train_denoising_conductance_param_model(
     print(f'Train loss: {total_loss}')
     print()
     return total_loss
-
 
 def test_denoising_conductance_param_model(
     model: nn.Module,
@@ -270,10 +266,7 @@ def test_denoising_conductance_param_model(
 
             torch_h = denormalize(torch_h)
             mapped_h_predicted = transform_majorana_plus_minus_up_down_representation_to_default(torch.complex(torch_h[:, 0], torch_h[:, 1]))
-            if "cmap0" in cmap_config:
-                predicted_cmap = torch_conductance_map0(mapped_h_predicted, **cmap_config["cmap0"])
-            elif "cmap2" in cmap_config:
-                predicted_cmap = torch_conductance_map2(mapped_h_predicted, **cmap_config["cmap2"])
+            predicted_cmap = generate_conductance_tensor(mapped_h_predicted, cmap_config)
         # loss is mean squared error between the predicted and true noise
         loss = F.mse_loss(predicted_cmap, x)
         total_loss += loss.item()

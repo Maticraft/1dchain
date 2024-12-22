@@ -155,6 +155,7 @@ class DiT(DiffusionModel):
     def __init__(
         self,
         input_size=32,
+        input_channels=1,
         output_size=32,
         patch_size=2,
         hidden_size=1152,
@@ -180,12 +181,13 @@ class DiT(DiffusionModel):
         self.seq_size = input_size // patch_size
 
         if self.input_embedder == 'patch':
-            self.x_embedder = PatchEmbed(input_size, patch_size, 1, hidden_size, bias=True)
+            self.x_embedder = PatchEmbed(input_size, patch_size, input_channels, hidden_size, bias=True)
             self.num_patches = self.x_embedder.num_patches
         
         if self.input_embedder == 'hamiltonian':
             # works only for patch size = 4
             assert patch_size == 4, 'Hamiltonian embedder only works for patch size 4'
+            assert input_channels == 1, 'Hamiltonian embedder only works for 1 channel'
             self.hamiltonian_embeddder = MajoranaRepresentationPatchEmbed(hidden_size, min_inter_site_interaction_range, max_inter_site_interaction_range)
             interaction_range = max_inter_site_interaction_range - min_inter_site_interaction_range        
             self.num_patches = self.seq_size * (interaction_range * self.hamiltonian_embeddder.num_inter_site_params + self.hamiltonian_embeddder.num_on_site_params)
