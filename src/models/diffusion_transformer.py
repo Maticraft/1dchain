@@ -203,7 +203,7 @@ class DiT(DiffusionModel):
         ])
 
         self.hamiltonian_unpatch = MajoranaRepresentationUnpatch(mlp_ratio, min_inter_site_interaction_range, max_inter_site_interaction_range, **kwargs)
-        self.in_to_out_coverter = nn.Linear(self.seq_size ** 2, (output_size // self.hamiltonian_unpatch.block_size) * self.hamiltonian_unpatch.num_total_params)
+        self.in_to_out_coverter = nn.Linear(self.num_patches, (output_size // self.hamiltonian_unpatch.block_size) * self.hamiltonian_unpatch.num_total_params)
         self.final_layer = FinalLayer(hidden_size, int(mlp_ratio*self.hamiltonian_unpatch.num_total_params))
         self.initialize_weights()
 
