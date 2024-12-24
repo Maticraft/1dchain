@@ -232,6 +232,7 @@ class HamiltonianFromParametersDataset(Dataset):
         conductance_config: t.Optional[t.Dict[str, t.Any]] = None,
         noisy_conductance: bool = False,
         target_condcuctance: bool = False,
+        random_noise: bool = False,
         **kwargs,
     ):
         param_dict_path = os.path.join(data_dir, PARAMS_DICTIONARY_NAME)
@@ -250,6 +251,7 @@ class HamiltonianFromParametersDataset(Dataset):
         self.conductance_config = conductance_config
         self.noisy_conductance = noisy_conductance
         self.target_condcuctance = target_condcuctance
+        self.random_noise = random_noise
 
     def load_label_dict(self, filepath: str) -> t.List[t.List[str]]:
         with open(filepath, 'r') as dictionary:
@@ -280,8 +282,15 @@ class HamiltonianFromParametersDataset(Dataset):
             cmap = generate_conductance_tensor(tensor_complex, self.conductance_config)
             tensors.append(cmap)
 
+        if self.random_noise:
+            noise_amplitude = np.random.random()
+            params_noise_config = self.adjust_params_noise_strength(self.params_noise_config, noise_amplitude)
+        else:
+            noise_amplitude = 0.
+            params_noise_config = self.params_noise_config
+
         if self.params_noise_config is not None:
-            hamiltonian_noisy_params = self.add_noise_to_params(hamiltonian_params, self.params_noise_config)
+            hamiltonian_noisy_params = self.add_noise_to_params(hamiltonian_params, params_noise_config)
             noisy_tensor = self.generate_hamiltonian_tensor(hamiltonian_noisy_params)
             tensors.append(noisy_tensor)
         else:
@@ -292,7 +301,7 @@ class HamiltonianFromParametersDataset(Dataset):
             cmap = self._generate_input_conductance(hamiltonian_params, hamiltonian_noisy_params, self.conductance_config)
             tensors.append(cmap)
 
-        label = self.get_label(idx, self.label_idx)
+        label = self.get_label(idx, self.label_idx), noise_amplitude
         return tensors, label
 
     def _generate_input_conductance(
@@ -355,6 +364,15 @@ class HamiltonianFromParametersDataset(Dataset):
 
         '''
         return json.loads(self.params_dictionary[idx][1])
+    
+    def adjust_params_noise_strength(self, params_noise_strength: t.Dict[str, t.Any], noise_amplitude: float) -> t.Dict[str, t.Any]:
+        new_noise_strength = {}
+        for key, value in params_noise_strength.items():
+            if isinstance(value, dict):
+                new_noise_strength[key] = self.adjust_params_noise_strength(value, noise_amplitude)
+            else:
+                new_noise_strength[key] = (noise_amplitude * value[0], value[1])
+        return new_noise_strength
 
     def add_noise_to_params(self, params: t.Dict[str, t.Any], params_noise_strength: t.Dict[str, t.Any]) -> t.Dict[str, t.Any]:
         noisy_params = deepcopy(params)

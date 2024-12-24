@@ -44,14 +44,17 @@ vscale = 1/AtomicUnits.Eh
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Model name
-model_name = 'QDH-1lvl-no-interlevel_DiT_28_ham_flat_param_noise_strength_percentage0_2_lr1e-4decreasing'
+model_name = 'QDH-1lvl-no-interlevel_DiT_28_ham_flat_param_noise_strength_random_max1_lr1e-4decreasing'
+
+# TODO: try increasing probability of small noise
 
 # Params
 params = {
     'epochs': 500,
     'batch_size': 64,
     'lr': 1e-4,
-    'max_noise_amplitude': 0.2,
+    'max_noise_amplitude': 1.,
+    'random_noise': True
 }
 
 # Architecture
@@ -121,7 +124,7 @@ try:
     with open(data_mean_std_path, 'rb') as f:
         mean, std = pickle.load(f)
 except:
-    data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, params_noise_config, label_idx=[1, 2], format='csr', threshold=0.05,representation_mapping=RepresentationMapping.majorana_plus_minus_up_down)
+    data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, params_noise_config, label_idx=[1, 2], format='csr', threshold=0.05,representation_mapping=RepresentationMapping.majorana_plus_minus_up_down, random_noise=params['random_noise'])
     data_loader = DataLoader(data, params['batch_size'])
     mean, std = calculate_mean_and_std(data_loader, device=device)
     with open(data_mean_std_path, 'wb') as f:
@@ -130,7 +133,7 @@ except:
 print('Data mean:', mean)
 print('Data std:', std)
 
-data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, params_noise_config, label_idx=[1, 2], format='csr', threshold=0.05, gt_threshold=True, normalization_mean=mean, normalization_std=std, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down)
+data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, params_noise_config, label_idx=[1, 2], format='csr', threshold=0.05, gt_threshold=True, normalization_mean=mean, normalization_std=std, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down, random_noise=params['random_noise'])
 
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size
@@ -190,7 +193,10 @@ for epoch in range(0, params['epochs'] + 1):
         os.makedirs(full_noise_dir, exist_ok=True)
 
         eigvals_test_path = os.path.join(epoch_dir, eigvals_plot_name.format(f'reference'))
-        h_torch_normalized = test_data[0][0][0].unsqueeze(0).to(device)
+        
+        sample = test_data[0]
+        
+        h_torch_normalized = sample[0][0].unsqueeze(0).to(device)
         h_torch_denormalized = Denormalize(mean=mean, std=std)(h_torch_normalized)[0]
         test_hamiltonian = TorchHamiltonian.from_2channel_tensor(h_torch_denormalized)
         plot_eigvals_levels(test_hamiltonian, save_path=eigvals_test_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm)
@@ -228,10 +234,11 @@ for epoch in range(0, params['epochs'] + 1):
                 hamiltonian = QuantumDotsHamiltonian(hamiltonian_params)
                 h_torch_noisy = hamiltonian.get_hamiltonian_tensor(representation_mapping=RepresentationMapping.majorana_plus_minus_up_down).unsqueeze(0).to(device)
                 h_torch_noisy = Normalize(mean, std)(h_torch_noisy)
+                noise_amplitude = torch.ones(1, 1).to(device)
             else:
-                h_torch_noisy = test_data[0][0][1].unsqueeze(0).to(device)
+                h_torch_noisy = sample[0][1].unsqueeze(0).to(device)
+                noise_amplitude = torch.tensor(sample[1][1]).view(1, 1).to(device)
 
-            noise_amplitude = torch.zeros(1, 1).to(device)
             h_denoised = model(h_torch_noisy, noise_amplitude, None)
             h_denoised = Denormalize(mean=mean, std=std)(h_denoised)[0]
             h_noisy_denormalized = Denormalize(mean=mean, std=std)(h_torch_noisy)[0]
