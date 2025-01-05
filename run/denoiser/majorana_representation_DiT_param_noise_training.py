@@ -44,7 +44,7 @@ vscale = 1/AtomicUnits.Eh
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Model name
-model_name = 'QDH-1lvl-no-interlevel_DiT_28_ham_flat_param_noise_strength_random_max1_lr1e-4decreasing'
+model_name = 'QDH-1lvl-no-interlevel_DiT_28_ham_flat_param_noise_strength_random_gauss_max1_lr1e-4decreasing'
 
 # TODO: try increasing probability of small noise
 

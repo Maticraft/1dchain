@@ -175,6 +175,32 @@ def test_denoising_param_model(
     return total_loss, total_ref_loss
 
 
+def diffusion_like_sample(
+    model: nn.Module,
+    generate_noisy_sample_fn: t.Callable,
+    n_steps: int = 100,
+    std: float = 0.2,
+    device: torch.device = torch.device('cpu'),
+    first_noisy_sample: t.Optional[torch.Tensor] = None
+):
+    noise_amplitudes = torch.normal(0., std, size=(n_steps,)).abs().sort(descending=True)
+    noise_amplitudes = torch.cat((torch.tensor([1.]), noise_amplitudes.values))
+    for i, noise_amplitude in tqdm(enumerate(noise_amplitudes), desc="Sampling..."):
+        if i==0:
+            if first_noisy_sample is not None:
+                noisy_sample = first_noisy_sample
+            else:
+                noisy_sample = generate_noisy_sample_fn()
+        else:
+            noise = generate_noisy_sample_fn()
+            noisy_sample = (1 - noise_amplitude) * denoised_sample + (noise_amplitude) * noise
+
+        t = torch.full((noisy_sample.shape[0], 1), noise_amplitude).to(device)
+        noisy_sample = noisy_sample.to(device)
+        denoised_sample = model(noisy_sample, t, None)
+    return denoised_sample
+
+
 def train_denoising_conductance_param_model(
     model: nn.Module,
     train_loader: torch.utils.data.DataLoader,

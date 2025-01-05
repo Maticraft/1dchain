@@ -283,7 +283,7 @@ class HamiltonianFromParametersDataset(Dataset):
             tensors.append(cmap)
 
         if self.random_noise:
-            noise_amplitude = np.random.random()
+            noise_amplitude = abs(np.random.normal(loc=0., scale=0.1))
             params_noise_config = self.adjust_params_noise_strength(self.params_noise_config, noise_amplitude)
         else:
             noise_amplitude = 0.
