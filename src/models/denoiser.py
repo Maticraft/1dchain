@@ -117,12 +117,12 @@ def train_denoising_param_model(
     total_loss = 0.
 
     print(f'Epoch: {epoch}')
-    for (x, x_perturbed), _ in tqdm(train_loader, 'Training denoising model'):
+    for (x, x_perturbed), (_, noise_amp) in tqdm(train_loader, 'Training denoising model'):
         optimizer.zero_grad()
         x = x.to(device)
         x_perturbed = x_perturbed.to(device)
 
-        noise_coeff = torch.zeros(x.shape[0], 1).to(device)
+        noise_coeff = noise_amp.to(device).unsqueeze(-1)
         denoised_x = model(x_perturbed, noise_coeff, None)
         
         # loss is mean squared error between the predicted and true noise
@@ -154,11 +154,11 @@ def test_denoising_param_model(
 
     with torch.no_grad():
         print(f'Epoch: {epoch}')
-        for (x, x_perturbed), _ in tqdm(test_loader, 'Testing denoising model'):
+        for (x, x_perturbed), (_, noise_amp) in tqdm(test_loader, 'Testing denoising model'):
             x = x.to(device)
             x_perturbed = x_perturbed.to(device)
             
-            noise_coeff = torch.zeros(x.shape[0], 1).to(device)
+            noise_coeff = noise_amp.to(device).unsqueeze(-1)
             denoised_x = model(x_perturbed, noise_coeff, None)
             
             # loss is mean squared error between the predicted and true noise
