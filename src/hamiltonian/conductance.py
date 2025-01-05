@@ -126,13 +126,21 @@ def torch_conductance_map0(
     mu_num: int = 200,
     n_levels: int = 1,
     gamma: float = 0.1,
+    with_embedding: bool = False
 ) -> torch.Tensor:
 
     efs = torch.linspace(ef_range[0], ef_range[1], steps=ef_num).to(h_tensor.device)
-    mus = torch.linspace(mu_range[0], mu_range[1], steps=mu_num).view(mu_num, *((1,)*len(h_tensor.shape[:-2])), 1).expand(mu_num, *h_tensor.shape[:-2], 1).to(h_tensor.device)
+    mus = torch.linspace(mu_range[0], mu_range[1], steps=mu_num).to(h_tensor.device)
+    mus_expanded = mus.view(mu_num, *((1,)*len(h_tensor.shape[:-2])), 1).expand(mu_num, *h_tensor.shape[:-2], 1)
     hs = h_tensor.view(1, *h_tensor.shape).expand(mu_num, *h_tensor.shape)
-    hs_modified = torch_h_set_mu(hs, mus, use_dot_split=n_levels > 1)
-    return _torch_cmap(hs_modified, efs, i, j, n_levels, gamma)
+    hs_modified = torch_h_set_mu(hs, mus_expanded, use_dot_split=n_levels > 1)
+    cmap = _torch_cmap(hs_modified, efs, i, j, n_levels, gamma)
+    if with_embedding:
+        efs = efs.view(*((1,)*len(cmap.shape[:-2])), -1, 1).expand(*cmap.shape[:-2], -1, mu_num)
+        mus = mus.view(*((1,)*len(cmap.shape[:-2])), 1, -1).expand(*cmap.shape[:-2], ef_num, -1)
+        cmap = torch.stack([cmap, efs, mus], dim=-3)
+    return cmap
+
 
 
 def torch_conductance_map2(
@@ -145,13 +153,20 @@ def torch_conductance_map2(
     b_num: int = 200,
     n_levels: int = 1,
     gamma: float = 0.1,
+    with_embedding: bool = False
 ) -> torch.Tensor:
 
     efs = torch.linspace(ef_range[0], ef_range[1], steps=ef_num).to(h_tensor.device)
-    bs = torch.linspace(b_range[0], b_range[1], steps=b_num).view(b_num, *((1,)*len(h_tensor.shape[:-2])), 1).expand(b_num, *h_tensor.shape[:-2], 1).to(h_tensor.device)
+    bs = torch.linspace(b_range[0], b_range[1], steps=b_num).to(h_tensor.device)
+    bs_expanded = bs.view(b_num, *((1,)*len(h_tensor.shape[:-2])), 1).expand(b_num, *h_tensor.shape[:-2], 1).to(h_tensor.device)
     hs = h_tensor.view(1, *h_tensor.shape).expand(b_num, *h_tensor.shape)
-    hs_modified = torch_h_set_b(hs, bs, use_dot_split=n_levels > 1)
-    return _torch_cmap(hs_modified, efs, i, j, n_levels, gamma)
+    hs_modified = torch_h_set_b(hs, bs_expanded, use_dot_split=n_levels > 1)
+    cmap = _torch_cmap(hs_modified, efs, i, j, n_levels, gamma)
+    if with_embedding:
+        efs = efs.view(*((1,)*len(cmap.shape[:-2])), -1, 1).expand(*cmap.shape[:-2], -1, b_num)
+        bs = bs.view(*((1,)*len(cmap.shape[:-2])), 1, -1).expand(*cmap.shape[:-2], ef_num, -1)
+        cmap = torch.stack([cmap, efs, bs], dim=-3)
+    return cmap
 
 
 def _torch_cmap(
@@ -332,7 +347,10 @@ def plot_conductance_map(
     plt.close()
 
 
-def generate_conductance_tensor(h_torch: torch.Tensor, cmap_config: t.Dict[str, t.Any]) -> torch.Tensor:
+def generate_conductance_tensor(
+    h_torch: torch.Tensor,
+    cmap_config: t.Dict[str, t.Any],
+) -> torch.Tensor:
     """
     h_torch: torch.Tensor - must be denormalized complex hamitlonian tensor in standard representation
     """
@@ -343,7 +361,13 @@ def generate_conductance_tensor(h_torch: torch.Tensor, cmap_config: t.Dict[str, 
         )
         return predicted_cmap
     if "cmap0" in cmap_config:
-        predicted_cmap = torch_conductance_map0(h_torch.unsqueeze(-3), **cmap_config["cmap0"])
+        if not cmap_config["cmap0"]["with_embedding"]:
+            h_torch = h_torch.unsqueeze(-3)
+        predicted_cmap = torch_conductance_map0(h_torch, **cmap_config["cmap0"])
+
     elif "cmap2" in cmap_config:
-        predicted_cmap = torch_conductance_map2(h_torch.unsqueeze(-3), **cmap_config["cmap2"])
+        if not cmap_config["cmap2"]["with_embedding"]:
+            h_torch = h_torch.unsqueeze(-3)
+        predicted_cmap = torch_conductance_map2(h_torch, **cmap_config["cmap2"])
+    
     return predicted_cmap

@@ -226,8 +226,7 @@ class HamiltonianFromParametersDataset(Dataset):
         label_idx: t.Union[int, t.Tuple[int, int]] = 1,
         threshold: float = 1.e-5,
         format: str = 'numpy',
-        normalization_mean: t.Tuple[float, float] = (0., 0.),
-        normalization_std: t.Tuple[float, float] = (1., 1.),
+        normalization_params: t.List[t.Tuple[t.Tuple[float, ...], t.Tuple[float, ...]]] = None,
         representation_mapping: RepresentationMapping = RepresentationMapping.none,
         conductance_config: t.Optional[t.Dict[str, t.Any]] = None,
         noisy_conductance: bool = False,
@@ -246,7 +245,9 @@ class HamiltonianFromParametersDataset(Dataset):
         self.label_idx = label_idx
         self.hamiltionian_class = hamiltionian_class
         self.representation_mapping = representation_mapping
-        self.normalization = Normalize(normalization_mean, normalization_std)
+        self.normalization = None
+        if normalization_params:
+            self.normalization = [Normalize(mean, std) for mean, std in normalization_params]
         self.params_noise_config = params_noise_config
         self.conductance_config = conductance_config
         self.noisy_conductance = noisy_conductance
@@ -302,6 +303,8 @@ class HamiltonianFromParametersDataset(Dataset):
             tensors.append(cmap)
 
         label = self.get_label(idx, self.label_idx), noise_amplitude
+        if self.normalization:
+            tensors = [normalize(tensor) for tensor, normalize in zip(tensors, self.normalization)]
         return tensors, label
 
     def _generate_input_conductance(
@@ -322,7 +325,6 @@ class HamiltonianFromParametersDataset(Dataset):
     def generate_hamiltonian_tensor(self, hamiltonian_params):
         model = self.hamiltionian_class(**hamiltonian_params)
         tensor = model.get_hamiltonian_tensor(representation_mapping=self.representation_mapping)
-        tensor = self.normalization(tensor)
         return tensor
 
     def load_params(self, idx: int) -> t.Dict[str, t.Any]:

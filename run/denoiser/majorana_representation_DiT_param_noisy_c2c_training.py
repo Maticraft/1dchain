@@ -23,7 +23,7 @@ from src.torch_utils import TorchHamiltonian
 
 # Paths
 data_path = './data/quantum_dots/3dots1level_majoranas_gap_pol_verified_with_conductance'
-data_mean_std_path = f'{data_path}/mean_std.pkl'
+normalization_params_path = f'{data_path}/normalization_params.pkl'
 save_dir = './conductance/quantum_dots/3dots1level_majoranas_gap_pol_verified'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
@@ -44,7 +44,7 @@ vscale = 1/AtomicUnits.Eh
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Model name
-model_name = 'QDH-1lvl-no-interlevel_DiT_12_ham_flat_param_4maps_c2c_lr1e-4decreasing'
+model_name = 'QDH-1lvl-no-interlevel_DiT_real_12_patch1_2maps50x50embed_norm_c2c_weigthing_lr1e-4decreasing'
 
 # Params
 params = {
@@ -54,18 +54,18 @@ params = {
     'max_noise_amplitude': 0.1,
     'model_prediction': 'hamiltonian',
     'use_input_as_target': True,
-    'weighting_threshold': None
+    'weighting_threshold': 1.5
 }
 
 
 # Architecture
 dit_config = {
-    'input_size': 100,
+    'input_size': 50,
     'input_channels': 4,
     'output_size': 12,
-    'patch_size': 4,
+    'patch_size': 1,
     'hidden_size': 256,
-    'depth': 6,
+    'depth': 12,
     'num_heads': 8,
     'mlp_ratio': 4.0,
     'class_dropout_prob': 0.1,
@@ -99,10 +99,11 @@ conductance_config = {
             'i':0,
             'j':0,
             'gamma': 0.1,
-            'b_range': (0./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-            'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-            'b_num': 100,
-            'ef_num': 100
+            'b_range': (0./AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
+            'ef_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
+            'b_num': 50,
+            'ef_num': 50,
+            'with_embedding': False
         },
     },
     {
@@ -110,32 +111,11 @@ conductance_config = {
             'i':0,
             'j':1,
             'gamma': 0.1,
-            'b_range': (0./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-            'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-            'b_num': 100,
-            'ef_num': 100
-        },
-    },
-    {
-        'cmap2': {
-            'i':1,
-            'j':0,
-            'gamma': 0.1,
-            'b_range': (0./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-            'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-            'b_num': 100,
-            'ef_num': 100
-        },
-    },
-    {
-        'cmap2': {
-            'i':1,
-            'j':1,
-            'gamma': 0.1,
-            'b_range': (0./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-            'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-            'b_num': 100,
-            'ef_num': 100
+            'b_range': (0./AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
+            'ef_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
+            'b_num': 50,
+            'ef_num': 50,
+            'with_embedding': True
         },
     },
     ],
@@ -157,20 +137,19 @@ if not os.path.isdir(tests_sub_path):
 
 # Try to load data statistics
 try:
-    with open(data_mean_std_path, 'rb') as f:
-        mean, std = pickle.load(f)
+    with open(normalization_params_path, 'rb') as f:
+        normalization_params = pickle.load(f)
 except:
-    data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, params_noise_config, label_idx=[1, 2], format='csr', threshold=0.05, gt_threshold=True, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down, noisy_conductance=True, target_condcuctance=True)
+    data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, label_idx=[1, 2], format='csr', threshold=0.05, gt_threshold=True, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down, noisy_conductance=False, target_condcuctance=True, conductance_config=conductance_config)
     data_loader = DataLoader(data, params['batch_size'])
-    mean, std = calculate_mean_and_std(data_loader, device=device)
-    with open(data_mean_std_path, 'wb') as f:
-        pickle.dump((mean, std), f)
+    normalization_params = calculate_mean_and_std(data_loader, device=device)
+    with open(normalization_params_path, 'wb') as f:
+        pickle.dump(normalization_params, f)
 
-print('Data mean:', mean)
-print('Data std:', std)
+print('Normalization params:', normalization_params)
 
 # data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, params_noise_config, label_idx=[1, 2], format='csr', threshold=0.05, gt_threshold=True, normalization_mean=mean, normalization_std=std, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down, conductance_config=conductance_config, noisy_conductance=True, target_condcuctance=True)
-data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, label_idx=[1, 2], format='csr', threshold=0.05, gt_threshold=True, normalization_mean=mean, normalization_std=std, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down, conductance_config=conductance_config, noisy_conductance=False, target_condcuctance=True)
+data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, label_idx=[1, 2], format='csr', threshold=0.05, gt_threshold=True, normalization_params=normalization_params, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down, conductance_config=conductance_config, noisy_conductance=False, target_condcuctance=True)
 
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size
@@ -190,7 +169,15 @@ scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[50, 100,
 
 save_data_list(['Epoch', 'Training loss', "Test denoising loss", "Test reference loss"], loss_path, mode='w')
 
-denormalize = Denormalize(mean=mean, std=std)
+h_mean, h_std = normalization_params[0]
+h_denormalize = Denormalize(mean=h_mean, std=h_std)
+
+cmap_mean, cmap_std = normalization_params[1]
+cmap_normalize = Normalize(mean=cmap_mean, std=cmap_std)
+cmap_denormalize = Denormalize(mean=cmap_mean, std=cmap_std)
+
+noisy_cmap_mean, noisy_cmap_std = normalization_params[3]
+noisy_cmap_denormalize = Denormalize(mean=noisy_cmap_mean, std=noisy_cmap_std)
 
 for epoch in range(0, params['epochs'] + 1):
     train_loss = train_denoising_conductance_param_model(
@@ -199,7 +186,8 @@ for epoch in range(0, params['epochs'] + 1):
         optimizer,
         device,
         epoch,
-        denormalize,
+        h_denormalize,
+        cmap_normalize,
         cmap_config=conductance_config,
         model_prediction=params['model_prediction'],
         use_input_as_target=params['use_input_as_target'],
@@ -210,7 +198,8 @@ for epoch in range(0, params['epochs'] + 1):
         test_loader,
         device,
         epoch,
-        denormalize,
+        h_denormalize,
+        cmap_normalize,
         cmap_config=conductance_config,
         reference_loss=True,
         model_prediction=params['model_prediction']
@@ -228,7 +217,7 @@ for epoch in range(0, params['epochs'] + 1):
 
         eigvals_test_path = os.path.join(epoch_dir, eigvals_plot_name.format(f'reference'))
         h_torch_normalized = test_data[0][0][0].unsqueeze(0).to(device)
-        h_torch_denormalized = denormalize(h_torch_normalized)[0]
+        h_torch_denormalized = h_denormalize(h_torch_normalized)[0]
         test_hamiltonian = TorchHamiltonian.from_2channel_tensor(h_torch_denormalized)
         plot_eigvals_levels(test_hamiltonian, save_path=eigvals_test_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm)
 
@@ -249,7 +238,7 @@ for epoch in range(0, params['epochs'] + 1):
             multiplication_factor = torch.abs(h_predicted)
             h_predicted = h_perturbed + multiplication_factor * h_perturbed
         
-        h_predicted = denormalize(h_predicted)[0]
+        h_predicted = h_denormalize(h_predicted)[0]
         
         ham_denoised = TorchHamiltonian.from_2channel_tensor(h_predicted)
         plot_eigvals_levels(ham_denoised, save_path=eigvals_dit_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm)
@@ -265,6 +254,7 @@ for epoch in range(0, params['epochs'] + 1):
             y_tick_range = cmap_config['cmap2']['ef_range']
             i_val = cmap_config['cmap2']['i']
             j_val = cmap_config['cmap2']['j']
+            h_noisy_conductance = noisy_cmap_denormalize(h_noisy_conductance)
             plot_conductance_map(
                 h_noisy_conductance[0, i].detach().cpu().numpy(),
                 os.path.join(noisy_conductance_path, f'map_i{i_val}_j{j_val}.png'),
@@ -295,6 +285,7 @@ for epoch in range(0, params['epochs'] + 1):
             i_val = cmap_config['cmap2']['i']
             j_val = cmap_config['cmap2']['j']
             ref_cmap = test_data[0][0][1].to(device)
+            ref_cmap = cmap_denormalize(ref_cmap)
             plot_conductance_map(
                 ref_cmap[i].detach().cpu().numpy(),
                 os.path.join(ref_conductance_path, f'map_i{i_val}_j{j_val}.png'),
