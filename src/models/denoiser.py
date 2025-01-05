@@ -181,7 +181,8 @@ def train_denoising_conductance_param_model(
     optimizer: torch.optim.Optimizer,
     device: torch.device,
     epoch: int,
-    denormalize: t.Callable,
+    h_denormalize: t.Callable,
+    cmap_normalize: t.Callable,
     cmap_config: t.Dict[str, t.Any],
     model_prediction: str = 'hamiltonian',
     use_input_as_target: bool = False,
@@ -206,9 +207,10 @@ def train_denoising_conductance_param_model(
             multiplication_factor = torch.abs(torch_h)
             torch_h = h_perturbed + multiplication_factor * h_perturbed
 
-        torch_h = denormalize(torch_h)
+        torch_h = h_denormalize(torch_h)
         mapped_h_predicted = transform_majorana_plus_minus_up_down_representation_to_default(torch.complex(torch_h[:, 0], torch_h[:, 1]))
         predicted_cmap = generate_conductance_tensor(mapped_h_predicted, cmap_config)
+        predicted_cmap = cmap_normalize(predicted_cmap)
         # loss is mean squared error between the predicted and true noise
         if use_input_as_target:
             target = x_perturbed.squeeze(1)
@@ -238,7 +240,8 @@ def test_denoising_conductance_param_model(
     test_loader: torch.utils.data.DataLoader,
     device: torch.device,
     epoch: int,
-    denormalize: t.Callable,
+    h_denormalize: t.Callable,
+    cmap_normalize: t.Callable,
     cmap_config: t.Dict[str, t.Any],
     reference_loss: bool = True,
     model_prediction: str = 'hamiltonian'
@@ -264,15 +267,16 @@ def test_denoising_conductance_param_model(
                 multiplication_factor = torch.abs(torch_h)
                 torch_h = h_perturbed + multiplication_factor * h_perturbed
 
-            torch_h = denormalize(torch_h)
+            torch_h = h_denormalize(torch_h)
             mapped_h_predicted = transform_majorana_plus_minus_up_down_representation_to_default(torch.complex(torch_h[:, 0], torch_h[:, 1]))
             predicted_cmap = generate_conductance_tensor(mapped_h_predicted, cmap_config)
-        # loss is mean squared error between the predicted and true noise
-        loss = F.mse_loss(predicted_cmap, x)
-        total_loss += loss.item()
-        if reference_loss:
-            ref_loss = F.mse_loss(x_perturbed.squeeze(1), x)
-            total_ref_loss += ref_loss.item()
+            predicted_cmap = cmap_normalize(predicted_cmap)
+            # loss is mean squared error between the predicted and true noise
+            loss = F.mse_loss(predicted_cmap, x)
+            total_loss += loss.item()
+            if reference_loss:
+                ref_loss = F.mse_loss(x_perturbed.squeeze(1), x)
+                total_ref_loss += ref_loss.item()
 
     total_loss /= len(test_loader)
     total_ref_loss /= len(test_loader)

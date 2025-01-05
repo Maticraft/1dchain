@@ -111,23 +111,30 @@ def save_matrix(matrix: np.ndarray, root_dir: str, folder_name: str, file_name: 
 def calculate_mean_and_std(
     data_loader: DataLoader,
     device: torch.device,
-    callable: t.Optional[t.Callable] = None
+    callable: t.Optional[t.Callable] = None,
+    callable_data_idx: t.Optional[int] = None
 ):
     # calculate latent space distribution (mean and std)
-    mean = defaultdict(float)
-    std = defaultdict(float)
-    for (data, _), _ in tqdm(data_loader, 'Collecting data statistics...'):
-        data = data.to(device)
-        if callable is not None:
-            data = callable(data)
-        for channel in range(data.shape[1]):
-            mean[channel] += data[:, channel].mean().item()
-            std[channel] += data[:, channel].std().item()
-    for channel in mean.keys():
-        mean[channel] /= len(data_loader)
-        std[channel] /= len(data_loader)
-    return tuple(mean.values()), tuple(std.values())
-
+    mean = [defaultdict(float) for _ in range(len(data_loader.dataset[0][0]))]
+    std = [defaultdict(float) for _ in range(len(data_loader.dataset[0][0]))]
+    for data_tuple, _ in tqdm(data_loader, 'Collecting data statistics...'):
+        for i, data in enumerate(data_tuple):
+            data = data.to(device)
+            if (callable is not None) and (i == callable_data_idx):
+                data = callable(data)
+            for channel in range(data.shape[1]):
+                mean[i][channel] += data[:, channel].mean().item()
+                std[i][channel] += data[:, channel].std().item()
+    
+    results = []
+    eps = 1e-6
+    for m_i, s_i in zip(mean, std):
+        for channel in m_i.keys():
+            m_i[channel] /= len(data_loader)
+            s_i[channel] /= len(data_loader)
+            s_i[channel] += eps
+        results.append((tuple(m_i.values()), tuple(s_i.values())))
+    return results
 
 class Denormalize(Normalize):
     def __init__(self, mean: t.Tuple[float, ...], std: t.Tuple[float, ...]):
