@@ -157,6 +157,7 @@ class DiT(DiffusionModel):
         input_size=32,
         input_channels=1,
         output_size=32,
+        output_channels=1,
         patch_size=2,
         hidden_size=1152,
         depth=28,
@@ -169,30 +170,31 @@ class DiT(DiffusionModel):
         max_inter_site_interaction_range=3,
         timesteps=500,
         input_embedder='patch',
+        output_unpatcher='hamiltonian',
         **kwargs
     ):
         super().__init__()
         self.input_embedder = input_embedder
+        self.output_unpatcher = output_unpatcher
         self.learn_sigma = learn_sigma
         # self.in_channels = in_channels
         # self.out_channels = in_channels * 2 if learn_sigma else in_channels
         self.patch_size = patch_size
         self.num_heads = num_heads
-        self.seq_size = input_size // patch_size
 
         if self.input_embedder == 'patch':
-            self.x_embedder = PatchEmbed(input_size, patch_size, input_channels, hidden_size, bias=True)
+            self.x_embedder = PatchEmbed(input_size, self.patch_size, input_channels, hidden_size, bias=True)
             self.num_patches = self.x_embedder.num_patches
-        
+            self.seq_size = input_size // patch_size
+
         if self.input_embedder == 'hamiltonian':
             # works only for patch size = 4
-            assert patch_size == 4, 'Hamiltonian embedder only works for patch size 4'
             assert input_channels == 1, 'Hamiltonian embedder only works for 1 channel'
             self.hamiltonian_embeddder = MajoranaRepresentationPatchEmbed(hidden_size, min_inter_site_interaction_range, max_inter_site_interaction_range)
             interaction_range = max_inter_site_interaction_range - min_inter_site_interaction_range        
+            self.seq_size = input_size // 4
             self.num_patches = self.seq_size * (interaction_range * self.hamiltonian_embeddder.num_inter_site_params + self.hamiltonian_embeddder.num_on_site_params)
             # total_params = self.hamiltonian_embeddder.num_on_site_params + (self.hamiltonian_embeddder.num_inter_site_params * interaction_range)
-
 
         self.t_embedder = FreqEmbedder(hidden_size, period=timesteps)
         # self.y_embedder = LabelEmbedder(num_classes, hidden_size, class_dropout_prob)
@@ -204,9 +206,17 @@ class DiT(DiffusionModel):
             DiTBlock(hidden_size, num_heads, mlp_ratio=mlp_ratio) for _ in range(depth)
         ])
 
-        self.hamiltonian_unpatch = MajoranaRepresentationUnpatch(mlp_ratio, min_inter_site_interaction_range, max_inter_site_interaction_range, **kwargs)
-        self.in_to_out_coverter = nn.Linear(self.num_patches, (output_size // self.hamiltonian_unpatch.block_size) * self.hamiltonian_unpatch.num_total_params)
-        self.final_layer = FinalLayer(hidden_size, int(mlp_ratio*self.hamiltonian_unpatch.num_total_params))
+        if self.output_unpatcher == 'patch':
+            self.in_to_out_coverter = nn.Linear(self.num_patches, (output_size // self.patch_size)**2)
+            self.final_layer = FinalLayer(hidden_size, int(mlp_ratio * (self.patch_size**2)))
+            self.conv_unpatch = nn.ConvTranspose2d(int(mlp_ratio * (self.patch_size**2)), output_channels, kernel_size=patch_size, stride=patch_size)
+
+        if self. output_unpatcher == 'hamiltonian':
+            assert output_channels == 1, 'Hamiltonian unpatcher only works for 1 channel'
+            self.hamiltonian_unpatch = MajoranaRepresentationUnpatch(mlp_ratio, min_inter_site_interaction_range, max_inter_site_interaction_range, **kwargs)
+            self.in_to_out_coverter = nn.Linear(self.num_patches, (output_size // self.hamiltonian_unpatch.block_size) * self.hamiltonian_unpatch.num_total_params)
+            self.final_layer = FinalLayer(hidden_size, int(mlp_ratio*self.hamiltonian_unpatch.num_total_params))
+        
         self.initialize_weights()
 
     def initialize_weights(self):
@@ -260,15 +270,23 @@ class DiT(DiffusionModel):
         nn.init.constant_(self.final_layer.linear.weight, 0)
         nn.init.constant_(self.final_layer.linear.bias, 0)
 
-        # Initialize patch_embed like nn.Linear (instead of nn.Conv2d):
-        w = self.hamiltonian_unpatch.on_site_converter.weight.data
+        w = self.in_to_out_coverter.weight.data
         nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
-        # nn.init.constant_(self.hamiltonian_unpatch.on_site_converter.bias, 0)
 
-        for conv in self.hamiltonian_unpatch.inter_site_converters:
-            w = conv.weight.data
+        if self.output_unpatcher == 'patch':
+            w = self.conv_unpatch.weight.data
             nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
-            # nn.init.constant_(conv.bias, 0)
+        
+        if self.output_unpatcher == 'hamiltonian':
+            # Initialize patch_embed like nn.Linear (instead of nn.Conv2d):
+            w = self.hamiltonian_unpatch.on_site_converter.weight.data
+            nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
+            # nn.init.constant_(self.hamiltonian_unpatch.on_site_converter.bias, 0)
+
+            for conv in self.hamiltonian_unpatch.inter_site_converters:
+                w = conv.weight.data
+                nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
+                # nn.init.constant_(conv.bias, 0)
 
     def forward(self, x, time_step, context_vector):
         """
@@ -291,7 +309,14 @@ class DiT(DiffusionModel):
             x = block(x, c)                      # (N, T, D)
         x = self.in_to_out_coverter(x.transpose(1, 2)).transpose(1, 2)  # (N, T2, D)
         x = self.final_layer(x, c)                # (N, T2, total_params)
-        x = self.hamiltonian_unpatch(x)                 # (N, out_channels, H, W)
+        
+        if self.output_unpatcher == 'patch':
+            dim = int(x.shape[1] ** 0.5)
+            x = torch.unflatten(x, dim=1, sizes=(dim, dim))  # (N, H2, W2, total_params)
+            x = x.moveaxis(-1, 1)                           # (N, total_params, H2, W2)
+            x = self.conv_unpatch(x)                # (N, out_channels, H, W)
+        if self.output_unpatcher == 'hamiltonian':
+            x = self.hamiltonian_unpatch(x)                 # (N, out_channels, H, W)
         return x
 
     def forward_with_cfg(self, x, t, y, cfg_scale):

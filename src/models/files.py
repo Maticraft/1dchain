@@ -204,7 +204,7 @@ def save_gan(generator: Generator, discriminator: Discriminator, root_dir: str, 
     save_model(discriminator, root_dir, epoch)
 
 
-def save_model(model: nn.Module, root_dir: str, epoch: int):
+def save_model(model: nn.Module, root_dir: str, epoch: int, suffix: str = ''):
     model_type = type(model)
     if not os.path.isdir(root_dir):
         os.makedirs(root_dir)
@@ -213,7 +213,7 @@ def save_model(model: nn.Module, root_dir: str, epoch: int):
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
 
-    model_path = os.path.join(model_dir, MODEL_TO_NAMES[model_type][1].format(f'_ep{epoch}'))
+    model_path = os.path.join(model_dir, MODEL_TO_NAMES[model_type][1].format(f'{suffix}_ep{epoch}'))
     torch.save(model.state_dict(), model_path)
 
 
