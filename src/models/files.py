@@ -187,9 +187,9 @@ def load_classifier(root_dir: str, epoch: int, **classifier_config: t.Dict[str, 
     return load_model(Classifier, classifier_config, root_dir, epoch)
 
 
-def load_model(model_type: t.Type[nn.Module], model_params: t.Dict[str, t.Any], root_dir: str, epoch: int):
+def load_model(model_type: t.Type[nn.Module], model_params: t.Dict[str, t.Any], root_dir: str, epoch: int, suffix: str = ''):
     model = model_type(**model_params)
-    model_path = os.path.join(root_dir, MODEL_TO_NAMES[model_type][2], MODEL_TO_NAMES[model_type][1].format(f'_ep{epoch}'))
+    model_path = os.path.join(root_dir, MODEL_TO_NAMES[model_type][2], MODEL_TO_NAMES[model_type][1].format(f'{suffix}_ep{epoch}'))
     model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
     return model
 

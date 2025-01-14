@@ -366,7 +366,7 @@ def train_denoising_conductance_2models(
         # Unperturbed data
         predicted_x = model_h2c(h, noise_coeff, None)
         
-        # Perturbed data
+        # # Perturbed data
         predicted_x_perturbed = model_h2c(h_perturbed, noise_coeff, None)
 
         # C2H output
@@ -377,7 +377,12 @@ def train_denoising_conductance_2models(
         predicted_cmap = generate_conductance_tensor(mapped_h_predicted, cmap_config)
         predicted_cmap = cmap_normalize(predicted_cmap).detach()
 
-        loss_h2c = (F.mse_loss(predicted_x, x[:, :num_channels]) + F.mse_loss(predicted_x_perturbed, x_perturbed[:, :num_channels]) + F.mse_loss(predicted_x_from_c2h, predicted_cmap[:, :num_channels])) / 3
+        loss_h2c = (
+            (F.mse_loss(predicted_x, x[:, :num_channels]) +
+            F.mse_loss(predicted_x_perturbed, x_perturbed[:, :num_channels]) +
+            F.mse_loss(predicted_x_from_c2h, predicted_cmap[:, :num_channels])
+            ) / 3
+        )
         total_loss_h2c += loss_h2c.item()
         loss_h2c.backward()
         optimizer_h2c.step()
