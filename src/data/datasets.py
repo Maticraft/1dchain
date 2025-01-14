@@ -277,9 +277,7 @@ class HamiltonianFromParametersDataset(Dataset):
         h_tensor = self.generate_hamiltonian_tensor(hamiltonian_params)
         tensors = [h_tensor]
         if self.target_condcuctance:
-            model = self.hamiltionian_class(**hamiltonian_params)
-            tensor = model.get_hamiltonian_tensor()
-            tensor_complex = torch.complex(tensor[0], tensor[1])
+            tensor_complex = torch.complex(h_tensor[0], h_tensor[1])
             cmap = generate_conductance_tensor(tensor_complex, self.conductance_config)
             tensors.append(cmap)
 
@@ -317,6 +315,7 @@ class HamiltonianFromParametersDataset(Dataset):
             model = self.hamiltionian_class(**hamiltonian_noisy_params)
         else:
             model = self.hamiltionian_class(**hamiltonian_params)
+
         tensor = model.get_hamiltonian_tensor()
         tensor_complex = torch.complex(tensor[0], tensor[1])
         cmap = generate_conductance_tensor(tensor_complex, conductance_config)
