@@ -44,7 +44,8 @@ vscale = 1/AtomicUnits.Eh
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Model name
-model_name = 'QDH-1lvl-no-interlevel_2DiTs_real_12_patch1_4maps50x50embed_norm_c2h-output-loss-c2c_lr1e-4decreasing'
+# model_name = 'QDH-1lvl-no-interlevel_2DiTs_real_12_patch1_4maps50x50embed_norm_c2h-output-loss-c2c_lr1e-4decreasing'
+model_name = 'test_model'
 
 # Params
 params = {
@@ -73,7 +74,7 @@ dit_c2h_config = {
     'min_inter_site_interaction_range': 1,
     'max_inter_site_interaction_range': 2,
     'input_embedder': 'patch',
-    'output_unpatcher': 'hamiltonian',
+    'output_unpatcher': 'majorana_hamiltonian',
     # 'on_site_block_names': ['iy1'],
     # 'inter_site_block_names': ['1z 1x iy1 iyx'],
 }
@@ -93,7 +94,7 @@ dit_h2c_config = {
     'learn_sigma': False,
     'min_inter_site_interaction_range': 1,
     'max_inter_site_interaction_range': 2,
-    'input_embedder': 'hamiltonian',
+    'input_embedder': 'majorana_hamiltonian',
     'output_unpatcher': 'patch',
     # 'on_site_block_names': ['iy1'],
     # 'inter_site_block_names': ['1z 1x iy1 iyx'],
