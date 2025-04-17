@@ -104,6 +104,74 @@ def test_denoising_model(
     return total_loss, total_ref_loss
 
 
+def train_conductance_model(
+    model: nn.Module,
+    train_loader: torch.utils.data.DataLoader,
+    optimizer: torch.optim.Optimizer,
+    device: torch.device,
+    epoch: int,
+) -> nn.Module:
+
+    model.to(device)
+    model.train()
+
+    total_loss = 0.
+
+    print(f'Epoch: {epoch}')
+    for (h, x), _ in tqdm(train_loader, 'Training conductance model'):
+        optimizer.zero_grad()
+        x = x.to(device)
+        h = h.to(device)
+
+        noise_coeff = torch.zeros(1, 1).to(device)
+        pred_h = model(x, noise_coeff, None)
+        
+        # loss is mean squared error between the predicted and true noise
+        loss = F.mse_loss(pred_h, h)
+        total_loss += loss.item()
+        loss.backward()
+        
+        optimizer.step()
+
+    total_loss /= len(train_loader)
+    print(f'Train loss: {total_loss}')
+    print()
+    return total_loss
+
+
+def test_conductance_model(
+    model: nn.Module,
+    test_loader: torch.utils.data.DataLoader,
+    device: torch.device,
+    epoch: int,
+) -> nn.Module:
+
+    model.to(device)
+    model.eval()
+
+    total_loss = 0.
+    total_ref_loss = 0.
+
+    with torch.no_grad():
+        print(f'Epoch: {epoch}')
+        for (h, x), _ in tqdm(test_loader, 'Testing conductance model'):
+            x = x.to(device)
+            h = h.to(device)
+            
+            noise_coeff = torch.zeros(1, 1).to(device)
+            pred_h = model(x, noise_coeff, None)
+
+            # loss is mean squared error between the predicted and true noise
+            loss = F.mse_loss(pred_h, h)
+            total_loss += loss.item()
+
+    total_loss /= len(test_loader)
+    total_ref_loss /= len(test_loader)
+    print(f'Test loss: {total_loss}')
+    print()
+    return total_loss, total_ref_loss
+
+
 def train_denoising_param_model(
     model: nn.Module,
     train_loader: torch.utils.data.DataLoader,

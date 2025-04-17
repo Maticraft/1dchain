@@ -14,15 +14,13 @@ from src.hamiltonian.quantum_dots_chain import AtomicUnits, DefaultParameters, Q
 from src.hamiltonian.utils import plot_eigvals_levels
 from src.models.noise_generatiron import NoiseGenerator
 from src.models.diffusion import DiffusionAutoencoder
-from src.models.denoiser import train_denoising_param_model, test_denoising_param_model
+from src.models.denoiser import train_conductance_model, test_conductance_model
 from src.models.files import save_params, save_model, save_data_list
 from src.models.diffusion_transformer import DiT
 from src.plots import plot_convergence, plot_matrix
 from src.hamiltonian.utils import plot_eigvals_levels
 from src.torch_utils import TorchHamiltonian
 
-
-## TODO: FIX THIS BEFORE USAGE: training and testing mehtods are no longer valid for HamiltonianDataset
 
 
 # Paths
@@ -128,19 +126,18 @@ save_data_list(['Epoch', 'Training loss', "Test denoising loss", "Test reference
 
 
 for epoch in range(0, params['epochs'] + 1):
-    train_loss = train_denoising_param_model(
+    train_loss = train_conductance_model(
         model,
         train_loader,
         optimizer,
         device,
         epoch,
     )
-    test_loss, test_ref_loss = test_denoising_param_model(
+    test_loss, test_ref_loss = test_conductance_model(
         model,
         test_loader,
         device,
         epoch,
-        reference_loss=False
     )
     scheduler.step()
     save_data_list([epoch, train_loss, test_loss, test_ref_loss], loss_path)
