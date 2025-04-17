@@ -410,4 +410,4 @@ for epoch in range(0, params['epochs'] + 1):
                 ylabel="$E_F$ [meV]"
             )
 
-plot_convergence(loss_path, convergence_path, read_label=True)
+    plot_convergence(loss_path, convergence_path, read_label=True)
