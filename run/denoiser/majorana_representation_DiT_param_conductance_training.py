@@ -21,6 +21,10 @@ from src.plots import plot_convergence, plot_matrix
 from src.hamiltonian.utils import plot_eigvals_levels
 from src.torch_utils import TorchHamiltonian
 
+
+## TODO: FIX THIS BEFORE USAGE: training and testing mehtods are no longer valid for HamiltonianDataset
+
+
 # Paths
 data_path = './data/quantum_dots/3dots1level_majoranas_gap_pol_verified_with_conductance'
 data_mean_std_path = f'{data_path}/mean_std.pkl'

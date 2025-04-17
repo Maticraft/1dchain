@@ -236,7 +236,7 @@ for epoch in range(0, params['epochs'] + 1):
                 h_torch_noisy = Normalize(mean, std)(h_torch_noisy)
                 noise_amplitude = torch.ones(1, 1).to(device)
             else:
-                h_torch_noisy = sample[0][1].unsqueeze(0).to(device)
+                h_torch_noisy = sample[0][2].unsqueeze(0).to(device)
                 noise_amplitude = torch.tensor(sample[1][1]).view(1, 1).to(device)
 
             h_denoised = model(h_torch_noisy, noise_amplitude, None)

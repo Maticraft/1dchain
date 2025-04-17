@@ -192,8 +192,8 @@ REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR = {
     'magnetic_field': 'zz',
     'delta': 'iyiy',
     'spin_twist': 'zx',
-    'hopping_same': 'z1',
-    'hopping_spin_flip': '1iy'
+    'hopping_same': 'z1', # ok, comes from exp(0*sigma_z) = 1
+    'hopping_spin_flip': 'zx' # it was '1iy' but it is not correct for QDH
 }
 IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR = {
     'potential': 'z1',
@@ -201,8 +201,8 @@ IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR = {
     'delta': 'xiy',
     'spin_twist': '1iy',
     'hopping_same': 'zz',
-    'hopping_same_qd': '1z',
+    'hopping_same_qd': '1z', # does not exist in default QDH
     'hopping_spin_flip': 'zx',
-    'hopping_spin_flip_qd': '1x',
+    'hopping_spin_flip_qd': '1x', # ok
 }
     

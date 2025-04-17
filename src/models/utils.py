@@ -1,3 +1,4 @@
+from copy import deepcopy
 import typing as t
 from tqdm import tqdm
 import math
@@ -322,3 +323,67 @@ def is_pos_semidef(x):
 def generate_sample_from_mean_and_covariance(mean: torch.Tensor, covariance_matrix: torch.Tensor, batch_size: int = 1):
     mvn = MultivariateNormal(mean, covariance_matrix)
     return mvn.sample((batch_size,))
+
+
+def deep_copy(d: t.Dict[str, t.Any], detach: bool = False):
+    d_new = {}
+    for k, v in d.items():
+        if isinstance(v, dict):
+            d_new[k] = deep_copy(v, detach)
+        elif isinstance(v, torch.Tensor):
+            if detach:
+                d_new[k] = v.clone().detach()
+            else:
+                d_new[k] = v.clone()
+        else:
+            d_new[k] = deepcopy(v)
+    return d_new
+
+
+def deep_update(d: t.Dict[str, t.Any], u: t.Dict[str, t.Any], detach: bool = False):
+    d_new = deep_copy(d, detach)
+    for k, v in u.items():
+        if isinstance(v, dict):
+            d_new[k] = deep_update(d_new.get(k, {}), v, detach)
+        else:
+            d_new[k] = v
+    return d_new
+
+def weighted_update(base_params: t.Dict[str, t.Any], update_params: t.Dict[str, t.Any], alpha=0.1):
+    """Replace deep_update with weighted interpolation"""
+    result = {}
+    for k, v in base_params.items():
+        if isinstance(v, dict):
+            if k in update_params and isinstance(update_params[k], dict):
+                result[k] = weighted_update(v, update_params[k], alpha)
+            else:
+                result[k] = v
+        else:
+            if k in update_params:
+                # Interpolate instead of replace
+                result[k] = (1-alpha)*v + alpha*update_params[k]
+            else:
+                result[k] = v
+    return result
+
+
+class ParameterWeightedUpdate(nn.Module):
+    def __init__(self, alpha=0.5):
+        super().__init__()
+        self.alpha = alpha
+        
+    def forward(self, base_params, update_params):
+        result = {}
+        for k, v in base_params.items():
+            if isinstance(v, dict):
+                if k in update_params and isinstance(update_params[k], dict):
+                    result[k] = self.forward(v, update_params[k])
+                else:
+                    result[k] = v  # No gradient for these parameters
+            else:
+                if k in update_params:
+                    # This maintains gradient flow
+                    result[k] = (1-self.alpha)*v + self.alpha*update_params[k]
+                else:
+                    result[k] = v
+        return result

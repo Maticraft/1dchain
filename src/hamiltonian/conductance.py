@@ -323,7 +323,8 @@ def plot_conductance_map(
     xtick_range: t.Optional[t.Tuple[float, float]] = None,
     ytick_range: t.Optional[t.Tuple[float, float]] = None,
     xlabel="",
-    ylabel=""
+    ylabel="",
+    title="",
 ):
     fig, ax = plt.subplots()
     im = ax.imshow(conductance_map, origin='lower', extent=[-1, 1, -1, 1])
@@ -343,6 +344,8 @@ def plot_conductance_map(
     ax.set_ylabel(ylabel)
     cbar = fig.colorbar(im, ax=ax)
     cbar.set_label(r'conductance')
+    plt.title(title)
+    plt.tight_layout()
     plt.savefig(filename)
     plt.close()
 

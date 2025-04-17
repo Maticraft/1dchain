@@ -20,6 +20,6 @@ conductance_config = {
 }
 
 
-N = 10000
+N = 100
 parameters = generate_parameters(N, num_verified_majoranas=N)
-generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/3dots1level_majoranas_separated', eig_decomposition=False, conductance_config=None, format='csr')
+generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/3dots1level_test_hopping', eig_decomposition=False, conductance_config=None, format='csr')

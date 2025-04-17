@@ -1,7 +1,13 @@
 import typing as t
 
-import torch
 
+from dataclasses import dataclass
+from dataclasses_json import dataclass_json
+import json_fix
+import torch
+import torch.nn as nn
+
+from src.hamiltonian.hamiltonian import REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR
 
 PAULI_BLOCKS = {
     '1': torch.eye(2),
@@ -10,6 +16,17 @@ PAULI_BLOCKS = {
     'z': torch.tensor([[1, 0], [0, -1]]),
 }
 ALL_PAIRS = ['11', '1x', '1iy', '1z', 'x1', 'xx', 'xiy', 'xz', 'iy1', 'iyx', 'iyiy', 'iyz', 'z1', 'zx', 'ziy', 'zz']
+
+@dataclass_json
+@dataclass
+class HamiltonianParams:
+    on_site_real_params: t.Tuple[str] = "potential", "magnetic_field", "delta"
+    on_site_imag_params: t.Tuple[str] = "delta",
+    inter_site_real_params: t.Tuple[str] = "hopping_same", "hopping_spin_flip"
+    inter_site_imag_params: t.Tuple[str] = "hopping_spin_flip_qd",
+
+    def __json__(self):
+        return self.to_dict()
 
 
 class BlockExtractor:
@@ -22,6 +39,8 @@ class BlockExtractor:
         returns:
           torch.Tensor of shape (batch_size, block_params_num, seq_size)
         '''
+        if not pauli_block_names:
+            return torch.zeros((x.shape[0], 0, x.shape[-1] // 4)).to(x.device)
         return torch.stack([cls._extract_sequence(x, *get_block_pair(pair_name)) for pair_name in pauli_block_names], dim=1)
 
     @staticmethod
@@ -131,6 +150,300 @@ class BlockConstructor:
         real_blocks = cls.generate_block_sequence(real_on_site_blocks.transpose(0, 1), real_pauli_block_names)
         imaginary_blocks = cls.generate_block_sequence(imag_on_site_blocks.transpose(0, 1), imag_pauli_block_names)
         return torch.stack([real_blocks, imaginary_blocks], dim=1)
+    
+
+class HamiltonianConstructor(nn.Module):
+    def __init__(
+        self,
+        hamiltonian_params: HamiltonianParams | t.Dict[str, t.Any],
+        min_inter_site_interaction_range: int = 1,
+        max_inter_site_interaction_range: int = 2,
+        real_param_to_block: t.Dict[str, str] = REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR,
+        imag_param_to_block: t.Dict[str, str] = IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR,
+    ):
+        super(HamiltonianConstructor, self).__init__()
+
+        self.real_param_to_block = real_param_to_block
+        self.imag_param_to_block = imag_param_to_block
+
+        if isinstance(hamiltonian_params, dict):
+            hamiltonian_params = HamiltonianParams(**hamiltonian_params)
+        self.hamiltonian_params = hamiltonian_params
+
+        self.on_site_real_block_names = [self.real_param_to_block[param] for param in self.hamiltonian_params.on_site_real_params]
+        self.on_site_imag_block_names = [self.imag_param_to_block[param] for param in self.hamiltonian_params.on_site_imag_params]
+        
+        self.inter_site_real_block_names = [self.real_param_to_block[param] for param in self.hamiltonian_params.inter_site_real_params]
+        self.inter_site_imag_block_names = [self.imag_param_to_block[param] for param in self.hamiltonian_params.inter_site_imag_params]
+        
+        self.min_inter_site_interaction_range = min_inter_site_interaction_range # 1 for on site only, 2 for nearest neighbors, 3 for next nearest neighbors, etc.
+        self.max_inter_site_interaction_range = max_inter_site_interaction_range # 1 for on site only, 2 for nearest neighbors, 3 for next nearest neighbors, etc.
+
+    @property
+    def num_on_site_real_params(self):
+        return len(self.on_site_real_block_names)
+    
+    @property
+    def num_on_site_imag_params(self):
+        return len(self.on_site_imag_block_names)
+    
+    @property
+    def num_on_site_params(self):
+        return self.num_on_site_real_params + self.num_on_site_imag_params
+    
+    @property
+    def num_inter_site_real_params(self):
+        return len(self.inter_site_real_block_names)
+    
+    @property
+    def num_inter_site_imag_params(self):
+        return len(self.inter_site_imag_block_names)
+    
+    @property
+    def num_inter_site_params(self):
+        return self.num_inter_site_real_params + self.num_inter_site_imag_params
+    
+    def get_params_map(self, on_site_params: torch.Tensor, inter_site_params: torch.Tensor):
+        '''
+        Args:
+          on_site_params: torch.Tensor with shape (..., num_on_site_params, seq_size)
+          inter_site_params: torch.Tensor with shape (..., inter_site_interaction_range, num_inter_site_params, seq_size)
+        Returns:
+          params_map: dict
+        '''
+        params_map = {
+            'on_site_real_params': {
+                param_name: on_site_params[..., param_idx, :]
+                for param_idx, param_name in enumerate(self.hamiltonian_params.on_site_real_params)
+            },
+            'on_site_imag_params': {
+                param_name: on_site_params[..., self.num_on_site_real_params + param_idx, :]
+                for param_idx, param_name in enumerate(self.hamiltonian_params.on_site_imag_params)
+            },
+            'inter_site_real_params': {
+                param_name: inter_site_params[..., param_idx, :]
+                for param_idx, param_name in enumerate(self.hamiltonian_params.inter_site_real_params)
+            },
+            'inter_site_imag_params': {
+                param_name: inter_site_params[..., self.num_inter_site_real_params + param_idx, :]
+                for param_idx, param_name in enumerate(self.hamiltonian_params.inter_site_imag_params)
+            }
+        }
+        return params_map
+
+
+    def forward(self, on_site_params: torch.Tensor, inter_site_params: torch.Tensor) -> t.Tuple[torch.Tensor, t.List[torch.Tensor]]:
+        '''
+        Args:
+          on_site_params: torch.Tensor with shape (..., num_on_site_params, seq_size)
+          inter_site_params: torch.Tensor with shape (..., inter_site_interaction_range, num_inter_site_params, seq_size)
+        Returns:
+          hamiltonian matrix: torch.Tensor with shape (..., 2, 4 x seq_size, 4 x seq_size)
+        '''
+        hamiltonian = self._construct_hamiltonian_matrix(on_site_params, inter_site_params)
+        return hamiltonian
+    
+    def generate_random_hamiltonian(self, num_samples: int, seq_size: int, device: t.Optional[torch.device] = None, site_constant: bool = False) -> torch.Tensor:
+        '''
+        Args:
+          num_samples: int
+          seq_size: int
+          device: t.Optional[torch.device]
+        Returns:
+          hamiltonian: torch.Tensor with shape (..., 2, 4 x seq_size, 4 x seq_size)
+        '''
+        inter_site_interaction_range = self.max_inter_site_interaction_range - self.min_inter_site_interaction_range
+        if site_constant:
+            on_site_params = torch.randn(num_samples, self.num_on_site_params, 1, device=device).expand(-1, -1, seq_size)
+            inter_site_params = torch.randn(num_samples, inter_site_interaction_range, self.num_inter_site_params, 1, device=device).expand(-1, -1, -1, seq_size)
+        else:  
+            on_site_params = torch.randn(num_samples, self.num_on_site_params, seq_size, device=device)
+            inter_site_params = torch.randn(num_samples, inter_site_interaction_range, self.num_inter_site_params, seq_size, device=device)
+        return self._construct_hamiltonian_matrix(on_site_params, inter_site_params)
+    
+    def _construct_hamiltonian_matrix(self, on_site_params: torch.Tensor, inter_site_params: torch.Tensor) -> torch.Tensor:
+        '''
+        Args:
+          on_site_params: torch.Tensor with shape (..., num_on_site_params, seq_size)
+          inter_site_params: torch.Tensor with shape (..., inter_site_interaction_range, num_inter_site_params, seq_size)
+        Returns:
+          hamiltonian_matrix: torch.Tensor with shape (..., 2, 4 x seq_size, 4 x seq_size)
+        '''
+        block_size = 4
+        flattened_on_site_params = on_site_params.flatten(start_dim=0, end_dim=-3)
+        flattened_on_site_real_params = flattened_on_site_params[:, :self.num_on_site_real_params]
+        flattened_on_site_imag_params = flattened_on_site_params[:, self.num_on_site_real_params:]
+        
+        on_site_block_seq = torch.stack((
+            BlockConstructor.generate_block_sequence(flattened_on_site_real_params.transpose(0, 1), self.on_site_real_block_names, lower_block_transpose=False), # real part
+            BlockConstructor.generate_block_sequence(flattened_on_site_imag_params.transpose(0, 1), self.on_site_imag_block_names, lower_block_transpose=False) # imaginary part
+        ), dim=-3)
+
+        flattened_inter_site_params = inter_site_params.flatten(start_dim=0, end_dim=-4)
+        flattened_inter_site_real_params = flattened_inter_site_params[:, :, :self.num_inter_site_real_params]
+        flattened_inter_site_imag_params = flattened_inter_site_params[:, :, self.num_inter_site_real_params:]
+        inter_site_block_seq = torch.cat([
+            torch.stack((
+                BlockConstructor.generate_block_sequence(flattened_inter_site_real_params[:, inter_site_interaction_range_idx].transpose(0, 1), self.inter_site_real_block_names), # real part
+                BlockConstructor.generate_block_sequence(flattened_inter_site_imag_params[:, inter_site_interaction_range_idx].transpose(0, 1), self.inter_site_imag_block_names) # imaginary part
+            ), dim=-3)
+            for inter_site_interaction_range_idx in range(flattened_inter_site_params.shape[-3])
+        ], dim=-3)
+
+        skipped_inter_site_block_seq = [
+            torch.zeros(flattened_inter_site_params.shape[0], 2, block_size, inter_site_block_seq.shape[-1], device=flattened_inter_site_params.device)
+            for _ in range(self.min_inter_site_interaction_range - 1)
+        ] # why is it not working for min_inter_site_interaction_range >=2?
+        if len(skipped_inter_site_block_seq) > 0:
+            inter_site_block_seq = torch.cat([*skipped_inter_site_block_seq, inter_site_block_seq], dim=-3)
+
+        strips = torch.cat([torch.zeros_like(inter_site_block_seq), on_site_block_seq, inter_site_block_seq], dim=-3)
+        hamiltonian_matrix = get_matrix_from_strips(strips, on_site_params.shape[-1], block_size)
+        periodic_elements = torch.tril(hamiltonian_matrix, diagonal=-block_size).transpose(-2, -1) # because of periodic inter site elements
+        upper_triangular_matrix = torch.triu(hamiltonian_matrix) + torch.stack((periodic_elements[:, 0], -periodic_elements[:, 1]), dim=1)
+        lower_triangular_matrix = torch.triu(upper_triangular_matrix, diagonal=1)
+        lower_triangular_matrix = torch.stack((lower_triangular_matrix[:, 0], -lower_triangular_matrix[:, 1]), dim=1).transpose(-2, -1)
+        hamiltonian_matrix_hermitian = upper_triangular_matrix + lower_triangular_matrix
+        hamiltonian_matrix_unflattened = torch.unflatten(hamiltonian_matrix_hermitian, dim=0, sizes=on_site_params.shape[:-2])
+        return hamiltonian_matrix_unflattened
+
+
+class HamiltonianExtractor(nn.Module):
+    def __init__(
+        self,
+        hamiltonian_params: HamiltonianParams | t.Dict[str, t.Any],
+        min_inter_site_interaction_range: int = 1,
+        max_inter_site_interaction_range: int = 2,
+        real_param_to_block: t.Dict[str, str] = REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR,
+        imag_param_to_block: t.Dict[str, str] = IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR,
+    ):
+        super(HamiltonianExtractor, self).__init__()
+        if isinstance(hamiltonian_params, dict):
+            hamiltonian_params = HamiltonianParams(**hamiltonian_params)
+        self.hamiltonian_params = hamiltonian_params
+
+        self.real_param_to_block = real_param_to_block
+        self.imag_param_to_block = imag_param_to_block
+
+        self.on_site_real_block_names = [self.real_param_to_block[param] for param in self.hamiltonian_params.on_site_real_params]
+        self.on_site_imag_block_names = [self.imag_param_to_block[param] for param in self.hamiltonian_params.on_site_imag_params]
+        
+        self.inter_site_real_block_names = [self.real_param_to_block[param] for param in self.hamiltonian_params.inter_site_real_params]
+        self.inter_site_imag_block_names = [self.imag_param_to_block[param] for param in self.hamiltonian_params.inter_site_imag_params]
+
+        self.min_inter_site_interaction_range = min_inter_site_interaction_range # 1 for on site only, 2 for nearest neighbors, 3 for next nearest neighbors, etc.
+        self.max_inter_site_interaction_range = max_inter_site_interaction_range # 1 for on site only, 2 for nearest neighbors, 3 for next nearest neighbors, etc.
+
+    @property
+    def num_on_site_real_params(self):
+        return len(self.on_site_real_block_names)
+    
+    @property
+    def num_on_site_imag_params(self):
+        return len(self.on_site_imag_block_names)
+    
+    @property
+    def num_on_site_params(self):
+        return self.num_on_site_real_params + self.num_on_site_imag_params
+    
+    @property
+    def num_inter_site_real_params(self):
+        return len(self.inter_site_real_block_names)
+    
+    @property
+    def num_inter_site_imag_params(self):
+        return len(self.inter_site_imag_block_names)
+    
+    @property
+    def num_inter_site_params(self):
+        return self.num_inter_site_real_params + self.num_inter_site_imag_params
+
+
+    def forward(self, hamiltonian: torch.Tensor) -> t.Tuple[torch.Tensor, torch.Tensor]:
+        '''
+        Args:
+          hamiltonian matrix: torch.Tensor with shape (batch_size, 2, 4 x seq_size, 4 x seq_size)     
+        Returns:
+          Tuple:
+          :on_site_params: torch.Tensor with shape (batch_size, num_on_site_params, seq_size)
+          :inter_site_params: torch.Tensor with shape (batch_size, inter_site_interaction_range, num_inter_site_params, seq_size)
+        '''
+        on_site_params, inter_site_params = self._extract_params_from_hamiltonian_matrix(hamiltonian)
+        return on_site_params, inter_site_params
+    
+    def from_params_map(self, params_map: t.Dict[str, torch.Tensor]) -> torch.Tensor:
+        '''
+        Args:
+          params_map: dict
+        Returns:
+          Tuple:
+          :on_site_params: torch.Tensor with shape (batch_size, num_on_site_params, seq_size)
+          :inter_site_params: torch.Tensor with shape (batch_size, inter_site_interaction_range, num_inter_site_params, seq_size)
+        '''
+        on_site_real_params = [params_map['on_site_real_params'][param_name] for param_name in self.hamiltonian_params.on_site_real_params]
+        on_site_imag_params = [params_map['on_site_imag_params'][param_name] for param_name in self.hamiltonian_params.on_site_imag_params]
+        on_site_params = torch.stack([*on_site_real_params, *on_site_imag_params], dim=-2)
+
+        inter_site_real_params = [params_map['inter_site_real_params'][param_name] for param_name in self.hamiltonian_params.inter_site_real_params]
+        inter_site_imag_params = [params_map['inter_site_imag_params'][param_name] for param_name in self.hamiltonian_params.inter_site_imag_params]
+        inter_site_params = torch.stack([*inter_site_real_params, *inter_site_imag_params], dim=-2)
+        return on_site_params, inter_site_params
+
+
+    def _extract_params_from_hamiltonian_matrix(self, hamiltonian: torch.Tensor) -> t.Tuple[torch.Tensor, torch.Tensor]:
+        '''
+        Args:
+          hamiltonian matrix: torch.Tensor with shape (batch_size, 2, 4 x seq_size, 4 x seq_size)     
+        Returns:
+          Tuple:
+          :on_site_params: torch.Tensor with shape (batch_size, num_on_site_params, seq_size)
+          :inter_site_params: torch.Tensor with shape (batch_size, inter_site_interaction_range, num_inter_site_params, seq_size)
+        '''
+        block_size = 4
+        on_site_strip = get_strip(hamiltonian, 0, 'hamiltonian', block_size)
+        on_site_real_params = BlockExtractor.extract_block_sequences(on_site_strip[:, 0], self.on_site_real_block_names)
+        on_site_imag_params = BlockExtractor.extract_block_sequences(on_site_strip[:, 1], self.on_site_imag_block_names)
+        on_site_params = torch.cat([on_site_real_params, on_site_imag_params], dim=-2)
+
+        inter_site_strips = torch.stack([
+            get_strip(hamiltonian, strip_idx, 'hamiltonian', block_size)
+            for strip_idx in range(self.min_inter_site_interaction_range, self.max_inter_site_interaction_range)
+        ], dim=1)
+        inter_site_real_params = BlockExtractor.extract_block_sequences(inter_site_strips.flatten(0, 1)[:, 0], self.inter_site_real_block_names)
+        inter_site_imag_params = BlockExtractor.extract_block_sequences(inter_site_strips.flatten(0, 1)[:, 1], self.inter_site_imag_block_names)
+        inter_site_params = torch.cat([inter_site_real_params, inter_site_imag_params], dim=-2)
+        inter_site_params = torch.unflatten(inter_site_params, dim=0, sizes=(inter_site_strips.shape[0], inter_site_strips.shape[1]))
+        return on_site_params, inter_site_params
+
+
+class HamiltonianConverter(nn.Module):
+    def __init__(self, hamiltonian_params: HamiltonianParams | t.Dict[str, t.Any], **kwargs):
+        super(HamiltonianConverter, self).__init__()
+        if isinstance(hamiltonian_params, dict):
+            hamiltonian_params = HamiltonianParams(**hamiltonian_params)
+        self.hamiltonian_params = hamiltonian_params
+        self.hamiltonian_constructor = HamiltonianConstructor(hamiltonian_params, **kwargs)
+        self.hamiltonian_extractor = HamiltonianExtractor(hamiltonian_params, **kwargs)
+    
+    def from_matrix_to_params(self, hamiltonian: torch.Tensor) -> t.Dict[str, torch.Tensor]:
+        '''
+        Args:
+          hamiltonian matrix: torch.Tensor with shape (batch_size, 2, 4 x seq_size, 4 x seq_size)     
+        Returns:
+          params_map: dict
+        '''
+        on_site_params, inter_site_params = self.hamiltonian_extractor(hamiltonian)
+        return self.hamiltonian_constructor.get_params_map(on_site_params, inter_site_params)
+    
+    def from_params_to_matrix(self, hamiltonian_params: t.Dict[str, torch.Tensor]) -> torch.Tensor:
+        '''
+        Args:
+          hamiltonian_params: dict
+        Returns:
+            hamiltonian matrix: torch.Tensor with shape (batch_size, 2, 4 x seq_size, 4 x seq_size)     
+        '''
+        on_site_params, inter_site_params = self.hamiltonian_extractor.from_params_map(hamiltonian_params)
+        return self.hamiltonian_constructor(on_site_params, inter_site_params)
 
 
 def get_block_pair(pair_name: str):

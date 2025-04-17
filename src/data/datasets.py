@@ -229,8 +229,6 @@ class HamiltonianFromParametersDataset(Dataset):
         normalization_params: t.List[t.Tuple[t.Tuple[float, ...], t.Tuple[float, ...]]] = None,
         representation_mapping: RepresentationMapping = RepresentationMapping.none,
         conductance_config: t.Optional[t.Dict[str, t.Any]] = None,
-        noisy_conductance: bool = False,
-        target_condcuctance: bool = False,
         random_noise: bool = False,
         **kwargs,
     ):
@@ -250,8 +248,6 @@ class HamiltonianFromParametersDataset(Dataset):
             self.normalization = [Normalize(mean, std) for mean, std in normalization_params]
         self.params_noise_config = params_noise_config
         self.conductance_config = conductance_config
-        self.noisy_conductance = noisy_conductance
-        self.target_condcuctance = target_condcuctance
         self.random_noise = random_noise
 
     def load_label_dict(self, filepath: str) -> t.List[t.List[str]]:
@@ -276,10 +272,11 @@ class HamiltonianFromParametersDataset(Dataset):
         hamiltonian_params = self.load_params(idx)
         h_tensor = self.generate_hamiltonian_tensor(hamiltonian_params)
         tensors = [h_tensor]
-        if self.target_condcuctance:
-            tensor_complex = torch.complex(h_tensor[0], h_tensor[1])
-            cmap = generate_conductance_tensor(tensor_complex, self.conductance_config)
+        if self.conductance_config is not None:
+            cmap = self._generate_input_conductance(hamiltonian_params, self.conductance_config)
             tensors.append(cmap)
+        else:
+            tensors.append(h_tensor)
 
         if self.random_noise:
             noise_amplitude = abs(np.random.normal(loc=0., scale=0.1))
@@ -289,33 +286,31 @@ class HamiltonianFromParametersDataset(Dataset):
             params_noise_config = self.params_noise_config
 
         if self.params_noise_config is not None:
-            hamiltonian_noisy_params = self.add_noise_to_params(hamiltonian_params, params_noise_config)
-            noisy_tensor = self.generate_hamiltonian_tensor(hamiltonian_noisy_params)
+            hamiltonian_params = self.add_noise_to_params(hamiltonian_params, params_noise_config)
+            noisy_tensor = self.generate_hamiltonian_tensor(hamiltonian_params)
             tensors.append(noisy_tensor)
         else:
-            hamiltonian_noisy_params = None
             tensors.append(h_tensor)
 
         if self.conductance_config is not None:
-            cmap = self._generate_input_conductance(hamiltonian_params, hamiltonian_noisy_params, self.conductance_config)
+            cmap = self._generate_input_conductance(hamiltonian_params, self.conductance_config)
             tensors.append(cmap)
+        else:
+            tensors.append(tensors[2])
 
         label = self.get_label(idx, self.label_idx), noise_amplitude
         if self.normalization:
             tensors = [normalize(tensor) for tensor, normalize in zip(tensors, self.normalization)]
+
+        # tensors [normal, target_conductance, noisy, noisy_conductance]
         return tensors, label
 
     def _generate_input_conductance(
         self,
         hamiltonian_params: t.Dict[str, t.Any],
-        hamiltonian_noisy_params: t.Optional[t.Dict[str, t.Any]],
         conductance_config: t.Dict[str, t.Any],
     ):
-        if hamiltonian_noisy_params is not None:
-            model = self.hamiltionian_class(**hamiltonian_noisy_params)
-        else:
-            model = self.hamiltionian_class(**hamiltonian_params)
-
+        model = self.hamiltionian_class(**hamiltonian_params)
         tensor = model.get_hamiltonian_tensor()
         tensor_complex = torch.complex(tensor[0], tensor[1])
         cmap = generate_conductance_tensor(tensor_complex, conductance_config)

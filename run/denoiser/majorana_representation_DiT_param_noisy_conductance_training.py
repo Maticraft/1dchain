@@ -160,7 +160,7 @@ for epoch in range(0, params['epochs'] + 1):
         test_loader,
         device,
         epoch,
-        reference_loss=False
+        reference_loss=False,
     )
     scheduler.step()
     save_data_list([epoch, train_loss, test_loss, test_ref_loss], loss_path)
@@ -186,7 +186,7 @@ for epoch in range(0, params['epochs'] + 1):
         eigvals_dit_path = os.path.join(epoch_dir, eigvals_plot_name.format(f'DiT'))
         eigvals_noisy_path = os.path.join(epoch_dir, eigvals_plot_name.format(f'noisy'))
 
-        h_noisy_conductance = test_data[0][0][1].unsqueeze(0).to(device)
+        h_noisy_conductance = test_data[0][0][3].unsqueeze(0).to(device)
 
         noise_amplitude = torch.zeros(1, 1).to(device)
         h_predicted = model(h_noisy_conductance, noise_amplitude, None)
