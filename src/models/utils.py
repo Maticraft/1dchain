@@ -76,6 +76,38 @@ def torch_total_polarization_loss(x_hat: torch.Tensor, axis='total', representat
         return torch.mean(mp_tot_sum_left * mp_tot_sum_right)
 
 
+def torch_majoranization_loss(x_hat: torch.Tensor, reduction: str = 'mean') -> torch.Tensor:
+    '''
+    Assumes x_hat shape is (batch_size, 2, 4 x n_dots, 4 x n_dots)
+    '''
+    x_hat = torch.complex(x_hat[..., 0, :, :], x_hat[..., 1, :, :])
+    n_dots = x_hat.shape[-1] // 4
+    m1 = torch.cat([torch.tensor([1,1,-1,-1]), torch.tensor([0,0,0,0]*(n_dots-2)), torch.tensor([1,1,1,1])])/2.
+    m2 = torch.cat([torch.tensor([1,1,-1,-1])*-1., torch.tensor([0,0,0,0]*(n_dots-2)), torch.tensor([1,1,1,1])])/2.
+    m1 = m1.to(x_hat.device).to(x_hat.dtype)
+    m2 = m2.to(x_hat.device).to(x_hat.dtype)
+
+    eigvals, eigvecs = torch.linalg.eigh(x_hat)
+    ms = []
+    for ie in range(eigvals.shape[-1]):
+        eig = eigvals[..., ie]
+        ml = torch.conj(eigvecs[..., ie])@m1
+        mr = torch.conj(eigvecs[..., ie])@m2
+        zm = torch.exp(-10 * torch.abs(eig)) #/AtomicUnits.Eh))
+        ms.append(torch.abs(ml-mr)*zm)  # mode projection on left - right majoranas
+    ms = torch.stack(ms, dim=-1)
+    sorted_ids = torch.argsort(torch.abs(eigvals), dim=-1)
+    ms = torch.gather(ms, dim=-1, index=sorted_ids)
+    # ms = [ms[..., ids] for ids in sorted_ids]  # # sort MZM_i using |E_i|
+    ms_total = ms[..., 0] + ms[..., 1] - ms[..., 2:].sum(dim=-1)
+    majoranization = torch.maximum(torch.zeros_like(ms_total), ms_total)
+    if reduction == 'mean':
+        majoranization = majoranization.mean()
+    elif reduction == 'sum':
+        majoranization = majoranization.sum()
+    return majoranization
+
+
 def batch_variance_loss(x_hat: torch.Tensor, block_size: int = 4):
     diagonal_strip = get_strip(x_hat, 0, fill_mode='hamiltonian', block_size=block_size)
     first_interaction_strip = get_strip(x_hat, 1, fill_mode='hamiltonian', block_size=block_size)
@@ -323,6 +355,16 @@ def is_pos_semidef(x):
 def generate_sample_from_mean_and_covariance(mean: torch.Tensor, covariance_matrix: torch.Tensor, batch_size: int = 1):
     mvn = MultivariateNormal(mean, covariance_matrix)
     return mvn.sample((batch_size,))
+
+
+def l2_params_loss(d: t.Dict[str, t.Any]):
+    loss = 0
+    for k, v in d.items():
+        if isinstance(v, dict):
+            loss += l2_params_loss(v)
+        elif isinstance(v, torch.Tensor):
+            loss += torch.mean(v**2)
+    return loss
 
 
 def deep_copy(d: t.Dict[str, t.Any], detach: bool = False):

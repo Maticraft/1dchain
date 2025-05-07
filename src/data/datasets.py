@@ -2,6 +2,7 @@ from copy import deepcopy
 from src.data.utils import DICTIONARY_NAME, EIGVALS_DIR_NAME, EIGVEC_DIR_NAME, CONDUCTANCE_CMAP_0_DIR_NAME, CONDUCTANCE_CMAP_1_DIR_NAME, MATRICES_DIR_NAME, PARAMS_DICTIONARY_NAME, save_matrix
 from src.hamiltonian.conductance import generate_conductance_tensor
 from src.hamiltonian.hamiltonian import REPRESENTATION_MAPPING_FUNCTION, Hamiltonian, RepresentationMapping
+from src.hamiltonian.quantum_dots_chain import MZM_THRESHOLD
 
 import numpy as np
 import torch
@@ -13,6 +14,8 @@ import json
 import os
 import typing as t
 from functools import reduce
+
+from src.hamiltonian.utils import calculate_gap, majoranization
 
 
 class HamiltionianDataset(Dataset):
@@ -230,6 +233,8 @@ class HamiltonianFromParametersDataset(Dataset):
         representation_mapping: RepresentationMapping = RepresentationMapping.none,
         conductance_config: t.Optional[t.Dict[str, t.Any]] = None,
         random_noise: bool = False,
+        assert_noise_majoranas_destruction: bool = False,
+        n_dots: int = 3,
         **kwargs,
     ):
         param_dict_path = os.path.join(data_dir, PARAMS_DICTIONARY_NAME)
@@ -249,6 +254,8 @@ class HamiltonianFromParametersDataset(Dataset):
         self.params_noise_config = params_noise_config
         self.conductance_config = conductance_config
         self.random_noise = random_noise
+        self.assert_noise_majoranas_destruction = assert_noise_majoranas_destruction
+        self.n_dots = n_dots
 
     def load_label_dict(self, filepath: str) -> t.List[t.List[str]]:
         with open(filepath, 'r') as dictionary:
@@ -287,6 +294,29 @@ class HamiltonianFromParametersDataset(Dataset):
 
         if self.params_noise_config is not None:
             hamiltonian_params = self.add_noise_to_params(hamiltonian_params, params_noise_config)
+            
+            try:
+                if self.assert_noise_majoranas_destruction:
+                    model = self.hamiltionian_class(**hamiltonian_params)
+                    tensor = model.get_hamiltonian_tensor()
+                    tensor_complex = torch.complex(tensor[0], tensor[1])                
+                    band_gap = calculate_gap(tensor_complex.numpy())
+                    label = majoranization(tensor_complex.numpy(), self.n_dots)
+                    are_majoranas_present = (label > 0.0) or (band_gap < 2*MZM_THRESHOLD)
+                    
+                    it = 0
+                    while (are_majoranas_present and (it < 100)):
+                        hamiltonian_params = self.add_noise_to_params(hamiltonian_params, params_noise_config)
+                        model = self.hamiltionian_class(**hamiltonian_params)
+                        tensor = model.get_hamiltonian_tensor()
+                        tensor_complex = torch.complex(tensor[0], tensor[1])                
+                        band_gap = calculate_gap(tensor_complex.numpy())
+                        label = majoranization(tensor_complex.numpy(), self.n_dots)
+                        are_majoranas_present = (label > 0.0) or (band_gap < 2*MZM_THRESHOLD)
+                        it += 1
+            except:
+                pass
+
             noisy_tensor = self.generate_hamiltonian_tensor(hamiltonian_params)
             tensors.append(noisy_tensor)
         else:

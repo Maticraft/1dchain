@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 from src.hamiltonian.conductance import Transport, plot_conductance_map
 from src.hamiltonian.quantum_dots_chain import DefaultParameters, QuantumDotsHamiltonianParameters, QuantumDotsHamiltonian
-from src.hamiltonian.quantum_dots_chain import AtomicUnits as au
+from src.hamiltonian.units import AtomicUnits as au
 
 
 plot_dir = './test_conductance'

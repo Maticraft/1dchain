@@ -8,11 +8,12 @@ from torchvision.transforms import Normalize
 
 from src.data.datasets import HamiltonianFromParametersDataset
 from src.data.utils import calculate_mean_and_std, Denormalize
+from src.hamiltonian.units import AtomicUnits
 from src.hamiltonian.conductance import plot_conductance_map, generate_conductance_tensor
 from src.hamiltonian.hamiltonian import RepresentationMapping
 from src.hamiltonian.hamiltonian_torch_handlers import HamiltonianParams, HamiltonianConverter
-from src.hamiltonian.quantum_dots_chain import AtomicUnits, DefaultParameters, QuantumDotsHamiltonian
-from src.hamiltonian.utils import plot_eigvals_levels
+from src.hamiltonian.quantum_dots_chain import DefaultParameters, QuantumDotsHamiltonian
+from src.hamiltonian.utils import majoranization, plot_eigvals_levels
 from src.models.denoiser import train_denoising_conductance_DiTGEN_AE, test_denoising_conductance_DiTGEN_AE
 from src.models.files import save_params, save_model, save_data_list, load_params, load_model
 from src.models.diffusion_transformer import DiT
@@ -22,9 +23,9 @@ from src.hamiltonian.utils import plot_eigvals_levels
 from src.torch_utils import TorchHamiltonian
 
 # Paths
-data_path = './data/quantum_dots/3dots1level_majoranas_gap_pol_verified_with_conductance'
+data_path = './data/quantum_dots/3dots1level_majoranization1_mzm_gap0_3'
 normalization_params_path = f'{data_path}/std_rep_normalization_params_4maps.pkl'
-save_dir = './conductance/quantum_dots/3dots1level_majoranas_gap_pol_verified'
+save_dir = './conductance/quantum_dots/3dots1level_majoranization1_mzm_gap0_3'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 distribution_dir_name = 'tests_majoranas_latent_ep_{}'
@@ -44,7 +45,7 @@ vscale = 1/AtomicUnits.Eh
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Model name
-model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-GEN-latent-loss_2DiT-AE-patch_gradually-increasing-noise_4maps50x50embed_norm-c2c_lr1e-4-decreasing'
+model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-majoranization-loss-with-reg1_2DiT-AE-patch4-1_improve-selected-params_majorana-destructing-noise1_4maps50x50embed_norm-c2c_lr1e-4-decreasing'
 
 # Pretrained model
 # pretrained_model_name = 'QDH-1lvl-no-interlevel_2DiTs_real_12_patch1_4maps50x50embed_norm_triple-c2c_lr1e-4decreasing'
@@ -57,10 +58,12 @@ params = {
     'batch_size': 16,
     # 'pretrained_lr': 1e-4,
     'lr': 1e-4,
-    'max_noise_amplitude': 5.,
+    'max_noise_amplitude': 1.,
     'random_noise': True,
     'train_gen': True,
     'train_ae': True,
+    'n_dots': 3,
+    'reg_strength': 1.,
 }
 
 
@@ -82,21 +85,22 @@ dit_c2h_config = {
     'max_inter_site_interaction_range': 2,
     'input_embedder': 'patch',
     'output_unpatcher': 'hamiltonian',
-    'output_hamiltonian_params': HamiltonianParams(),
-    # "output_hamiltonian_params": HamiltonianParams(
-    #     on_site_real_params=("potential",),
-    #     on_site_imag_params=(()),
-    #     inter_site_real_params=("hopping_same", "hopping_spin_flip"),
-    #     inter_site_imag_params=("hopping_spin_flip_qd",)
-    # )    # 'on_site_block_names': ['iy1'],
+    # 'output_hamiltonian_params': HamiltonianParams(),
+    "output_hamiltonian_params": HamiltonianParams(
+        on_site_real_params=("potential",),
+        on_site_imag_params=(()),
+        inter_site_real_params=("hopping_same", "hopping_spin_flip"),
+        inter_site_imag_params=("hopping_spin_flip_qd",)
+    )    
+    # 'on_site_block_names': ['iy1'],
     # 'inter_site_block_names': ['1z 1x iy1 iyx'],
 }
 
 dit_encoder_config = {
     'input_size': 12,
     'input_channels': 2,
-    'output_size': 32,
-    'output_channels': 2,
+    'output_size': 4,
+    'output_channels': 1,
     'patch_size': 1,
     'hidden_size': 256,
     'depth': 6,
@@ -116,8 +120,8 @@ dit_encoder_config = {
 }
 
 dit_decoder_config = {
-    'input_size': 32,
-    'input_channels': 2,
+    'input_size': 4,
+    'input_channels': 1,
     'output_size': 12,
     'output_channels': 2,
     'patch_size': 1,
@@ -140,9 +144,9 @@ dit_decoder_config = {
 
 
 hamiltonian_converter = HamiltonianConverter(
-    dit_c2h_config['output_hamiltonian_params'],
-    min_inter_site_interaction_range=dit_c2h_config['min_inter_site_interaction_range'],
-    max_inter_site_interaction_range=dit_c2h_config['max_inter_site_interaction_range'],
+    dit_encoder_config['input_hamiltonian_params'],
+    min_inter_site_interaction_range=dit_encoder_config['min_inter_site_interaction_range'],
+    max_inter_site_interaction_range=dit_encoder_config['max_inter_site_interaction_range'],
 )
 
 defaults = DefaultParameters()
@@ -223,9 +227,15 @@ try:
     with open(normalization_params_path, 'rb') as f:
         normalization_params = pickle.load(f)
 except:
-    data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, label_idx=[1, 2], format='csr', threshold=0.05, gt_threshold=True, conductance_config=conductance_config, random_noise=params['random_noise'])
+    data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, label_idx=[1, 2], format='csr', threshold=0.05, gt_threshold=True, conductance_config=conductance_config, random_noise=False, assert_noise_majoranas_destruction=True, n_dots=params['n_dots'])
     data_loader = DataLoader(data, params['batch_size'])
     normalization_params = calculate_mean_and_std(data_loader, device=device)
+    normalization_params = [
+        normalization_params[0],
+        normalization_params[1],
+        normalization_params[0], # noisy h has the same normalization as the original h
+        normalization_params[1], # noisy cmap has the same normalization as the original cmap
+    ]
     with open(normalization_params_path, 'wb') as f:
         pickle.dump(normalization_params, f)
 
@@ -262,7 +272,7 @@ noisy_cmap_mean, noisy_cmap_std = normalization_params[3]
 noisy_cmap_denormalize = Denormalize(mean=noisy_cmap_mean, std=noisy_cmap_std)
 
 for epoch in range(0, params['epochs'] + 1):
-    l = epoch * params['max_noise_amplitude'] / params['epochs']
+    l = params['max_noise_amplitude'] # * epoch / params['epochs']
     params_noise_config = {
         'parameters': {
             "mu": (l, defaults.mu_range[1]),
@@ -277,7 +287,7 @@ for epoch in range(0, params['epochs'] + 1):
     }
 
     # data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, params_noise_config, label_idx=[1, 2], format='csr', threshold=0.05, gt_threshold=True, normalization_mean=mean, normalization_std=std, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down, conductance_config=conductance_config)
-    data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, params_noise_config, label_idx=[1, 2], format='csr', threshold=0.05, gt_threshold=True, normalization_params=normalization_params, conductance_config=conductance_config, random_noise=params['random_noise'])
+    data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, params_noise_config, label_idx=[1, 2], format='csr', threshold=0.05, gt_threshold=True, normalization_params=normalization_params, conductance_config=conductance_config, random_noise=params['random_noise'], assert_noise_majoranas_destruction=True, n_dots=params['n_dots'])
 
     train_size = int(0.99*len(data))
     test_size = len(data) - train_size
@@ -302,6 +312,7 @@ for epoch in range(0, params['epochs'] + 1):
         epoch,
         train_gen=params['train_gen'],
         train_ae=params['train_ae'],
+        regularization_strength=params['reg_strength'],
     )
     test_loss_gen, test_loss_ae, test_loss_ae_on_gen = test_denoising_conductance_DiTGEN_AE(
         model_c2h,
@@ -331,25 +342,30 @@ for epoch in range(0, params['epochs'] + 1):
         test_sample = test_data[0]
         h_torch_normalized = test_sample[0][0].unsqueeze(0).to(device)
         h_torch_denormalized = h_denormalize(h_torch_normalized)[0]
+        h_complex_tensor = torch.complex(h_torch_denormalized[0], h_torch_denormalized[1])
+        h_label = majoranization(h_complex_tensor.detach().cpu().numpy(), params["n_dots"])
+
         test_hamiltonian = TorchHamiltonian.from_2channel_tensor(h_torch_denormalized)
-        plot_eigvals_levels(test_hamiltonian, save_path=eigvals_test_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm)
+        plot_eigvals_levels(test_hamiltonian, save_path=eigvals_test_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm, title=f'Majoranization: {h_label}')
 
         test_matrix_path = os.path.join(epoch_dir, hamiltonian_plot_name)
-        plot_matrix(h_torch_denormalized[0].detach().cpu().numpy(), test_matrix_path.format('ref_real'), vmin=-vscale, vmax=vscale)
-        plot_matrix(h_torch_denormalized[1].detach().cpu().numpy(), test_matrix_path.format('ref_imag'), vmin=-vscale, vmax=vscale)
+        plot_matrix(h_torch_denormalized[0].detach().cpu().numpy(), test_matrix_path.format('ref_real'), vmin=-vscale, vmax=vscale, title=f'Majoranization: {h_label}')
+        plot_matrix(h_torch_denormalized[1].detach().cpu().numpy(), test_matrix_path.format('ref_imag'), vmin=-vscale, vmax=vscale, title=f'Majoranization: {h_label}')
         
 
         eigvals_noisy_path = os.path.join(epoch_dir, eigvals_plot_name.format(f'noisy'))
         h_perturbed = test_sample[0][2].unsqueeze(0).to(device)
         h_noisy_denormalized = h_denormalize(h_perturbed)[0]
+        h_complex_tensor = torch.complex(h_noisy_denormalized[0], h_noisy_denormalized[1])
+        h_noisy_label = majoranization(h_complex_tensor.detach().cpu().numpy(), params["n_dots"])
+        
         test_noisy_hamiltonian = TorchHamiltonian.from_2channel_tensor(h_noisy_denormalized)
-        plot_eigvals_levels(test_noisy_hamiltonian, save_path=eigvals_noisy_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm)
+        plot_eigvals_levels(test_noisy_hamiltonian, save_path=eigvals_noisy_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm, title=f'Majoranization: {h_noisy_label}')
 
         test_matrix_path = os.path.join(epoch_dir, hamiltonian_plot_name)
-        plot_matrix(h_noisy_denormalized[0].detach().cpu().numpy(), test_matrix_path.format('noisy_real'), vmin=-vscale, vmax=vscale)
-        plot_matrix(h_noisy_denormalized[1].detach().cpu().numpy(), test_matrix_path.format('noisy_imag'), vmin=-vscale, vmax=vscale)
+        plot_matrix(h_noisy_denormalized[0].detach().cpu().numpy(), test_matrix_path.format('noisy_real'), vmin=-vscale, vmax=vscale, title=f'Majoranization: {h_noisy_label}')
+        plot_matrix(h_noisy_denormalized[1].detach().cpu().numpy(), test_matrix_path.format('noisy_imag'), vmin=-vscale, vmax=vscale, title=f'Majoranization: {h_noisy_label}')
         
-
         mock_noise_amplitude = torch.zeros(1, 1).to(device)
         real_noise_amplitude = torch.tensor(test_sample[1][1]).to(device).view(1, 1)
 
@@ -357,21 +373,23 @@ for epoch in range(0, params['epochs'] + 1):
 
         h_noisy_conductance = test_sample[0][3].unsqueeze(0).to(device)
         params_map = model_c2h(h_noisy_conductance, real_noise_amplitude, None, matrix_output=False)
-        # improved_map = deep_update(h_perturbed_params_map, params_map, detach=False)
+        improved_map = deep_update(h_perturbed_params_map, params_map, detach=False)
         # improved_map = weighted_update(h_perturbed_params_map, params_map, alpha=0.5)
-        improved_map = params_map
+        # improved_map = params_map
 
         h_predicted = hamiltonian_converter.from_params_to_matrix(improved_map)
         h_predicted_denorm = h_denormalize(h_predicted)[0]
-        
+        h_complex_tensor = torch.complex(h_predicted_denorm[0], h_predicted_denorm[1])
+        h_predicted_label = majoranization(h_complex_tensor.detach().cpu().numpy(), params["n_dots"])
+
         eigvals_dit_path = os.path.join(epoch_dir, eigvals_plot_name.format(f'GEN_rec'))
 
         ham_rec = TorchHamiltonian.from_2channel_tensor(h_predicted_denorm)
-        plot_eigvals_levels(ham_rec, save_path=eigvals_dit_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm)
+        plot_eigvals_levels(ham_rec, save_path=eigvals_dit_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm, title=f'Majoranization: {h_predicted_label}')
         
         test_matrix_path = os.path.join(epoch_dir, hamiltonian_plot_name)
-        plot_matrix(h_predicted_denorm[0].detach().cpu().numpy(), test_matrix_path.format('GEN_improved_real'), vmin=-vscale, vmax=vscale)
-        plot_matrix(h_predicted_denorm[1].detach().cpu().numpy(), test_matrix_path.format('GEN_improved_imag'), vmin=-vscale, vmax=vscale)
+        plot_matrix(h_predicted_denorm[0].detach().cpu().numpy(), test_matrix_path.format('GEN_improved_real'), vmin=-vscale, vmax=vscale, title=f'Majoranization: {h_predicted_label}')
+        plot_matrix(h_predicted_denorm[1].detach().cpu().numpy(), test_matrix_path.format('GEN_improved_imag'), vmin=-vscale, vmax=vscale, title=f'Majoranization: {h_predicted_label}')
         
         for i, cmap_config in enumerate(conductance_config['cmap_list']):
             noisy_conductance_path = os.path.join(epoch_dir, 'noisy_conductance')
@@ -387,7 +405,8 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ [meV]",
+                title=f'Noise amplitude: {real_noise_amplitude.item():.2f}, Majoranization: {h_noisy_label}'
             )
 
         for i, cmap_config in enumerate(conductance_config['cmap_list']):
@@ -405,7 +424,8 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ [meV]",
+                title=f'Majoranization: {h_label}'
             )
 
         mapped_h_predicted = torch.complex(h_predicted_denorm[0], h_predicted_denorm[1])
@@ -424,7 +444,8 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ [meV]",
+                title=f'Majoranization: {h_predicted_label}'
             )
 
 
@@ -440,15 +461,17 @@ for epoch in range(0, params['epochs'] + 1):
         reconstructed_h = model_decoder(latent_h, mock_noise_amplitude, None)
 
         h_rec_denorm = h_denormalize(reconstructed_h)[0]
+        h_complex_tensor = torch.complex(h_rec_denorm[0], h_rec_denorm[1])
+        h_rec_label = majoranization(h_complex_tensor.detach().cpu().numpy(), params["n_dots"])
         
         eigvals_dit_path = os.path.join(epoch_dir, eigvals_plot_name.format(f'AE_rec'))
 
         ham_rec = TorchHamiltonian.from_2channel_tensor(h_rec_denorm)
-        plot_eigvals_levels(ham_rec, save_path=eigvals_dit_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm)
+        plot_eigvals_levels(ham_rec, save_path=eigvals_dit_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm, title=f'Majoranization: {h_rec_label}')
         
         test_matrix_path = os.path.join(epoch_dir, hamiltonian_plot_name)
-        plot_matrix(h_rec_denorm[0].detach().cpu().numpy(), test_matrix_path.format('AE_reconstructed_real'), vmin=-vscale, vmax=vscale)
-        plot_matrix(h_rec_denorm[1].detach().cpu().numpy(), test_matrix_path.format('AE_reconstructed_imag'), vmin=-vscale, vmax=vscale)
+        plot_matrix(h_rec_denorm[0].detach().cpu().numpy(), test_matrix_path.format('AE_reconstructed_real'), vmin=-vscale, vmax=vscale, title=f'Majoranization: {h_rec_label}')
+        plot_matrix(h_rec_denorm[1].detach().cpu().numpy(), test_matrix_path.format('AE_reconstructed_imag'), vmin=-vscale, vmax=vscale, title=f'Majoranization: {h_rec_label}')
 
         mapped_h_predicted = torch.complex(h_rec_denorm[0], h_rec_denorm[1])
         cmap_rec = generate_conductance_tensor(mapped_h_predicted, conductance_config)
@@ -466,7 +489,8 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ [meV]",
+                title=f'Majoranization: {h_rec_label}'
             )
 
         # Noisy 
@@ -474,15 +498,17 @@ for epoch in range(0, params['epochs'] + 1):
         reconstructed_h = model_decoder(latent_h, mock_noise_amplitude, None)
 
         h_rec_denorm = h_denormalize(reconstructed_h)[0]
-        
+        h_complex_tensor = torch.complex(h_rec_denorm[0], h_rec_denorm[1])
+        h_rec_noisy_label = majoranization(h_complex_tensor.detach().cpu().numpy(), params["n_dots"])
+    
         eigvals_dit_path = os.path.join(epoch_dir, eigvals_plot_name.format(f'AE_rec_noisy'))
 
         ham_rec = TorchHamiltonian.from_2channel_tensor(h_rec_denorm)
-        plot_eigvals_levels(ham_rec, save_path=eigvals_dit_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm)
+        plot_eigvals_levels(ham_rec, save_path=eigvals_dit_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm, title=f'Majoranization: {h_rec_noisy_label}')
         
         test_matrix_path = os.path.join(epoch_dir, hamiltonian_plot_name)
-        plot_matrix(h_rec_denorm[0].detach().cpu().numpy(), test_matrix_path.format('AE_reconstructed_noisy_real'), vmin=-vscale, vmax=vscale)
-        plot_matrix(h_rec_denorm[1].detach().cpu().numpy(), test_matrix_path.format('AE_reconstructed_noisy_imag'), vmin=-vscale, vmax=vscale)
+        plot_matrix(h_rec_denorm[0].detach().cpu().numpy(), test_matrix_path.format('AE_reconstructed_noisy_real'), vmin=-vscale, vmax=vscale, title=f'Majoranization: {h_rec_noisy_label}')
+        plot_matrix(h_rec_denorm[1].detach().cpu().numpy(), test_matrix_path.format('AE_reconstructed_noisy_imag'), vmin=-vscale, vmax=vscale, title=f'Majoranization: {h_rec_noisy_label}')
 
         mapped_h_predicted = torch.complex(h_rec_denorm[0], h_rec_denorm[1])
         cmap_rec = generate_conductance_tensor(mapped_h_predicted, conductance_config)
@@ -500,7 +526,8 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ [meV]",
+                title=f'Majoranization: {h_rec_noisy_label}'
             )
 
         # AE from GEN
@@ -508,15 +535,17 @@ for epoch in range(0, params['epochs'] + 1):
         reconstructed_h = model_decoder(latent_h, mock_noise_amplitude, None)
 
         h_rec_denorm = h_denormalize(reconstructed_h)[0]
-        
+        h_complex_tensor = torch.complex(h_rec_denorm[0], h_rec_denorm[1])
+        h_rec_imp_label = majoranization(h_complex_tensor.detach().cpu().numpy(), params["n_dots"])
+    
         eigvals_dit_path = os.path.join(epoch_dir, eigvals_plot_name.format(f'AE_GEN_rec'))
 
         ham_rec = TorchHamiltonian.from_2channel_tensor(h_rec_denorm)
-        plot_eigvals_levels(ham_rec, save_path=eigvals_dit_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm)
+        plot_eigvals_levels(ham_rec, save_path=eigvals_dit_path, representation_mapping=RepresentationMapping.none, ylim=ylim, ynorm=ynorm, title=f'Majoranization: {h_rec_imp_label}')
         
         test_matrix_path = os.path.join(epoch_dir, hamiltonian_plot_name)
-        plot_matrix(h_rec_denorm[0].detach().cpu().numpy(), test_matrix_path.format('AE_GEN_reconstructed_real'), vmin=-vscale, vmax=vscale)
-        plot_matrix(h_rec_denorm[1].detach().cpu().numpy(), test_matrix_path.format('AE_GEN_reconstructed_imag'), vmin=-vscale, vmax=vscale)
+        plot_matrix(h_rec_denorm[0].detach().cpu().numpy(), test_matrix_path.format('AE_GEN_reconstructed_real'), vmin=-vscale, vmax=vscale, title=f'Majoranization: {h_rec_imp_label}')
+        plot_matrix(h_rec_denorm[1].detach().cpu().numpy(), test_matrix_path.format('AE_GEN_reconstructed_imag'), vmin=-vscale, vmax=vscale, title=f'Majoranization: {h_rec_imp_label}')
 
         mapped_h_predicted = torch.complex(h_rec_denorm[0], h_rec_denorm[1])
         cmap_rec = generate_conductance_tensor(mapped_h_predicted, conductance_config)
@@ -534,7 +563,8 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ [meV]",
+                title=f'Majoranization: {h_rec_imp_label}'
             )    
 
     plot_convergence(loss_path, convergence_path, read_label=True)

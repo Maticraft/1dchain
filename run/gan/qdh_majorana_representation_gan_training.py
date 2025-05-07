@@ -8,7 +8,7 @@ import torch
 from src.data.datasets import HamiltionianDataset
 from src.data.utils import calculate_mean_and_std, Denormalize
 from src.hamiltonian.hamiltonian import RepresentationMapping
-from src.hamiltonian.quantum_dots_chain import AtomicUnits
+from src.hamiltonian.units import AtomicUnits
 from src.models.gan import Generator
 from src.models.autoencoder import Encoder, Decoder
 from src.models.majorana_representation_generator import MajoranaRepresentationHamiltonianGenerator, BaselineHiddenRepresentationGenerator

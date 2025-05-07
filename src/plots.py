@@ -10,15 +10,70 @@ import torch.nn as nn
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 
-from src.data.datasets import HamiltionianDataset
+from src.data.datasets import HamiltionianDataset, HamiltonianFromParametersDataset
+from src.hamiltonian.conductance import plot_conductance_map
 from src.hamiltonian.hamiltonian import IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, Hamiltonian
-from src.hamiltonian.utils import plot_eigvals_levels, extract_property_strip, plot_majorana_polarization
+from src.hamiltonian.utils import plot_eigvals_levels, extract_property_strip, plot_majorana_polarization, majoranization
 from src.hamiltonian.hamiltonian_torch_handlers import BlockConstructor
 from src.data.utils import Denormalize
 from src.models.gan import Generator
 from src.models.utils import get_eigvals, reconstruct_hamiltonian
 from src.models.files import DELIMITER
 from src.torch_utils import TorchHamiltonian
+
+
+def plot_dataset_from_params_samples(
+    dataset: HamiltonianFromParametersDataset,
+    save_dir: str,
+    num_samples: int = 10,
+    n_dots: int = 3,
+    **kwargs: t.Dict[str, t.Any],
+):
+    if num_samples > len(dataset):
+        raise ValueError(f'Number of samples ({num_samples}) is larger than the dataset size ({len(dataset)})')
+
+    plotted_ids = []
+    if 'ids' in kwargs:
+        data_ids = kwargs['ids']
+    else:
+        data_ids = np.random.choice(len(dataset), num_samples, replace=False)
+
+    for i in range(num_samples):
+        idx = data_ids[i]
+        tensors, y = dataset[idx]
+        if kwargs.get('label', None) is not None:
+            while y.item() != kwargs['label'] or idx in plotted_ids:
+                idx = np.random.randint(len(dataset))
+                (tensors, y), _ = dataset[idx]
+        save_path = os.path.join(save_dir, 'sample_{}.png')
+
+        tensor = tensors[0]
+
+        complex_tensor = torch.complex(tensor[0], tensor[1])
+        label = majoranization(complex_tensor.numpy(), n_dots)
+        plot_dataset_sample(tensor, i, save_path, title=f'Majoranization: {label}', **kwargs)
+
+        if kwargs.get('cmap_config', None) is not None:
+            for j, cmap_config_i in enumerate(kwargs['cmap_config']['cmap_list']):
+                cmap = tensors[1][j].numpy()
+                cmap_name = list(cmap_config_i.keys())[0]
+                x_name = 'b' if cmap_name == 'cmap2' else 'mu'
+
+                x_tick_range = cmap_config_i[cmap_name][f'{x_name}_range']
+                y_tick_range = cmap_config_i[cmap_name]['ef_range']
+                i_val = cmap_config_i[cmap_name]['i']
+                j_val = cmap_config_i[cmap_name]['j']
+                plot_conductance_map(
+                    cmap,
+                    os.path.join(save_path.format(f'{i}_{cmap_name}_i{i_val}_j{j_val}.png')),
+                    xtick_range=x_tick_range,
+                    ytick_range=y_tick_range,
+                    xlabel=f"${x_name}$ [mV]",
+                    ylabel="$E_F$ [meV]",
+                    title=f'Majoranization: {label}',
+                )
+
+        plotted_ids.append(idx)
 
 
 def plot_dataset_samples(
@@ -531,6 +586,9 @@ def plot_matrix(matrix: np.ndarray, filepath: str, **kwargs: t.Dict[str, t.Any])
     vmax = kwargs.get('vmax', 0.5)
     norm = kwargs.get('norm', None)
     fig = plt.figure()
+    if 'title' in kwargs:
+        plt.title(kwargs['title'])
+
     if 'cmap' in kwargs:
         cmap = kwargs['cmap']
     else:

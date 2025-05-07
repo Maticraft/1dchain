@@ -5,7 +5,7 @@ import numpy as np
 from scipy.linalg import inv
 import torch
 
-from src.hamiltonian.quantum_dots_chain import AtomicUnits as au
+from src.hamiltonian.units import AtomicUnits as au
 from src.hamiltonian.quantum_dots_chain import QuantumDotsHamiltonian
 
 class Transport:

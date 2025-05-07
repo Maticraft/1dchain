@@ -7,8 +7,9 @@ import torch
 
 from src.data.datasets import HamiltionianDataset
 from src.data.utils import calculate_mean_and_std
+from src.hamiltonian.units import AtomicUnits
 from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
-from src.hamiltonian.quantum_dots_chain import QuantumDotsHamiltonian, QuantumDotsHamiltonianParameters, DefaultParameters, AtomicUnits
+from src.hamiltonian.quantum_dots_chain import QuantumDotsHamiltonian, QuantumDotsHamiltonianParameters, DefaultParameters
 from src.models.autoencoder import test_autoencoder
 from src.models.distribution_preserving_autoencoder import DistributionPreservingHamiltonianGenerator, VariationalDistributionPreservingEncoder, train_vae
 from src.models.files import save_autoencoder_params, save_autoencoder, save_data_list, load_ae_model

@@ -5,11 +5,12 @@ import numpy as np
 from torch.utils.data import random_split, DataLoader
 import torch
 from src.data.datasets import HamiltionianDataset
+from src.hamiltonian.units import AtomicUnits
 from src.models.autoencoder import test_autoencoder, train_autoencoder
 from src.models.classifier import Classifier, test_encoder_with_classifier
 
 from src.data.utils import calculate_mean_and_std
-from src.hamiltonian.quantum_dots_chain import QuantumDotsHamiltonian, QuantumDotsHamiltonianParameters, DefaultParameters, AtomicUnits, MZM_THRESHOLD
+from src.hamiltonian.quantum_dots_chain import QuantumDotsHamiltonian, QuantumDotsHamiltonianParameters, DefaultParameters, MZM_THRESHOLD
 from src.models.distribution_preserving_autoencoder import DistributionPreservingHamiltonianGenerator, VariationalDistributionPreservingEncoder, train_vae
 from src.models.classifier import train_encoder_with_classifier
 from src.models.files import save_autoencoder_params, save_autoencoder, save_data_list, load_autoencoder_params, load_ae_model, save_model

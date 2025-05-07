@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 
 from src.hamiltonian.hamiltonian import IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, Hamiltonian, RepresentationMapping
 from src.hamiltonian.hamiltonian_torch_handlers import get_strip, BlockExtractor
+from src.hamiltonian.units import AtomicUnits
 
 
 def count_mzm_states(H: np.ndarray, threshold: float = 1.e-5):
@@ -106,6 +107,22 @@ def majorana_polarization_product(zero_mode: np.ndarray, representation_mapping:
         raise ValueError(f'Representation mapping {representation_mapping} not supported')
 
 
+def majoranization(H: np.ndarray, n_dots: int):
+    m1 = np.concatenate([np.array([1,1,-1,-1]), np.array([0,0,0,0]*(n_dots-2)), np.array([1,1,1,1])]).T/2.
+    m2 = np.concatenate([np.array([1,1,-1,-1])*-1., np.array([0,0,0,0]*(n_dots-2)), np.array([1,1,1,1])]).T/2.
+
+    eigvals, eigvecs = np.linalg.eigh(H)
+    ms = []
+    for ie, eig in enumerate(eigvals):
+        ml = np.conj(eigvecs[:,ie])@m1
+        mr = np.conj(eigvecs[:,ie])@m2
+        zm = np.exp(-np.abs(eig)/(0.1/AtomicUnits.Eh))
+        ms.append(np.abs(ml-mr)*zm)  # mode projection on left - right majoranas
+    ms = np.array(ms)[np.abs(eigvals).argsort()]  # # sort MZM_i using |E_i|
+    majoranization = np.amax([0., ms[0]+ms[1]-ms[2:].sum()])
+    return majoranization
+
+
 def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: np.ndarray, filename: str, **kwargs: t.Dict[str, t.Any]):
     representation_mapping = kwargs.get('representation_mapping', RepresentationMapping.default)
     energies = []
@@ -157,6 +174,9 @@ def plot_eigvals_levels(
     H = model.get_hamiltonian(representation_mapping)
     eigvals = np.linalg.eigvalsh(H)
     
+    if 'title' in kwargs:
+        plt.title(kwargs['title'])
+
     if 'ylim' in kwargs:
         plt.ylim(kwargs['ylim'])
 
@@ -221,6 +241,9 @@ def plot_majorana_polarization(
 ):
     if not os.path.exists(dirpath):
         os.makedirs(dirpath)
+
+    if 'title' in kwargs:
+        plt.title(kwargs['title'])
 
     if 'polaxis' in kwargs:
         polaxis = kwargs['polaxis']

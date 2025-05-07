@@ -12,7 +12,7 @@ from src.hamiltonian.hamiltonian_torch_handlers import HamiltonianConverter
 from src.models.noise_generatiron import NoiseGenerator
 from src.hamiltonian.hamiltonian import transform_majorana_plus_minus_up_down_representation_to_default
 from src.models.diffusion_transformer import DiT
-from src.models.utils import deep_update, deep_copy, weighted_update, ParameterWeightedUpdate
+from src.models.utils import deep_update, deep_copy, l2_params_loss, torch_majoranization_loss, weighted_update, ParameterWeightedUpdate
 
  
 def train_denoising_model(
@@ -1257,6 +1257,8 @@ def train_denoising_conductance_DiTGEN_AE(
     epoch: int,
     train_gen: bool = True,
     train_ae: bool = True,
+    denormalize: t.Callable = None,
+    regularization_strength: float = 0.1,
 ):
 
     generator.to(device)
@@ -1289,17 +1291,32 @@ def train_denoising_conductance_DiTGEN_AE(
 
             params_map = generator(x_perturbed, noise_coeff_real, None, matrix_output=False)
             
-            # improved_map = deep_update(h_perturbed_params_map, params_map, detach=False)
+            improved_map = deep_update(h_perturbed_params_map, params_map, detach=False)
             # improved_map = weighted_update(h_perturbed_params_map, params_map, alpha=0.5)
           
-            predicted_latent = encoder(params_map, mock_noise_coeff, None, matrix_input=False)
+            predicted_latent = encoder(improved_map, mock_noise_coeff, None, matrix_input=False)
             predicted_h = decoder(predicted_latent, mock_noise_coeff, None)
 
-            input_h = hamiltonian_converter.from_params_to_matrix(params_map)
+            input_h = hamiltonian_converter.from_params_to_matrix(improved_map)
 
-            target_latent = encoder(h, mock_noise_coeff, None, matrix_input=True)
+            # Majoranization loss
+            latent_loss = -torch_majoranization_loss(input_h)
+            regularization_loss = regularization_strength * l2_params_loss(params_map)
 
-            loss_gen = F.mse_loss(predicted_h, input_h) + F.mse_loss(predicted_latent, target_latent)
+            # target_latent = encoder(h, mock_noise_coeff, None, matrix_input=True)
+
+            # latent_loss = F.mse_loss(predicted_latent, target_latent, reduction='mean')
+
+            # Kl div across batch dimension
+            # kl_div = F.kl_div(F.log_softmax(predicted_latent, dim=0), F.log_softmax(target_latent, dim=0), reduction='none', log_target=True)
+            # latent_loss = kl_div.sum(dim=0).mean()
+
+            # Min Cross MSE loss
+            # cdist = torch.cdist(predicted_latent.view(1, predicted_latent.shape[0], -1), target_latent.view(1, target_latent.shape[0], -1), p=2)
+            # latent_loss = cdist.min(dim=-1).values.mean()
+
+            # loss_gen = F.mse_loss(predicted_h, input_h) + latent_loss # + F.mse_loss(predicted_latent, target_latent)
+            loss_gen = latent_loss + regularization_loss
             total_loss_gen += loss_gen.item()
             loss_gen.backward()
             optimizer_gen.step()
@@ -1363,18 +1380,29 @@ def test_denoising_conductance_DiTGEN_AE(
             h = h.to(device)
             h_perturbed = h_perturbed.to(device)
 
+            h_perturbed_params_map = hamiltonian_converter.from_matrix_to_params(h_perturbed)
+
             mock_noise_coeff = torch.zeros(x.shape[0], 1).to(device)
             noise_coeff_real = noise_amp.to(device).unsqueeze(-1)
 
             # Testing GEN model
             params_map = generator(x_perturbed, noise_coeff_real, None, matrix_output=False)
-            
-            predicted_latent = encoder(params_map, mock_noise_coeff, None, matrix_input=False)
+            improved_map = deep_update(h_perturbed_params_map, params_map, detach=False)
+
+            predicted_latent = encoder(improved_map, mock_noise_coeff, None, matrix_input=False)
 
             target_latent = encoder(h, mock_noise_coeff, None, matrix_input=True)
 
-            loss_gen = F.mse_loss(predicted_latent, target_latent)
-            total_loss_gen += loss_gen.item()
+            # Kl div across batch dimension
+            # kl_div = F.kl_div(F.log_softmax(predicted_latent, dim=0), F.log_softmax(target_latent, dim=0), reduction='none', log_target=True)
+            # latent_loss = kl_div.sum(dim=0).mean()
+
+            # Min Cross MSE loss
+            cdist = torch.cdist(predicted_latent.view(1, predicted_latent.shape[0], -1), target_latent.view(1, target_latent.shape[0], -1), p=2)
+            latent_loss = cdist.min(dim=-1).values.mean()
+
+            # loss_gen = F.mse_loss(predicted_latent, target_latent)
+            total_loss_gen += latent_loss.item()
 
             # Testing AE model
             latent = encoder(h, mock_noise_coeff, None)
@@ -1385,8 +1413,10 @@ def test_denoising_conductance_DiTGEN_AE(
             total_loss_ae += loss_ae.item()
 
             # Testing AE on GEN output
+            params_map = generator(x_perturbed, noise_coeff_real, None, matrix_output=False)
+            improved_map = deep_update(h_perturbed_params_map, params_map, detach=False)
+            generated_h = hamiltonian_converter.from_params_to_matrix(improved_map)
 
-            generated_h = generator(x_perturbed, noise_coeff_real, None, matrix_output=True)
             latent = encoder(generated_h, mock_noise_coeff, None)
             predicted_h = decoder(latent, mock_noise_coeff, None)
             loss_ae_gen = F.mse_loss(predicted_h, generated_h)

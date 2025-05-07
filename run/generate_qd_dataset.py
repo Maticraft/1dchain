@@ -1,5 +1,6 @@
 from src.data.utils import generate_data
-from src.hamiltonian.quantum_dots_chain import AtomicUnits, QuantumDotsHamiltonian, generate_parameters
+from src.hamiltonian.units import AtomicUnits
+from src.hamiltonian.quantum_dots_chain import QuantumDotsHamiltonian, generate_parameters
 
 conductance_config = {
     'gamma': 0.1,
@@ -20,6 +21,6 @@ conductance_config = {
 }
 
 
-N = 100
+N = 10000
 parameters = generate_parameters(N, num_verified_majoranas=N)
-generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/3dots1level_test_hopping', eig_decomposition=False, conductance_config=None, format='csr')
+generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/3dots1level_majoranization1_mzm_gap0_3', eig_decomposition=False, conductance_config=None, format='csr')

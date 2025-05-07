@@ -6,7 +6,8 @@ import numpy as np
 
 from src.data.datasets import HamiltionianDataset
 from src.data.utils import Denormalize
-from src.hamiltonian.quantum_dots_chain import AtomicUnits, MZM_THRESHOLD, DefaultParameters, QuantumDotsHamiltonian, QuantumDotsHamiltonianParameters
+from src.hamiltonian.units import AtomicUnits
+from src.hamiltonian.quantum_dots_chain import MZM_THRESHOLD, DefaultParameters, QuantumDotsHamiltonian, QuantumDotsHamiltonianParameters
 from src.hamiltonian.utils import plot_majorana_polarization, plot_eigvals_levels
 from src.models.gan import Generator
 from src.models.files import load_ae_model, load_latent_distribution, load_autoencoder_params, get_full_model_config, load_gan_submodel_state_dict, load_covariance_matrix, load_positional_autoencoder

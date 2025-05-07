@@ -8,10 +8,11 @@ from torchvision.transforms import Normalize
 
 from src.data.datasets import HamiltonianFromParametersDataset
 from src.data.utils import calculate_mean_and_std, Denormalize
+from src.hamiltonian.units import AtomicUnits
 from src.hamiltonian.conductance import plot_conductance_map, generate_conductance_tensor
 from src.hamiltonian.hamiltonian import RepresentationMapping
 from src.hamiltonian.hamiltonian_torch_handlers import HamiltonianConverter
-from src.hamiltonian.quantum_dots_chain import AtomicUnits, DefaultParameters, QuantumDotsHamiltonian
+from src.hamiltonian.quantum_dots_chain import DefaultParameters, QuantumDotsHamiltonian
 from src.hamiltonian.utils import plot_eigvals_levels
 from src.models.files import load_params, load_model
 from src.models.diffusion_transformer import DiT

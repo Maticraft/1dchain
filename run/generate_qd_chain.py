@@ -1,6 +1,7 @@
 import os
 import numpy as np
 
+import src.hamiltonian.units
 from src.hamiltonian.hamiltonian import RepresentationMapping, REPRESENTATION_MAPPING_FUNCTION
 import src.hamiltonian.quantum_dots_chain as qd_chain
 from src.hamiltonian.utils import plot_eigvals, plot_majorana_polarization
@@ -17,10 +18,10 @@ parameters = qd_chain.QuantumDotsHamiltonianParameters(no_dots=7, no_levels=2, d
 system = qd_chain.QuantumDotsHamiltonian(parameters)
 
 h_org = system.get_hamiltonian()
-vscale = 1/qd_chain.AtomicUnits.Eh
+vscale = 1/src.hamiltonian.units.AtomicUnits.Eh
 
-plot_eigvals(system, 'mu', np.linspace(-1.5/qd_chain.AtomicUnits.Eh, .5/qd_chain.AtomicUnits.Eh, 100), os.path.join(dir_name, 'eigvals.png'), ylim=(-1, 1), xnorm=1/qd_chain.AtomicUnits.Eh, ynorm=1/qd_chain.AtomicUnits.Eh)
-plot_eigvals(system, 'mu', np.linspace(-1.5/qd_chain.AtomicUnits.Eh, .5/qd_chain.AtomicUnits.Eh, 100), os.path.join(dir_name, 'eigvals_majorana_rep.png'), ylim=(-1, 1), xnorm=1/qd_chain.AtomicUnits.Eh, ynorm=1/qd_chain.AtomicUnits.Eh, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down)
+plot_eigvals(system, 'mu', np.linspace(-1.5/src.hamiltonian.units.AtomicUnits.Eh, .5/src.hamiltonian.units.AtomicUnits.Eh, 100), os.path.join(dir_name, 'eigvals.png'), ylim=(-1, 1), xnorm=1/src.hamiltonian.units.AtomicUnits.Eh, ynorm=1/src.hamiltonian.units.AtomicUnits.Eh)
+plot_eigvals(system, 'mu', np.linspace(-1.5/src.hamiltonian.units.AtomicUnits.Eh, .5/src.hamiltonian.units.AtomicUnits.Eh, 100), os.path.join(dir_name, 'eigvals_majorana_rep.png'), ylim=(-1, 1), xnorm=1/src.hamiltonian.units.AtomicUnits.Eh, ynorm=1/src.hamiltonian.units.AtomicUnits.Eh, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down)
 
 plot_matrix(h_org.real, os.path.join(dir_name, 'hamiltonian_real_2levels.png'), vmin=-vscale, vmax=vscale)
 plot_matrix(h_org.imag, os.path.join(dir_name, 'hamiltonian_imag_2levels.png'), vmin=-0.1*vscale, vmax=0.1*vscale)
@@ -33,7 +34,7 @@ plot_matrix(h_transformed_to_org.real, os.path.join(dir_name, 'hamiltonian_real_
 plot_matrix(h_transformed_to_org.imag, os.path.join(dir_name, 'hamiltonian_imag_2levels_majorana_rep_inverse.png'), vmin=-0.1*vscale, vmax=0.1*vscale)
 
 
-system.set_parameter('mu', -0.5/qd_chain.AtomicUnits.Eh)
+system.set_parameter('mu', -0.5/src.hamiltonian.units.AtomicUnits.Eh)
 h = system.get_hamiltonian()
 plot_matrix(h.real, os.path.join(dir_name, 'hamiltonian_wmajoranas_real_2levels.png'), vmin=-vscale, vmax=vscale)
 plot_matrix(h.imag, os.path.join(dir_name, 'hamiltonian_wmajoranas_imag_2levels.png'), vmin=-0.1*vscale, vmax=0.1*vscale)

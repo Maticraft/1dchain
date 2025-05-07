@@ -8,9 +8,10 @@ from torchvision.transforms import Normalize
 
 from src.data.datasets import HamiltonianFromParametersDataset
 from src.data.utils import calculate_mean_and_std, Denormalize
+from src.hamiltonian.units import AtomicUnits
 from src.hamiltonian.conductance import plot_conductance_map, torch_conductance_map0, torch_conductance_map2
 from src.hamiltonian.hamiltonian import RepresentationMapping, transform_majorana_plus_minus_up_down_representation_to_default
-from src.hamiltonian.quantum_dots_chain import AtomicUnits, DefaultParameters, QuantumDotsHamiltonianParameters, QuantumDotsHamiltonian, MZM_THRESHOLD
+from src.hamiltonian.quantum_dots_chain import DefaultParameters, QuantumDotsHamiltonianParameters, QuantumDotsHamiltonian, MZM_THRESHOLD
 from src.hamiltonian.utils import plot_eigvals_levels, plot_majorana_polarization
 from src.models.noise_generatiron import NoiseGenerator
 from src.models.denoiser import train_denoising_param_model, test_denoising_param_model, diffusion_like_sample

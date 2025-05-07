@@ -9,7 +9,7 @@ from src.data.datasets import HamiltionianDataset
 from src.hamiltonian import quantum_dots_chain as qd_chain
 from src.data.utils import calculate_mean_and_std
 from src.hamiltonian.hamiltonian import RepresentationMapping
-from src.hamiltonian.quantum_dots_chain import AtomicUnits
+from src.hamiltonian.units import AtomicUnits
 from src.models.files import load_general_params, load_ae_model
 from src.plots import plot_dataset_samples, plot_dataset_continous_samples
 from src.models.positional_autoencoder import PositionalEncoder

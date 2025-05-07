@@ -7,8 +7,9 @@ import torch
 
 from src.data.datasets import HamiltionianDataset
 from src.data.utils import calculate_mean_and_std, Denormalize
+from src.hamiltonian.units import AtomicUnits
 from src.hamiltonian.helical_ladder import  DEFAULT_PARAMS, SpinLadder
-from src.hamiltonian.quantum_dots_chain import QuantumDotsHamiltonian, QuantumDotsHamiltonianParameters, DefaultParameters, AtomicUnits
+from src.hamiltonian.quantum_dots_chain import QuantumDotsHamiltonian, QuantumDotsHamiltonianParameters, DefaultParameters
 from src.models.gan import Generator
 from src.models.majorana_representation_generator import MajoranaRepresentationHamiltonianGenerator
 from src.models.distribution_preserving_autoencoder import DistributionPreservingEncoder, DistributionPreservingHamiltonianGenerator
