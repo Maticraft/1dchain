@@ -19,7 +19,7 @@ from src.models.majorana_representation_encoder import MajoranaRepresentationHam
 from src.models.majorana_representation_generator import MajoranaRepresentationHamiltonianGenerator, BaselineHiddenRepresentationGenerator, SiteIndependentRepresentationGenerator, UNetLikeSiteIndependentHiddenRepresentationGenerator
 from src.plots import plot_convergence, plot_matrix, plot_generator_eigvals
 from src.hamiltonian.utils import plot_eigvals_levels
-from src.torch_utils import TorchHamiltonian
+from src.hamiltonian.torch_hamiltonian import TorchHamiltonian
 
 # Paths
 data_path = './data/quantum_dots/7dots2levels_fixed_balanced'

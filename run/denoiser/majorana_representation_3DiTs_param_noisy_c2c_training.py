@@ -19,8 +19,8 @@ from src.models.denoiser import train_denoising_conductance_3models, test_denois
 from src.models.files import save_params, save_model, save_data_list, load_params, load_model
 from src.models.diffusion_transformer import DiT
 from src.plots import plot_convergence, plot_matrix
-from src.hamiltonian.utils import plot_eigvals_levels
-from src.torch_utils import TorchHamiltonian
+from src.hamiltonian.utils import plot_eigvals_levels, plot_eigvals
+from src.hamiltonian.torch_hamiltonian import TorchHamiltonian
 
 # Paths
 data_path = './data/quantum_dots/3dots1level_majoranas_gap_pol_verified_with_conductance'

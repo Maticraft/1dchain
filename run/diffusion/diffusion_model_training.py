@@ -16,7 +16,7 @@ from src.models.distribution_preserving_autoencoder import DistributionPreservin
 from src.models.files import save_autoencoder_params, save_autoencoder, save_data_list, get_full_model_config, load_latent_distribution, save_latent_distribution, load_covariance_matrix, save_covariance_matrix
 from src.plots import plot_convergence, plot_matrix, plot_generator_eigvals
 from src.hamiltonian.utils import plot_eigvals_levels
-from src.torch_utils import TorchHamiltonian
+from src.hamiltonian.torch_hamiltonian import TorchHamiltonian
 
 # Paths
 data_path = './data/quantum_dots/7dots2levels_fixed_balanced'

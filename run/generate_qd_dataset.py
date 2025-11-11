@@ -23,4 +23,4 @@ conductance_config = {
 
 N = 10000
 parameters = generate_parameters(N, num_verified_majoranas=N)
-generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/3dots1level_majoranization1_mzm_gap0_3', eig_decomposition=False, conductance_config=None, format='csr')
+generate_data(QuantumDotsHamiltonian, parameters, './data/quantum_dots/simple_fixed_t_3dots1level_majoranization0_0_mzm_gap0_25', eig_decomposition=False, conductance_config=None, format='csr')

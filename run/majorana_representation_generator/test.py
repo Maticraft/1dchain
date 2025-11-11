@@ -5,7 +5,7 @@ from src.hamiltonian.hamiltonian import RepresentationMapping
 from src.models.majorana_representation_encoder import MajoranaRepresentationHamiltonianExtractor
 from src.models.majorana_representation_generator import BaselineHiddenRepresentationGenerator, MajoranaRepresentationHamiltonianGenerator, MajoranaRepresentationHamiltonianConstructor
 from src.plots import plot_matrix
-from src.torch_utils import TorchHamiltonian
+from src.hamiltonian.torch_hamiltonian import TorchHamiltonian
 
 
 test_dir = './test_majorana_representation_generator'

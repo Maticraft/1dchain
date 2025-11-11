@@ -89,23 +89,56 @@ def torch_majoranization_loss(x_hat: torch.Tensor, reduction: str = 'mean') -> t
 
     eigvals, eigvecs = torch.linalg.eigh(x_hat)
     ms = []
+    ehs = []
     for ie in range(eigvals.shape[-1]):
         eig = eigvals[..., ie]
         ml = torch.conj(eigvecs[..., ie])@m1
         mr = torch.conj(eigvecs[..., ie])@m2
         zm = torch.exp(-10 * torch.abs(eig)) #/AtomicUnits.Eh))
         ms.append(torch.abs(ml-mr)*zm)  # mode projection on left - right majoranas
-    ms = torch.stack(ms, dim=-1)
+
+        eh = (torch.abs(eigvecs[..., ie])**2).reshape(*eigvecs.shape[:-2], n_dots, 2, 2).sum(axis=(-3,-1))
+        eh_total = eh[..., 0]*eh[..., 1]*4-0.5  # smaller than 0.5 are filtered out
+        ehs.append(2.*torch.maximum(torch.zeros_like(eh_total), eh_total))  # ensure non-negative energies
+
     sorted_ids = torch.argsort(torch.abs(eigvals), dim=-1)
+
+    ms = torch.stack(ms, dim=-1)
     ms = torch.gather(ms, dim=-1, index=sorted_ids)
+    ehs = torch.stack(ehs, dim=-1)
+    ehs = torch.gather(ehs, dim=-1, index=sorted_ids)
     # ms = [ms[..., ids] for ids in sorted_ids]  # # sort MZM_i using |E_i|
-    ms_total = ms[..., 0] + ms[..., 1] - ms[..., 2:].sum(dim=-1)
+
+    
+    ms_total = ms[..., 0] + ms[..., 1] - ms[..., 2:4].sum(dim=-1)
     majoranization = torch.maximum(torch.zeros_like(ms_total), ms_total)
+
+    majoranization_weighted = majoranization * ehs[..., 0] 
+    
+    # sorted_eigvals = torch.sort(torch.abs(eigvals), dim=-1, descending=False).values
+    # non_zero_eigvals = sorted_eigvals[:, 2:]
+    # zero_eigvals = sorted_eigvals[:, :2]
+
+    # non_zero_eigvals_loss = -torch.log(sorted_eigvals.mean(dim=-1))
+    # non_zero_eigvals_loss = -torch.exp(-non_zero_eigvals.min(dim=-1).values)
+    # zero_eigvals_loss = torch.exp(-zero_eigvals.mean(dim=-1))
+    # # var = non_zero_eigvals.var(dim=-1)
+    # # var_loss = -torch.exp(var - 10)
+    # reg_loss = non_zero_eigvals_loss + zero_eigvals_loss
+    
+    
+    # zero_eigvals = torch.gather(torch.abs(eigvals), dim=-1, index=sorted_ids[..., 0:2]).mean(dim=-1)
+    # first_non_zero_eigvals = torch.gather(torch.abs(eigvals), dim=-1, index=sorted_ids[..., 2:4]).mean(dim=-1)
+    # bulk_gap = first_non_zero_eigvals - zero_eigvals
+
+    majoranization_weighted = majoranization * ehs[..., 0] #+ reg_loss
+    # majoranization_weighted = majoranization
+
     if reduction == 'mean':
-        majoranization = majoranization.mean()
+        majoranization_weighted = majoranization_weighted.mean()
     elif reduction == 'sum':
-        majoranization = majoranization.sum()
-    return majoranization
+        majoranization_weighted = majoranization_weighted.sum()
+    return majoranization_weighted
 
 
 def batch_variance_loss(x_hat: torch.Tensor, block_size: int = 4):
@@ -388,8 +421,21 @@ def deep_update(d: t.Dict[str, t.Any], u: t.Dict[str, t.Any], detach: bool = Fal
         if isinstance(v, dict):
             d_new[k] = deep_update(d_new.get(k, {}), v, detach)
         else:
+            d_new[k] = d_new[k] + v
+    return d_new
+
+
+def tensor_dict_to_list(d: t.Dict[str, t.Any]):
+    d_new = {}
+    for k, v in d.items():
+        if isinstance(v, dict):
+            d_new[k] = tensor_dict_to_list(v)
+        elif isinstance(v, torch.Tensor):
+            d_new[k] = v.detach().cpu().tolist()
+        else:
             d_new[k] = v
     return d_new
+
 
 def weighted_update(base_params: t.Dict[str, t.Any], update_params: t.Dict[str, t.Any], alpha=0.1):
     """Replace deep_update with weighted interpolation"""

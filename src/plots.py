@@ -11,15 +11,17 @@ from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 
 from src.data.datasets import HamiltionianDataset, HamiltonianFromParametersDataset
-from src.hamiltonian.conductance import plot_conductance_map
+from src.hamiltonian.conductance import generate_conductance_tensor, plot_conductance_map
 from src.hamiltonian.hamiltonian import IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR, Hamiltonian
-from src.hamiltonian.utils import plot_eigvals_levels, extract_property_strip, plot_majorana_polarization, majoranization
-from src.hamiltonian.hamiltonian_torch_handlers import BlockConstructor
+from src.hamiltonian.units import AtomicUnits
+from src.hamiltonian.utils import plot_eigvals, plot_eigvals_levels, extract_property_strip, plot_majorana_polarization, majoranization
+from src.hamiltonian.hamiltonian_torch_handlers import BlockConstructor, HamiltonianConverter
 from src.data.utils import Denormalize
+from src.models.diffusion_transformer import DiT
 from src.models.gan import Generator
-from src.models.utils import get_eigvals, reconstruct_hamiltonian
-from src.models.files import DELIMITER
-from src.torch_utils import TorchHamiltonian
+from src.models.utils import deep_update, get_eigvals, reconstruct_hamiltonian
+from src.models.files import DELIMITER, load_metrics_from_file
+from src.hamiltonian.torch_hamiltonian import TorchHamiltonian
 
 
 def plot_dataset_from_params_samples(
@@ -125,8 +127,13 @@ def plot_reconstructed_sample(
     plot_matrix(np.imag(H_rec.get_hamiltonian()), save_path.format(f'{sample_idx}_rec_matrix_imag'), **kwargs)
 
 
-def plot_dataset_sample(tensor: torch.Tensor, sample_idx: int, save_path: str, **kwargs: t.Dict[str, t.Any]):
-    H = TorchHamiltonian.from_2channel_tensor(tensor)
+def plot_dataset_sample(tensor: torch.Tensor, sample_idx: int, save_path: str, mu_range: t.Tuple[float, float], **kwargs: t.Dict[str, t.Any]):
+    if 'hamiltonian_params' in kwargs:
+        H = TorchHamiltonian.from_2channel_tensor_with_params(tensor, kwargs['hamiltonian_params'])
+    else:
+        H = TorchHamiltonian.from_2channel_tensor(tensor)
+    plot_eigvals(H, 'potential', np.linspace(mu_range[0], mu_range[1], 100), save_path.format(f'{sample_idx}_eigvals_with_occ'), color='occupations', **kwargs)
+    plot_eigvals(H, 'potential', np.linspace(mu_range[0], mu_range[1], 100), save_path.format(f'{sample_idx}_eigvals_with_wh'), color='electron-hole-diff', **kwargs)
     plot_eigvals_levels(H, save_path.format(f'{sample_idx}_eigvals'), **kwargs)
     plot_matrix(np.real(H.get_hamiltonian()), save_path.format(f'{sample_idx}_matrix_real'), **kwargs)
     plot_matrix(np.imag(H.get_hamiltonian()), save_path.format(f'{sample_idx}_matrix_imag'), **kwargs)
@@ -616,3 +623,275 @@ def plot_latent_space_distribution(
     plt.ylabel('Mean and standard deviation')
     plt.savefig(save_path)
     plt.close()
+
+
+def plot_majoranization_denoising_map(
+    denoiser: DiT,
+    hamiltonian_class: t.Type[Hamiltonian],
+    start_params: t.Dict[str, t.Any],
+    x_param: str,
+    x_range: t.Tuple[float, float],
+    y_param: str,
+    y_range: t.Tuple[float, float],
+    cmap_config: t.Dict[str, t.Any],
+    save_path: str,
+    cmap_normalize: t.Callable,
+    h_normalize: t.Callable,
+    h_denormalize: t.Callable,
+    hamiltonian_converter: HamiltonianConverter,
+    resolution: int = 100,
+    n_dots: int = 3,
+    noise_amplitude: float = 0.1,
+    device: torch.device = torch.device('cpu'),
+    save_log: str = None,
+    dot_index_x: int = None,
+    dot_index_y: int = None,
+):
+    
+    plt.rcParams['font.size'] = 20
+    fig, axs = plt.subplots(1, 2, figsize=(20, 10))
+
+    x_values = np.linspace(x_range[0], x_range[1], resolution)
+    y_values = np.linspace(y_range[0], y_range[1], resolution)
+    denoiser.to(device)
+    denoiser.eval()
+
+    x_param_name = f'{x_param}_{dot_index_x}' if dot_index_x is not None else x_param
+    y_param_name = f'{y_param}_{dot_index_y}' if dot_index_y is not None else y_param
+
+    if save_log:
+        with open(save_log, 'w') as f:
+            f.write(f'{x_param_name}{DELIMITER}{y_param_name}{DELIMITER}Original Majoranization{DELIMITER}Denoised Majoranization\n')
+
+    for x in tqdm(x_values, desc='Plotting majoranization denoising map'):
+        for y in y_values:
+            current_params = deepcopy(start_params)
+            if dot_index_x is None:
+                current_params[x_param] += x
+                x_value = current_params[x_param].mean()
+            else:
+                current_params[x_param][dot_index_x] += x
+                x_value = current_params[x_param][dot_index_x]
+
+            if dot_index_y is None:
+                current_params[y_param] += y
+                y_value = current_params[y_param].mean()
+            else:
+                current_params[y_param][dot_index_y] += y
+                y_value = current_params[y_param][dot_index_y]
+
+
+            hamiltonian = hamiltonian_class(current_params)
+            h_tensor = hamiltonian.get_hamiltonian_tensor()
+            h_tensor_complex = torch.complex(h_tensor[0], h_tensor[1]).to(device)
+            m_ref_value = majoranization(h_tensor_complex.detach().cpu().numpy(), n_dots)
+
+            axs[0].scatter(x_value, y_value, c=[m_ref_value], cmap='viridis', s=40, vmin=0, vmax=1.)
+
+            conductance = generate_conductance_tensor(h_tensor_complex, cmap_config)
+            conductance_normalized = cmap_normalize(conductance).unsqueeze(0)
+
+            t = torch.tensor(noise_amplitude, device=device).view(1, 1)
+            improve_map = denoiser.forward_to_params(conductance_normalized, t, None)
+            
+            h_tensor_norm = h_normalize(h_tensor.unsqueeze(0))
+            h_map = hamiltonian_converter.from_matrix_to_params(h_tensor_norm)
+            improved_map = deep_update(h_map, improve_map, detach=False)
+            h_predicted = hamiltonian_converter.from_params_to_matrix(improved_map)
+            h_predicted_denorm = h_denormalize(h_predicted)[0]
+            h_complex_tensor = torch.complex(h_predicted_denorm[0], h_predicted_denorm[1])
+            m_value = majoranization(h_complex_tensor.detach().cpu().numpy(), n_dots)
+
+            axs[1].scatter(x_value, y_value, c=[m_value], cmap='viridis', s=40, vmin=0, vmax=1.)
+
+            if save_log:
+                with open(save_log, 'a') as f:
+                    f.write(f'{x_value}{DELIMITER}{y_value}{DELIMITER}{m_ref_value}{DELIMITER}{m_value}\n')
+    
+    axs[0].set_title('Original Majoranization Map')
+    axs[0].set_xlabel(x_param_name)
+    axs[0].set_ylabel(y_param_name)
+    axs[1].set_title('Denoised Majoranization Map')
+    axs[1].set_xlabel(x_param_name)
+    axs[1].set_ylabel(y_param_name)
+    colorbar = fig.colorbar(axs[1].collections[0], ax=axs, orientation='horizontal', fraction=0.07, pad=.1)
+    colorbar.set_label('Majoranization')
+    colorbar.ax.tick_params(labelsize=15)
+    plt.savefig(save_path, bbox_inches='tight', dpi=300)
+    plt.close()
+
+
+def plot_majoranization_denoising_map_from_file(
+    load_path: str,
+    save_path: str,
+    x_param: str,
+    y_param: str,
+    default_x_value: t.Optional[float] = None,
+    default_y_value: t.Optional[float] = None,
+    denormalize_x: bool = False,
+    denormalize_y: bool = False,
+    x_range: t.Optional[t.Tuple[float, float]] = None,
+    y_range: t.Optional[t.Tuple[float, float]] = None,
+    x_dataset_range: t.Optional[t.Tuple[float, float]] = None,
+    y_dataset_range: t.Optional[t.Tuple[float, float]] = None,
+    normalize_majoranization: bool = False,
+    legend: bool = True,
+    pad_inches: float = None,
+    fig: plt.Figure = None,
+    axs: plt.Axes = None,
+    plot_xlabel: bool = True,
+):
+    # plt.rcParams['font.size'] = 20
+    save_fig = False
+    if (fig is None) or (axs is None):
+        if legend:
+            fig, axs = plt.subplots(1, 2, figsize=(10, 7), sharey=True)
+        else:
+            fig, axs = plt.subplots(1, 2, figsize=(10, 5), sharey=True)
+        save_fig = True
+
+    data = load_metrics_from_file(load_path)
+
+    x_values = data[x_param]
+    y_values = data[y_param]
+
+    if denormalize_x:
+        x_values = x_values * AtomicUnits.Eh
+        if default_x_value is not None:
+            default_x_value = default_x_value * AtomicUnits.Eh
+        if x_range is not None:
+            x_range = (x_range[0] * AtomicUnits.Eh, x_range[1] * AtomicUnits.Eh)
+
+    if denormalize_y:
+        y_values = y_values * AtomicUnits.Eh
+        if default_y_value is not None:
+            default_y_value = default_y_value * AtomicUnits.Eh
+        if y_range is not None:
+            y_range = (y_range[0] * AtomicUnits.Eh, y_range[1] * AtomicUnits.Eh)
+
+    m_ref_values = data['Original Majoranization']
+    m_values = data['Denoised Majoranization']
+    max_value = 2*np.sqrt(2)
+    if normalize_majoranization:
+        m_ref_values = m_ref_values / max_value
+        m_values = m_values / max_value
+
+    # for x_value, y_value, m_ref_value, m_value in tqdm(zip(x_values, y_values, m_ref_values, m_values), desc='Plotting majoranization denoising map'):
+    axs[0].scatter(x_values, y_values, c=m_ref_values, cmap='viridis', s=20, vmin=0, vmax=1, marker='s')
+    axs[1].scatter(x_values, y_values, c=m_values, cmap='viridis', s=20, vmin=0, vmax=1, marker='s')
+    axs[0].scatter(default_x_value, default_y_value, c='red', s=20, label='Default values')
+    axs[1].scatter(default_x_value, default_y_value, c='red', s=20, label='Default values')
+
+    if (x_dataset_range is not None) and (y_dataset_range is not None):
+        if denormalize_x:
+            x_dataset_range = (x_dataset_range[0] * AtomicUnits.Eh, x_dataset_range[1] * AtomicUnits.Eh)
+        if denormalize_y:
+            y_dataset_range = (y_dataset_range[0] * AtomicUnits.Eh, y_dataset_range[1] * AtomicUnits.Eh)
+        # Plot dataset range as a rectangle
+        axs[0].add_patch(plt.Rectangle((x_dataset_range[0], y_dataset_range[0]), 
+                                        x_dataset_range[1] - x_dataset_range[0], 
+                                        y_dataset_range[1] - y_dataset_range[0], 
+                                        fill=False, edgecolor='gray', linewidth=4, label='Dataset range'))
+        axs[1].add_patch(plt.Rectangle((x_dataset_range[0], y_dataset_range[0]), 
+                                        x_dataset_range[1] - x_dataset_range[0], 
+                                        y_dataset_range[1] - y_dataset_range[0], 
+                                        fill=False, edgecolor='gray', linewidth=4, label='Dataset range'))
+    
+    draw_x_pi = False
+    draw_y_pi = False
+    if x_param.startswith('mu'):
+        x_param = r'$\mu{}$'.format(x_param[2:])
+    elif x_param.startswith('l'):
+        x_param = r'$\lambda{}$'.format(x_param[1:])
+        draw_x_pi = True
+    elif x_param.startswith('d'):
+        x_param = r'$\Delta{}$'.format(x_param[1:])
+    elif x_param.startswith('b'):
+        x_param = r'$B{}$'.format(x_param[1:])
+    else:
+        x_param = r'${}$'.format(x_param)
+
+    if not draw_x_pi:
+        x_param = f"{x_param} [meV]"
+
+    if y_param.startswith('mu'):
+        y_param = r'$\mu{}$'.format(y_param[2:])
+    elif y_param.startswith('l'):
+        y_param = r'$\lambda{}$'.format(y_param[1:])
+        draw_y_pi = True
+    elif y_param.startswith('d'):
+        y_param = r'$\Delta{}$'.format(y_param[1:])
+    elif y_param.startswith('b'):
+        y_param = r'$B{}$'.format(y_param[1:])
+    else:
+        y_param = r'${}$'.format(y_param)
+
+    if not draw_y_pi:
+        y_param = f"{y_param} [meV]"
+
+
+    # axs[0].set_title('Input')
+    if plot_xlabel:
+        axs[0].set_xlabel(x_param)
+        axs[0].xaxis.set_label_coords(0.5, -0.1)
+        # axs[0].tick_params(axis='x', pad=10)
+        xticks = np.round(np.linspace(x_range[0], x_range[1], 4), 1)
+        axs[0].set_xticks(xticks)
+        if draw_x_pi:
+            xtick_labels = [f'{val/np.pi:.1f}π' for val in xticks]
+            axs[0].set_xticklabels(xtick_labels)
+        axs[0].xaxis.get_majorticklabels()[3].set_horizontalalignment('right')
+    
+    axs[0].set_ylabel(y_param)
+    yticks = np.round(np.linspace(*y_range, 4), 1)
+    # yticks[0] += (0.05 if not draw_y_pi else 0.11)
+    # yticks[-1] -= (0.05 if not draw_y_pi else 0.1)
+    ytick_labels = [f'{val:.1f}' for val in yticks]
+    ytick_labels[0] = str(y_range[0])
+    ytick_labels[-1] = str(y_range[1])
+    axs[0].set_yticks(yticks)
+    axs[0].set_yticklabels(ytick_labels)
+    axs[0].yaxis.get_majorticklabels()[0].set_verticalalignment('bottom')
+    axs[0].yaxis.get_majorticklabels()[3].set_verticalalignment('top')
+
+    if draw_y_pi:
+        ytick_labels = [f'{val/np.pi:.1f}π' for val in yticks]
+        axs[0].set_yticklabels(ytick_labels)
+        axs[0].yaxis.set_label_coords(-0.16, 0.5)
+
+    # axs[1].set_title('NN')
+    if plot_xlabel:
+        axs[1].set_xlabel(x_param)
+        axs[1].xaxis.set_label_coords(0.5, -0.1)
+        # axs[1].tick_params(axis='x', pad=10)
+        if draw_x_pi:
+            xticks = np.round(np.linspace(*y_range, 4), 1)
+            xtick_labels = [f'{val/np.pi:.1f}π' for val in xticks]
+            axs[1].set_xticks(xticks)
+            axs[1].set_xticklabels(xtick_labels)
+        axs[1].xaxis.get_majorticklabels()[0].set_horizontalalignment('left')
+
+    # axs[1].set_ylabel(y_param)
+    
+    if x_range is not None:
+        axs[0].set_xlim(x_range)
+        axs[1].set_xlim(x_range)
+    if y_range is not None:
+        axs[0].set_ylim(y_range)
+        axs[1].set_ylim(y_range)
+    
+    if legend:
+        colorbar = fig.colorbar(axs[1].collections[0], ax=axs, orientation='horizontal', fraction=0.07, pad=.15)
+        colorbar.set_label(r'$\mathcal{M}$')
+        colorbar.ax.tick_params(labelsize=16)
+        colorbar.ax.set_position([0.35, 0.08, 0.55, 0.07]) 
+
+        # Plot legend in lower left corner, but make it extra tight to not add too much space and assert that label values are not duplicated, hence plot single legend per figure and not per axis
+        handles, labels = axs[0].get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        fig.legend(by_label.values(), by_label.keys(), loc='lower left', fontsize=20, frameon=False, bbox_to_anchor=(0.02, 0.), bbox_transform=fig.transFigure)
+
+    if save_fig:
+        plt.subplots_adjust(wspace=0.)
+        plt.savefig(save_path, bbox_inches='tight', dpi=300, pad_inches=pad_inches)
+        plt.close()

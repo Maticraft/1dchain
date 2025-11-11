@@ -2,6 +2,7 @@ import typing as t
 import json
 import os
 
+import numpy as np
 import torch
 import torch.nn as nn
 from src.models.autoencoder import Decoder, Encoder
@@ -334,3 +335,15 @@ def load_covariance_matrix(root_dir: str, prefix: str = ''):
     covariance_matrix = load_data_list(covariance_matrix_path, skip_header=True)
     covariance_matrix = torch.tensor(covariance_matrix)
     return covariance_matrix
+
+
+def load_metrics_from_file(log_path: str, metrics_names: t.Optional[t.List[str]] = None, delimiter: str = DELIMITER) -> t.Dict[str, np.ndarray]:
+    values_start_row = 0
+    with open(log_path, 'r') as f:
+        data = f.readlines()
+    data = [x.strip().split(delimiter) for x in data]
+    if metrics_names is None:
+        metrics_names = data[0]
+        values_start_row = 1
+    values = np.array([[float(y) for y in x] for x in data[values_start_row:]])
+    return {name: values[:, i] for i, name in enumerate(metrics_names)}

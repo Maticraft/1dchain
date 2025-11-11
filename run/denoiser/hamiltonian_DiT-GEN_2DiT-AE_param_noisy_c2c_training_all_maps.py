@@ -28,7 +28,7 @@ from src.hamiltonian.torch_hamiltonian import TorchHamiltonian
 
 # Paths
 data_path = './data/quantum_dots/simple_fixed_t_3dots1level_majoranization0_0_mzm_gap0_25'
-normalization_params_path = f'{data_path}/std_rep_normalization_params_1b-3mu-maps.pkl'
+normalization_params_path = f'{data_path}/std_rep_normalization_params_4b-12mu-maps.pkl'
 save_dir = './conductance/quantum_dots/simple_fixed_t_3dots1level_majoranization0_0_mzm_gap0_25'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
@@ -50,7 +50,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Model name
 # model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-mu-fixed_min-majoranization-loss-eh-with-reg0-1_2DiT-AE-patch4-1_improve-selected-params_majorana-destructing-noise1-extra-params_relative-1b-3mu-maps50x50_norm-c2c_lr1e-4-decreasing'
-model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-mu-fixed_min-majoranization-loss-eh-with-reg0-1_2DiT-AE-patch4-1_improve-selected-mu-b-const-params_majorana-destructing-noise1-extra-params_relative-1b-3mu-maps50x50_norm-c2c_lr1e-4-decreasing'
+model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-mu-fixed_min-majoranization-loss-eh-with-reg0-1_2DiT-AE-patch4-1_improve-selected-mu-b-const-params_majorana-destructing-noise1-extra-params_relative-4b-12mu-maps50x50_norm-c2c_lr1e-4-decreasing'
 
 # Pretrained model
 # pretrained_model_name = 'QDH-1lvl-no-interlevel_2DiTs_real_12_patch1_4maps50x50embed_norm_triple-c2c_lr1e-4decreasing'
@@ -76,7 +76,7 @@ params = {
 # Architecture
 dit_c2h_config = {
     'input_size': 50,
-    'input_channels': 4,
+    'input_channels': 16,
     'output_size': 12,
     'output_channels': 2,
     'patch_size': 1,
@@ -166,60 +166,65 @@ hamiltonian_converter = HamiltonianConverter(
 defaults = DefaultParameters()
 
 
+
+cmap_lists = [
+    [
+        {
+            'cmap2': {
+                'i':i,
+                'j':j,
+                'gamma': 0.1,
+                'b_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
+                'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
+                'b_num': 50,
+                'ef_num': 50,
+                'with_embedding': False
+            },
+        },
+        {
+            'cmap0': {
+                'i':i,
+                'j':j,
+                'gamma': 0.1,
+                'mu_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
+                'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
+                'mu_num': 50,
+                'ef_num': 50,
+                'site_index': 1,
+                'with_embedding': False,
+            },
+        },
+        {
+            'cmap0': {
+                'i':i,
+                'j':j,
+                'gamma': 0.1,
+                'mu_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
+                'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
+                'mu_num': 50,
+                'ef_num': 50,
+                'site_index': 0,
+                'with_embedding': False,
+            },
+        },
+        {
+            'cmap0': {
+                'i':i,
+                'j':j,
+                'gamma': 0.1,
+                'mu_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
+                'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
+                'mu_num': 50,
+                'ef_num': 50,
+                'site_index': 2,
+                'with_embedding': False
+            },
+        },
+    ] for i in range(2) for j in range(2)
+]
+
 conductance_config = {
-    'cmap_list': [
-    {
-        'cmap2': {
-            'i':0,
-            'j':0,
-            'gamma': 0.1,
-            'b_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
-            'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-            'b_num': 50,
-            'ef_num': 50,
-            'with_embedding': False
-        },
-    },
-    {
-        'cmap0': {
-            'i':0,
-            'j':0,
-            'gamma': 0.1,
-            'mu_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
-            'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-            'mu_num': 50,
-            'ef_num': 50,
-            'site_index': 1,
-            'with_embedding': False,
-        },
-    },
-    {
-        'cmap0': {
-            'i':0,
-            'j':0,
-            'gamma': 0.1,
-            'mu_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
-            'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-            'mu_num': 50,
-            'ef_num': 50,
-            'site_index': 0,
-            'with_embedding': False,
-        },
-    },
-    {
-        'cmap0': {
-            'i':0,
-            'j':0,
-            'gamma': 0.1,
-            'mu_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
-            'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-            'mu_num': 50,
-            'ef_num': 50,
-            'site_index': 2,
-            'with_embedding': False
-        },
-    },
-    ],
+    'cmap_list': [cmap for sublist in cmap_lists for cmap in sublist],
 }
 
 # conductance_config = {
@@ -485,6 +490,8 @@ for epoch in range(0, params['epochs'] + 1):
         plot_matrix(h_predicted_denorm[0].detach().cpu().numpy(), test_matrix_path.format('GEN_improved_real'), vmin=-vscale, vmax=vscale, title=f'Majoranization: {h_predicted_label}')
         plot_matrix(h_predicted_denorm[1].detach().cpu().numpy(), test_matrix_path.format('GEN_improved_imag'), vmin=-vscale, vmax=vscale, title=f'Majoranization: {h_predicted_label}')
         
+        h_noisy_conductance = noisy_cmap_denormalize(h_noisy_conductance)
+
         for i, cmap_config in enumerate(conductance_config['cmap_list']):
             noisy_conductance_path = os.path.join(epoch_dir, 'noisy_conductance')
             os.makedirs(noisy_conductance_path, exist_ok=True)
@@ -500,7 +507,6 @@ for epoch in range(0, params['epochs'] + 1):
             else:
                 filename_suffix = ''
 
-            h_noisy_conductance = noisy_cmap_denormalize(h_noisy_conductance)
             plot_conductance_map(
                 h_noisy_conductance[0, i].detach().cpu().numpy(),
                 os.path.join(noisy_conductance_path, f'{cmap_name}_i{i_val}_j{j_val}{filename_suffix}.png'),

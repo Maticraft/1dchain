@@ -1,6 +1,6 @@
 from src.hamiltonian.hamiltonian import RepresentationMapping
 from src.models.majorana_representation_generator import MajoranaRepresentationHamiltonianConstructor
-from src.torch_utils import TorchHamiltonian
+from src.hamiltonian.torch_hamiltonian import TorchHamiltonian
 
 
 import torch

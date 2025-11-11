@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import json
 import numpy as np
-from scipy.linalg import eigh
+from scipy.linalg import eigh, expm
 import matplotlib.pyplot as plt
 
 from src.hamiltonian.units import AtomicUnits
@@ -27,18 +27,18 @@ MZM_THRESHOLD = 0.07/ AtomicUnits.Eh # to adjust?
 class DefaultParameters:
     def __init__(self, mu_max: float = 1., t_max: float = 1., b_max: float = 1., d_max: float = 1., lambda_max: float = 1.):
         # potential within a dot (meV)
-        self.mu_default = 0./AtomicUnits.Eh
+        self.mu_default = 0.62/AtomicUnits.Eh
         self.mu_range = [-mu_max/AtomicUnits.Eh, mu_max/AtomicUnits.Eh]
         # energy level separation within the dot (meV)
         self.dot_split = 1./AtomicUnits.Eh
         # hopping amplitude (meV)
-        self.t_default = .2/AtomicUnits.Eh
+        self.t_default = .25/AtomicUnits.Eh
         self.t_range = [0., t_max/AtomicUnits.Eh]
         # local Zeeman field (meV)
         self.b_default = .5/AtomicUnits.Eh
         self.b_range = [-b_max/AtomicUnits.Eh, b_max/AtomicUnits.Eh]
         # superconducting gap (meV)
-        self.d_default = .5/AtomicUnits.Eh
+        self.d_default = .25/AtomicUnits.Eh
         self.d_range = [0., d_max/AtomicUnits.Eh]
         # superconducting phase step
         self.ph_d_default = 0.
@@ -87,10 +87,11 @@ class QuantumDotsHamiltonianParameters:
         self.mu = rand_sample(self.no_dots, range=self.def_par.mu_range)
         self.t = rand_sample(self.no_dots, range=self.def_par.t_range)
         self.t[0] = self.def_par.t_default # enforce that all parameters are set with respect to the first dot hopping
-        self.b = np.ones(self.no_dots)*rand_sample(range=self.def_par.b_range)
-        self.d = np.ones(self.no_dots)*rand_sample(range=self.def_par.d_range)
-        self.ph_d = rand_sample(range=self.def_par.ph_d_range)
-        self.l = np.ones(self.no_dots)*self.def_par.l_default
+        # self.b = np.ones(self.no_dots)*rand_sample(range=self.def_par.b_range)
+        # self.d = np.ones(self.no_dots)*rand_sample(range=self.def_par.d_range)
+        # self.ph_d = rand_sample(range=self.def_par.ph_d_range)
+        
+        self.l = rand_sample(self.no_dots, range=self.def_par.l_range)
 
     def set_random_parameters_const(self):
         self.mu = np.ones(self.no_dots)*rand_sample(range=self.def_par.mu_range)
@@ -150,6 +151,10 @@ class QuantumDotsHamiltonian(Hamiltonian):
         self.dim = self.dim0*self.parameters.no_dots
         self.H = self.full_hamiltonian()
 
+    @property
+    def num_sites(self):
+        return self.parameters.no_dots
+
     def onsite_matrix(self, i: int):
         par = self.parameters
         # Nambu spinor = [\Psi^dag_up, \Psi^dag_down, \Psi_up, \Psi_down] - delta indicates it is correct
@@ -158,10 +163,10 @@ class QuantumDotsHamiltonian(Hamiltonian):
         onsite[1,1] = -par.mu[i]-par.b[i]
         onsite[2,2] =  par.mu[i]-par.b[i]
         onsite[3,3] =  par.mu[i]+par.b[i]
-        onsite[0,3] =  par.d[i]*np.exp( 1.j*par.ph_d*i)/2.
-        onsite[1,2] = -par.d[i]*np.exp( 1.j*par.ph_d*i)/2.
-        onsite[2,1] = -par.d[i]*np.exp(-1.j*par.ph_d*i)/2.
-        onsite[3,0] =  par.d[i]*np.exp(-1.j*par.ph_d*i)/2.
+        onsite[0,3] =  par.d[i]*np.exp( 1.j*par.ph_d*i)
+        onsite[1,2] = -par.d[i]*np.exp( 1.j*par.ph_d*i)
+        onsite[2,1] = -par.d[i]*np.exp(-1.j*par.ph_d*i)
+        onsite[3,0] =  par.d[i]*np.exp(-1.j*par.ph_d*i)
         if par.no_levels > 1:
             onsite = np.kron(np.eye(par.no_levels), onsite)
             diagonal = np.diag(onsite).copy()
@@ -192,7 +197,7 @@ class QuantumDotsHamiltonian(Hamiltonian):
         sigma_z = np.array([[1, 0], [0, -1]])
         sigma_vector = np.array([sigma_x, sigma_y, sigma_z])
         lambda_vector = par.l[i]*np.array([np.sin(par.l_rho[i])*np.cos(par.l_ksi[i]), np.sin(par.l_rho[i])*np.sin(par.l_ksi[i]), np.cos(par.l_rho[i])])
-        hopping_2x2 = -par.t[i]*np.exp(1.j*np.sum(lambda_vector.reshape(-1, 1, 1)*sigma_vector, axis=0))
+        hopping_2x2 = par.t[i]*expm(1.j*np.sum(lambda_vector.reshape(-1, 1, 1)*sigma_vector, axis=0))
 
         hopping[:2, :2] = hopping_2x2
         hopping[2:, 2:] = -np.conjugate(hopping_2x2)
@@ -218,6 +223,12 @@ class QuantumDotsHamiltonian(Hamiltonian):
             value = np.ones(self.parameters.no_dots)*value
         setattr(self.parameters, parameter_name, value)
         self.H = self.full_hamiltonian()
+
+    def get_parameter(self, parameter_name: str):
+        if hasattr(self.parameters, parameter_name):
+            return getattr(self.parameters, parameter_name)
+        else:
+            raise ValueError(f"Parameter {parameter_name} not found in QuantumDotsHamiltonianParameters.")
     
     def parameter_sweeping(self, parameter_name: str, start: float, stop: float, num: int = 101):
         values = np.linspace(start/AtomicUnits.Eh, stop/AtomicUnits.Eh, num=num)
@@ -306,7 +317,7 @@ def generate_parameters(n_samples: int, num_verified_majoranas: int = 0):
             hamiltonian = QuantumDotsHamiltonian(params)
             label = hamiltonian.get_label()
             label = label.split(', ')
-            if (float(label[0]) * float(label[1]) >= 0.1) and (float(label[5]) < MZM_THRESHOLD) and (float(label[7]) >= 1.) and (0.3/AtomicUnits.Eh < float(label[6])):
+            if (float(label[0]) * float(label[1]) >= 0.1) and (float(label[5]) < MZM_THRESHOLD) and (float(label[7]) >= 0.9) and (0.25/AtomicUnits.Eh < float(label[6])):
                 total_num_hamiltonians += 1
                 num_hamiltonians_with_majoranas + 1
                 yield {'parameters': params.to_dict()}  

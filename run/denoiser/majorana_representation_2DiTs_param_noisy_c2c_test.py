@@ -20,7 +20,7 @@ from src.models.files import save_params, load_params, save_model, save_data_lis
 from src.models.diffusion_transformer import DiT
 from src.plots import plot_convergence, plot_matrix
 from src.hamiltonian.utils import plot_eigvals_levels
-from src.torch_utils import TorchHamiltonian
+from src.hamiltonian.torch_hamiltonian import TorchHamiltonian
 
 # Paths
 data_path = './data/quantum_dots/3dots1level_majoranas_gap_pol_verified_with_conductance'

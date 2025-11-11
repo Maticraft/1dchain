@@ -13,6 +13,7 @@ class HamiltonianUnpatch(nn.Module):
         hamitonian_params: HamiltonianParams,
         min_inter_site_interaction_range: int = 1,
         max_inter_site_interaction_range: int = 2,
+        mask_periodic_boundary: bool = True,
         **kwargs
     ):
         super(HamiltonianUnpatch, self).__init__()
@@ -29,6 +30,8 @@ class HamiltonianUnpatch(nn.Module):
         self.num_on_site_params = self.hamiltonian_constructor.num_on_site_params
         self.interaction_range = max_inter_site_interaction_range - min_inter_site_interaction_range
         self.num_total_params = self.interaction_range * self.num_inter_site_params + self.num_on_site_params
+
+        self.mask_periodic_boundary = mask_periodic_boundary
 
         in_size = int(in_to_out_ratio * self.num_total_params)
         self.on_site_converter = nn.Conv1d(in_size, 1, 1)
@@ -49,14 +52,24 @@ class HamiltonianUnpatch(nn.Module):
         '''
         x = x.transpose(-1, -2)
         seq_size = x.shape[-1] // self.num_total_params
-        x_on_site = self.on_site_converter(x[..., :seq_size * self.num_on_site_params]).squeeze(-2)
-        on_site_params = torch.unflatten(x_on_site, dim=-1, sizes=(self.num_on_site_params, seq_size))
+        if self.num_on_site_params > 0:
+            x_on_site = self.on_site_converter(x[..., :seq_size * self.num_on_site_params]).squeeze(-2)
+            on_site_params = torch.unflatten(x_on_site, dim=-1, sizes=(self.num_on_site_params, seq_size))
+        else:
+            on_site_params = torch.zeros(*x.shape[:-2], 0, seq_size, device=x.device)
 
-        x_inter_site = x[..., seq_size * self.num_on_site_params:]
-        x_inter_site = torch.stack([
-            converter(x_inter_site[..., i*seq_size*self.num_inter_site_params:(i+1)*seq_size*self.num_inter_site_params]) for i, converter in enumerate(self.inter_site_converters)
-        ], dim=-3).squeeze(-2) # (..., inter_site_interaction_range, num_inter_site_params * seq_size)
-        inter_site_params = torch.unflatten(x_inter_site, dim=-1, sizes=(self.num_inter_site_params, seq_size))
+        if self.num_inter_site_params > 0:
+            x_inter_site = x[..., seq_size * self.num_on_site_params:]
+            x_inter_site = torch.stack([
+                converter(x_inter_site[..., i*seq_size*self.num_inter_site_params:(i+1)*seq_size*self.num_inter_site_params]) for i, converter in enumerate(self.inter_site_converters)
+            ], dim=-3).squeeze(-2) # (..., inter_site_interaction_range, num_inter_site_params * seq_size)
+            inter_site_params = torch.unflatten(x_inter_site, dim=-1, sizes=(self.num_inter_site_params, seq_size))
+            
+            if self.mask_periodic_boundary:
+                for i in range(self.min_inter_site_interaction_range, self.max_inter_site_interaction_range):
+                    inter_site_params[..., i - self.min_inter_site_interaction_range, :, -i:] = 0. 
+        else:
+            inter_site_params = torch.zeros(*x.shape[:-2], self.interaction_range, 0, seq_size, device=x.device) 
         return on_site_params, inter_site_params
 
     def forward(self, x: torch.Tensor) -> t.Tuple[torch.Tensor, t.List[torch.Tensor]]:

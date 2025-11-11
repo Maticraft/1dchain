@@ -9,7 +9,7 @@ from src.models.files import load_generator, load_latent_distribution, load_auto
 from src.plots import plot_generator_eigvals, plot_matrix
 from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
 from src.models.hamiltonian_generator import HamiltonianGenerator
-from src.torch_utils import TorchHamiltonian
+from src.hamiltonian.torch_hamiltonian import TorchHamiltonian
 from src.models.utils import calculate_pca
 
 import torch

@@ -14,7 +14,7 @@ from src.models.files import load_ae_model, load_latent_distribution, load_autoe
 from src.plots import plot_generator_eigvals, plot_matrix, plot_generator_noisy_sample_eigvals
 from src.models.distribution_preserving_autoencoder import DistributionPreservingHamiltonianGenerator
 from src.models.hamiltonian_generator import HamiltonianGenerator
-from src.torch_utils import TorchHamiltonian
+from src.hamiltonian.torch_hamiltonian import TorchHamiltonian
 from src.models.utils import calculate_pca
 from src.models.distribution_preserving_autoencoder import DistributionPreservingHamiltonianGenerator, VariationalDistributionPreservingEncoder
 

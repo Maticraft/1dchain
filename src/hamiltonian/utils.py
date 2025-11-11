@@ -113,32 +113,122 @@ def majoranization(H: np.ndarray, n_dots: int):
 
     eigvals, eigvecs = np.linalg.eigh(H)
     ms = []
+    ehs = []
     for ie, eig in enumerate(eigvals):
         ml = np.conj(eigvecs[:,ie])@m1
         mr = np.conj(eigvecs[:,ie])@m2
         zm = np.exp(-np.abs(eig)/(0.1/AtomicUnits.Eh))
         ms.append(np.abs(ml-mr)*zm)  # mode projection on left - right majoranas
+
+        eh = (np.abs(eigvecs[:,ie])**2).reshape(-1,2,2).sum(axis=(0,2))
+        ehs.append(np.amax([0., eh[0]*eh[1]*4-0.5])*2.)  # smaller than 0.5 are filtered out
+
     ms = np.array(ms)[np.abs(eigvals).argsort()]  # # sort MZM_i using |E_i|
-    majoranization = np.amax([0., ms[0]+ms[1]-ms[2:].sum()])
+    ehs = np.array(ehs)[np.abs(eigvals).argsort()]  # same here
+
+    # theoretical max
+    """
+    Reason:
+
+    1. ms_i = |⟨ψ_i | (m1 - m2)⟩| * exp(-|E_i|/...) ≤ ||m1 - m2|| since eigenvectors are unit norm and energy factor ≤ 1 (at E=0).
+    2. d = m1 - m2 has non‑zero entries only on the first 4 components: [1, 1, -1, -1], so ||d|| = 2. Thus each ms_i ≤ 2.
+    3. With two lowest-|E| orthonormal eigenvectors ψ1, ψ2, you can distribute overlap with d: let their projections be 2 cos θ
+        and 2 sin θ (θ ∈ [0, π/2]). Then ms1 + ms2 ≤ 2( sin θ + cos θ ) maximized at θ = π/4 → ms1 = ms2 = √2, sum = 2√2.
+        Any additional modes should have zero overlap (otherwise they'd subtract in ms[2:] sum).
+    4. ehs[0] ≤ 1, maximized when its two aggregated components are each 1/2.
+    
+    Thus majoranization = (ms0 + ms1) * ehs[0] ≤ 2√2 * 1. Achievable in principle by choosing two zero-energy modes sharing
+    the d overlap equally and making the first mode electron–hole balanced.
+
+    So: maximal value = 2√2.
+    """
+    max_value = 2*np.sqrt(2)
+
+    majoranization = np.amax([0., ms[0]+ms[1]-ms[2:].sum()])*ehs[0] / max_value
     return majoranization
 
 
-def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: np.ndarray, filename: str, **kwargs: t.Dict[str, t.Any]):
+def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: np.ndarray, filename: str, color: t.Optional[str] = None, majoranization: bool = False, **kwargs: t.Dict[str, t.Any]):
+    block_dim = 4
     representation_mapping = kwargs.get('representation_mapping', RepresentationMapping.default)
     energies = []
+    color_values = []
+    majoranization_values = []
+    m1 = np.concatenate([np.array([1,1,-1,-1]), np.array([0,0,0,0]*(model.num_sites-2)), np.array([1,1,1,1])]).T/2.
+    m2 = np.concatenate([np.array([1,1,-1,-1])*-1., np.array([0,0,0,0]*(model.num_sites-2)), np.array([1,1,1,1])]).T/2.
+
+
     for x in xparams:
-        ladder = deepcopy(model)
-        ladder.set_parameter(xaxis, x)
-        H = ladder.get_hamiltonian(representation_mapping)
-        energies.append(np.linalg.eigvalsh(H))
+        current_model = deepcopy(model)
+        current_x_value = current_model.get_parameter(xaxis)
+        current_model.set_parameter(xaxis, current_x_value + x)
+        H = current_model.get_hamiltonian(representation_mapping)
+        eigs, eigvecs = np.linalg.eigh(H)
+        energies.append(eigs)
+        colors_eigs = np.zeros_like(eigs)
+
+        ms = []
+        ehs = []
+        for i in range(len(eigs)):
+            eigvec_module = eigvecs[:,i].real ** 2 + eigvecs[:,i].imag ** 2
+            eigvec_module_sites = eigvec_module.reshape(-1, block_dim)
+            
+            if color == 'occupations':
+                occs = np.sum(eigvec_module_sites, axis=1)
+                color_val = (occs[0] + occs[-1])
+                color_label = 'Occupations'
+                vmin = 0.
+                vmax = 1.
+            
+            elif color == 'electron-hole-diff':
+                eh_diff = eigvec_module_sites[:, 0] + eigvec_module_sites[:, 1] - eigvec_module_sites[:, 2] - eigvec_module_sites[:, 3]
+                color_val = eh_diff.sum()
+                color_label = 'Electron-hole difference'
+                vmin = -1.
+                vmax = 1.
+
+            else:
+                color_val = 1
+                vmin = None
+                vmax = None
+
+            if majoranization:
+                ml = np.conj(eigvecs[:,i])@m1
+                mr = np.conj(eigvecs[:,i])@m2
+                zm = np.exp(-np.abs(eigs[i])/(0.1/AtomicUnits.Eh))
+                ms.append(np.abs(ml-mr)*zm)  # mode projection on left - right majoranas
+
+                eh = (np.abs(eigvecs[:,i])**2).reshape(-1,2,2).sum(axis=(0,2))
+                ehs.append(np.amax([0., eh[0]*eh[1]*4-0.5])*2.)  # smaller than 0.5 are filtered out
+
+            colors_eigs[i] = color_val
+        color_values.append(colors_eigs)
+
+        if majoranization:
+            ms = np.array(ms)[np.abs(eigs).argsort()]  # # sort MZM_i using |E_i|
+            ehs = np.array(ehs)[np.abs(eigs).argsort()]  # same here
+
+            max_value = 2*np.sqrt(2)
+            majoranization_val = np.amax([0., ms[0]+ms[1]-ms[2:].sum()])*ehs[0] / max_value
+            majoranization_values.append(majoranization_val)
+
     energies = np.array(energies)
+    color_values = np.array(color_values)
+
+    current_x_value = model.get_parameter(xaxis)
+    xparams = xparams + np.mean(current_x_value)
+
+    ax = kwargs.get('ax', None)
+    fig = None
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(6, 6))
 
     xnorm = None
     ynorm = None
     if 'ylim' in kwargs:
-        plt.ylim(kwargs['ylim'])
+        ax.set_ylim(kwargs['ylim'])
     if 'xlim' in kwargs:
-        plt.xlim(kwargs['xlim'])
+        ax.set_xlim(kwargs['xlim'])
     if 'xnorm' in kwargs:
         xparams = xparams / kwargs['xnorm']
         if kwargs['xnorm'] == np.pi:
@@ -152,17 +242,65 @@ def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: np.ndarray, filename: 
         else:
             ynorm = kwargs['ynorm']
 
-    plt.plot(xparams, energies)
-    if xnorm:
-        plt.xlabel(f'{xaxis}/{xnorm}')
+    if 'title' in kwargs:
+        ax.set_title(kwargs['title'])
+
+    # set min and max for color scale
+    plot = ax.scatter(np.expand_dims(xparams, axis=1).repeat(12, axis=1), energies, c=color_values, vmin=vmin, vmax=vmax, s=.2)    
+    if kwargs.get('left_label', True):
+        ax.set_ylabel('$E$ [meV]')
+    ax.yaxis.set_label_coords(-0.14, 0.5)
+
+    x_vmin, x_vmax = ax.get_xlim()
+    x_mid = 0.5 * (x_vmin + x_vmax)
+    ax.set_xticks([ x_vmin, x_mid, x_vmax ])
+    ax.set_xticklabels([ f'{x_vmin:.2f}', f'{x_mid:.2f}', f'{x_vmax:.2f}'])
+        
+    if kwargs.get('right_label', True):
+        ax.xaxis.get_majorticklabels()[0].set_horizontalalignment('left')
     else:
-        plt.xlabel(f'{xaxis}')
-    if ynorm:
-        plt.ylabel(f'Energy/{ynorm}')
+        ax.xaxis.get_majorticklabels()[2].set_horizontalalignment('right')
+
+    ax.tick_params(axis='x', pad=10)
+
+    # Add second axis for majoranization
+    if majoranization:
+        ax2 = ax.twinx()
+        if kwargs.get('right_label', True):
+            ax2.set_ylabel(r'$\mathcal{M}$', color='red', rotation=0)
+            ax2.yaxis.set_label_coords(1.2, 0.53)  # Move ylabel further right
+            ax2.tick_params(axis='y', labelcolor='red')
+        else:
+            ax2.set_axis_off()
+
+        # Set the color of the second axis to red and plot majoranization values
+        ax2.plot(xparams, np.array(majoranization_values), color='red')
+        ax2.set_ylim(0, 1.)  # Set y-axis limits for majoranization
+
+
+    # if xnorm:
+    #     plt.xlabel(f'{xaxis}/{xnorm}')
+    # else:
+    if xaxis == 'potential' or xaxis == 'mu':
+        ax.set_xlabel('$\mu$ [meV]')
     else:
-        plt.ylabel('Energy')
-    plt.savefig(filename)
-    plt.close()
+        ax.set_xlabel(f'{xaxis}')
+
+    ax.xaxis.set_label_coords(0.5, -0.13)
+
+
+    # ax.text(-0.15, 0.485, "E", color='black', rotation='vertical', transform=ax.transAxes)
+
+    # # Plot legend for majoranization
+    # if majoranization:
+    #     ax.text(-0.15, 0.515, "(M)", color='red', rotation='vertical', transform=ax.transAxes)
+
+    if fig is not None:
+        plt.colorbar(plot, label = color_label, orientation='horizontal', pad=0.5, ax=ax)
+        plt.savefig(filename, bbox_inches='tight', dpi=300)
+        plt.close()
+
+    return plot
 
 
 def plot_eigvals_levels(

@@ -9,7 +9,7 @@ from src.models.positional_autoencoder import PositionalEncoder
 from src.models.hamiltonian_generator import HamiltonianGenerator
 from src.models.files import load_autoencoder, load_positional_autoencoder, load_ae_model
 from src.models.utils import reconstruct_hamiltonian
-from src.torch_utils import TorchHamiltonian
+from src.hamiltonian.torch_hamiltonian import TorchHamiltonian
 from src.plots import plot_test_matrices, plot_test_eigvals
 
 

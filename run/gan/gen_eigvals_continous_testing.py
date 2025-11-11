@@ -14,7 +14,7 @@ from src.models.hamiltonian_generator import HamiltonianGenerator, HamiltonianGe
 from src.models.files import load_generator, load_latent_distribution, load_autoencoder_params, get_full_model_config, load_gan_submodel_state_dict, load_covariance_matrix
 from src.plots import plot_generator_eigvals, plot_matrix, plot_generator_sample_eigvals_varying_property, plot_generator_sample_eigvals_increasing_property
 from src.models.positional_autoencoder import PositionalDecoder, PositionalEncoder
-from src.torch_utils import TorchHamiltonian
+from src.hamiltonian.torch_hamiltonian import TorchHamiltonian
 
 
 # Model params

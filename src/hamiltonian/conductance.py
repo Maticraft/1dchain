@@ -126,21 +126,25 @@ def torch_conductance_map0(
     mu_num: int = 200,
     n_levels: int = 1,
     gamma: float = 0.1,
+    site_index: int = 0,
     with_embedding: bool = False
 ) -> torch.Tensor:
+    """
+    i = {0,1} = {L,R} <- current via L/R lead
+    j = {0,1} = {L,R} <- L/R lead (electrode) voltage
+    """
 
     efs = torch.linspace(ef_range[0], ef_range[1], steps=ef_num).to(h_tensor.device)
     mus = torch.linspace(mu_range[0], mu_range[1], steps=mu_num).to(h_tensor.device)
     mus_expanded = mus.view(mu_num, *((1,)*len(h_tensor.shape[:-2])), 1).expand(mu_num, *h_tensor.shape[:-2], 1)
     hs = h_tensor.view(1, *h_tensor.shape).expand(mu_num, *h_tensor.shape)
-    hs_modified = torch_h_set_mu(hs, mus_expanded, use_dot_split=n_levels > 1)
+    hs_modified = torch_h_set_mu(hs, mus_expanded, use_dot_split=n_levels > 1, site_index=site_index)
     cmap = _torch_cmap(hs_modified, efs, i, j, n_levels, gamma)
     if with_embedding:
         efs = efs.view(*((1,)*len(cmap.shape[:-2])), -1, 1).expand(*cmap.shape[:-2], -1, mu_num)
         mus = mus.view(*((1,)*len(cmap.shape[:-2])), 1, -1).expand(*cmap.shape[:-2], ef_num, -1)
         cmap = torch.stack([cmap, efs, mus], dim=-3)
     return cmap
-
 
 
 def torch_conductance_map2(
@@ -155,6 +159,10 @@ def torch_conductance_map2(
     gamma: float = 0.1,
     with_embedding: bool = False
 ) -> torch.Tensor:
+    """
+    i = {0,1} = {L,R} <- current via L/R lead
+    j = {0,1} = {L,R} <- L/R lead (electrode) voltage
+    """
 
     efs = torch.linspace(ef_range[0], ef_range[1], steps=ef_num).to(h_tensor.device)
     bs = torch.linspace(b_range[0], b_range[1], steps=b_num).to(h_tensor.device)
@@ -177,6 +185,10 @@ def _torch_cmap(
     n_levels: int = 1,
     gamma: float = 0.1
 ) -> torch.Tensor:
+    """
+    i = {0,1} = {L,R} <- current via L/R lead
+    j = {0,1} = {L,R} <- L/R lead (electrode) voltage
+    """
 
     w_matrix = torch_w_matrix(h_tensor.shape[-1], gamma, n_levels)
     s_matrix = torch_s_matrix(h_tensor, efs.view(efs.shape[0], *((1,)*len(h_tensor.shape))), w_matrix)
@@ -192,6 +204,7 @@ def _torch_cmap(
     
     trace_vmapped = nest_vmap(torch.trace, len(r_he.shape) - 2)
     c_map = (2.*dij*n_levels - trace_vmapped(r_ee @ torch.conj(r_ee.transpose(-2, -1))) + trace_vmapped(r_he @ torch.conj(r_he.transpose(-2, -1)))).real
+    c_map = torch.flip(c_map, (0,))  # flip the first (ef) axis to match the original c_map - why is this needed?
     return c_map.moveaxis(0, -1).moveaxis(0, -1)
     
 
@@ -204,12 +217,23 @@ def nest_vmap(func, n_dims):
 def torch_h_set_mu(
     h_tensor: torch.Tensor,
     mu: torch.Tensor, # should be either a tensor of shape (..., 1) or (..., n_blocks)
-    use_dot_split: bool = False
+    use_dot_split: bool = False,
+    site_index: int = 0
 ) -> torch.Tensor:
+    
     assert h_tensor.shape[-1] >= 4, "At least one 4 x 4 block is required"
     n_blocks = h_tensor.shape[-1] // 4
+
     if mu.shape[-1] == 1:
-        mu = mu.expand(*mu.shape[:-1], n_blocks)
+        mu_blocks = torch.zeros_like(mu).repeat(*[1 for _ in mu.shape[:-1]], n_blocks)
+        mu_blocks[..., site_index:site_index+1] = mu
+
+    current_mu = torch.stack(
+        [(h_tensor[..., i*4 + 2, i*4 + 2] + h_tensor[..., i*4 + 3, i*4 + 3]) / 2 for i in range(n_blocks)],
+        dim=-1
+    )
+
+    mu_total = mu_blocks + current_mu
 
     magnetic_field = torch.stack(
         [(h_tensor[..., i*4, i*4] + h_tensor[..., i*4 + 3, i*4 + 3]) / 2 for i in range(n_blocks)],
@@ -222,14 +246,14 @@ def torch_h_set_mu(
             dim=-1
         )
         dot_splits = torch.cat([torch.zeros_like(dot_splits[..., :1]), dot_splits], dim=-1)
-        mu = mu + dot_splits
+        mu_total = mu_total + dot_splits
     
     diag_idx = torch.arange(h_tensor.shape[-1], device=h_tensor.device)
     modified_h_tensor = h_tensor.clone()
-    modified_h_tensor[..., diag_idx[0::4], diag_idx[0::4]] = -mu + magnetic_field
-    modified_h_tensor[..., diag_idx[1::4], diag_idx[1::4]] = -mu - magnetic_field
-    modified_h_tensor[..., diag_idx[2::4], diag_idx[2::4]] = mu - magnetic_field
-    modified_h_tensor[..., diag_idx[3::4], diag_idx[3::4]] = mu + magnetic_field
+    modified_h_tensor[..., diag_idx[0::4], diag_idx[0::4]] = -mu_total + magnetic_field
+    modified_h_tensor[..., diag_idx[1::4], diag_idx[1::4]] = -mu_total - magnetic_field
+    modified_h_tensor[..., diag_idx[2::4], diag_idx[2::4]] = mu_total - magnetic_field
+    modified_h_tensor[..., diag_idx[3::4], diag_idx[3::4]] = mu_total + magnetic_field
     return modified_h_tensor
 
 
@@ -242,6 +266,13 @@ def torch_h_set_b(
     n_blocks = h_tensor.shape[-1] // 4
     if b.shape[-1] == 1:
         b = b.expand(*b.shape[:-1], n_blocks)
+
+    current_b = torch.stack(
+        [(h_tensor[..., i*4, i*4] + h_tensor[..., i*4 + 3, i*4 + 3]) / 2 for i in range(n_blocks)],
+        dim=-1
+    )
+
+    b = b + current_b
 
     mu = torch.stack(
         [(h_tensor[..., i*4 + 2, i*4 + 2] + h_tensor[..., i*4 + 3, i*4 + 3]) / 2 for i in range(n_blocks)],
@@ -325,29 +356,50 @@ def plot_conductance_map(
     xlabel="",
     ylabel="",
     title="",
+    ax=None,
+    right_xtick: bool = True
 ):
-    fig, ax = plt.subplots()
-    im = ax.imshow(conductance_map, origin='lower', extent=[-1, 1, -1, 1])
+    fig = None
+    if ax is None:
+        fig, ax = plt.subplots()
+    im = ax.imshow(conductance_map, origin='lower', extent=[-1, 1, -1, 1], vmin=0, vmax=2)
     if xtick_range is not None:
-        x_exponenent = np.floor(np.log10(xtick_range[1]))
-        ax.set_xticks(np.linspace(-1, 1, num=5))
-        xticklabels = np.linspace(xtick_range[0]*10**(-x_exponenent), xtick_range[1]*10**(-x_exponenent), num=5)
-        ax.set_xticklabels(np.round(xticklabels, 2))
-        xlabel = xlabel + f' ($10^{{{int(x_exponenent)}}}$)'
+        if right_xtick:
+            # x_exponenent = np.floor(np.log10(xtick_range[1]))
+            x_ticks = [-1., 0., 1.]
+            ax.set_xticks(x_ticks)
+            xticklabels = np.linspace(xtick_range[0], xtick_range[1], num=3)
+            ax.set_xticklabels(np.round(xticklabels, 2))
+            ax.xaxis.get_majorticklabels()[0].set_horizontalalignment('left')
+
+        else:
+            x_ticks = [-1, 0, 1.]
+            ax.set_xticks(x_ticks)
+            xticklabels = np.linspace(xtick_range[0], xtick_range[1], num=3)
+            ax.set_xticklabels(np.round(xticklabels, 2))
+            ax.xaxis.get_majorticklabels()[2].set_horizontalalignment('right')
     if ytick_range is not None:
-        y_exponenent = np.floor(np.log10(ytick_range[1]))
-        ax.set_yticks(np.linspace(-1, 1, num=5))
-        yticklabels = np.linspace(ytick_range[0]*10**(-y_exponenent), ytick_range[1]*10**(-y_exponenent), num=5)
+        # y_exponenent = np.floor(np.log10(ytick_range[1]))
+        ax.set_yticks(np.linspace(-1, 1, num=3))
+        # yticklabels = np.linspace(ytick_range[0]*10**(-y_exponenent), ytick_range[1]*10**(-y_exponenent), num=5)
+        yticklabels = np.linspace(ytick_range[0], ytick_range[1], num=3)
         ax.set_yticklabels(np.round(yticklabels, 2))
-        ylabel = ylabel + f' ($10^{{{int(y_exponenent)}}}$)'
+        # ylabel = ylabel + f' ($10^{{{int(y_exponenent)}}}$)'
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
-    cbar = fig.colorbar(im, ax=ax)
-    cbar.set_label(r'conductance')
-    plt.title(title)
-    plt.tight_layout()
-    plt.savefig(filename)
-    plt.close()
+    # If font = 30
+    ax.xaxis.set_label_coords(0.5, -0.2)
+    ax.yaxis.set_label_coords(-0.3, 0.58)
+    # If font = 20
+    # ax.xaxis.set_label_coords(0.5, -0.15)
+    # ax.yaxis.set_label_coords(-0.25, 0.58)
+    if fig is not None:
+        cbar = fig.colorbar(im, ax=ax)
+        cbar.set_label('$C$')
+        plt.title(title)
+        plt.tight_layout()
+        plt.savefig(filename)
+        plt.close()
 
 
 def generate_conductance_tensor(

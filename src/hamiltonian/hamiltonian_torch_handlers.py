@@ -1,6 +1,5 @@
 import typing as t
 
-
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 import json_fix
@@ -14,6 +13,7 @@ PAULI_BLOCKS = {
     'x': torch.tensor([[0, 1], [1, 0]]),
     'iy': torch.tensor([[0, 1], [-1, 0]]),
     'z': torch.tensor([[1, 0], [0, -1]]),
+    '-z': torch.tensor([[-1, 0], [0, 1]]),
 }
 ALL_PAIRS = ['11', '1x', '1iy', '1z', 'x1', 'xx', 'xiy', 'xz', 'iy1', 'iyx', 'iyiy', 'iyz', 'z1', 'zx', 'ziy', 'zz']
 
@@ -24,6 +24,8 @@ class HamiltonianParams:
     on_site_imag_params: t.Tuple[str] = "delta",
     inter_site_real_params: t.Tuple[str] = "hopping_same", "hopping_spin_flip"
     inter_site_imag_params: t.Tuple[str] = "hopping_spin_flip_qd",
+    site_constant_params: t.Tuple[str] = ()
+    inter_site_constant_params: t.Tuple[str] = ()
 
     def __json__(self):
         return self.to_dict()
@@ -81,18 +83,49 @@ class BlockConstructor:
         
 
     @classmethod
-    def generate_block_sequence(cls, block_params_sequence: torch.Tensor, pauli_block_names: t.List[str], lower_block_transpose: bool = False):
+    def generate_block_sequence(cls, block_params_sequence: t.List[torch.Tensor], pauli_block_names: t.List[str], lower_block_transpose: bool = False):
         '''
         assumes:
-          block_params_sequence.shape = (block_params_num, batch_size, seq_size)
+          block_params_sequencee = list of length block_params_num with tensors.shape (batch_size, seq_size)
           pauli_block_names = list of length block_params_num with names of respective pauli block pairs, e.g. ['1x', 'xx', 'yz', 'zz']
         returns:
           torch.Tensor of shape (batch_size, 4, 4*seq_size)
         '''
-        blocks = [cls._block_generator(block_sequence, *get_block_pair(pair_name), lower_block_transpose) for block_sequence, pair_name in zip(block_params_sequence, pauli_block_names)]
+        blocks = [
+            cls._block_generator(
+                cls.apply_periodic_func(block_sequence, pair_name),
+                *get_block_pair(pair_name),
+                lower_block_transpose
+            )
+            for block_sequence, pair_name in zip(block_params_sequence, pauli_block_names)
+        ]
         if len(blocks) > 0:
             return sum(blocks)
         return torch.zeros((block_params_sequence.shape[1], 4, 4*block_params_sequence.shape[2])).to(block_params_sequence.device)
+    
+    @staticmethod
+    def apply_periodic_func(block_sequence: torch.Tensor, pair_name: str) -> torch.Tensor:
+        '''
+        assumes:
+          block_sequence.shape = (2, batch_size, seq_size), first dimension is for amplitude and phase
+          pair_name = '1x', 'xx', 'yz', 'zz', 'cos_1x', 'sin_1x', etc.
+        returns:
+          torch.Tensor of shape block_sequence.shape
+        '''
+        if len(block_sequence.shape) < 3:
+            return block_sequence
+
+        periodic_fn = {
+            'cos': torch.cos,
+            'sin': torch.sin,
+            'exp': torch.exp,
+            'log': torch.log,
+        }
+    
+        for key, fn in periodic_fn.items():
+            if pair_name.startswith(key):
+                return block_sequence[0] * fn(block_sequence[1])
+        return block_sequence
     
     @staticmethod
     def _block_generator(x: torch.Tensor, blocks_a: t.List[torch.Tensor], blocks_b: t.List[torch.Tensor], lower_block_transpose: bool = False):
@@ -179,6 +212,26 @@ class HamiltonianConstructor(nn.Module):
         self.min_inter_site_interaction_range = min_inter_site_interaction_range # 1 for on site only, 2 for nearest neighbors, 3 for next nearest neighbors, etc.
         self.max_inter_site_interaction_range = max_inter_site_interaction_range # 1 for on site only, 2 for nearest neighbors, 3 for next nearest neighbors, etc.
 
+        self.site_constant_params_ids = [
+            self.hamiltonian_params.on_site_real_params.index(param)
+            for param in self.hamiltonian_params.site_constant_params
+            if param in self.hamiltonian_params.on_site_real_params
+        ] + [
+            self.num_on_site_real_params + self.hamiltonian_params.on_site_imag_params.index(param)
+            for param in self.hamiltonian_params.site_constant_params
+            if param in self.hamiltonian_params.on_site_imag_params
+        ]
+
+        self.inter_site_constant_params_ids = [
+            self.hamiltonian_params.inter_site_real_params.index(param)
+            for param in self.hamiltonian_params.inter_site_constant_params
+            if param in self.hamiltonian_params.inter_site_real_params
+        ] + [
+            self.num_inter_site_real_params + self.hamiltonian_params.inter_site_imag_params.index(param)
+            for param in self.hamiltonian_params.inter_site_constant_params
+            if param in self.hamiltonian_params.inter_site_imag_params
+        ]
+
     @property
     def num_on_site_real_params(self):
         return len(self.on_site_real_block_names)
@@ -203,14 +256,37 @@ class HamiltonianConstructor(nn.Module):
     def num_inter_site_params(self):
         return self.num_inter_site_real_params + self.num_inter_site_imag_params
     
+    def _convert_constant_params(self, on_site_params: torch.Tensor, inter_site_params: torch.Tensor):
+        '''
+        Args:
+          on_site_params: torch.Tensor with shape (..., num_on_site_params, seq_size)
+          inter_site_params: torch.Tensor with shape (..., inter_site_interaction_range, num_inter_site_params, seq_size)
+        Returns:
+          on_site_params: torch.Tensor with shape (..., num_on_site_params, seq_size)
+          inter_site_params: torch.Tensor with shape (..., inter_site_interaction_range, num_inter_site_params, seq_size)
+        '''
+        if self.site_constant_params_ids:
+            on_site_constant_params = on_site_params[..., self.site_constant_params_ids, :].mean(dim=-1, keepdim=True)
+            on_site_params = on_site_params.clone()
+            on_site_params[..., self.site_constant_params_ids, :] = on_site_constant_params
+        
+        if self.inter_site_constant_params_ids:
+            inter_site_constant_params = inter_site_params[..., self.inter_site_constant_params_ids, :].mean(dim=-1, keepdim=True)
+            inter_site_params = inter_site_params.clone()
+            inter_site_params[..., self.inter_site_constant_params_ids, :] = inter_site_constant_params
+        
+        return on_site_params, inter_site_params
+    
     def get_params_map(self, on_site_params: torch.Tensor, inter_site_params: torch.Tensor):
         '''
         Args:
           on_site_params: torch.Tensor with shape (..., num_on_site_params, seq_size)
           inter_site_params: torch.Tensor with shape (..., inter_site_interaction_range, num_inter_site_params, seq_size)
         Returns:
-          params_map: dict
+          params_map: dict[str, dict[str, torch.Tensor]]
         '''
+        on_site_params, inter_site_params = self._convert_constant_params(on_site_params, inter_site_params)
+
         params_map = {
             'on_site_real_params': {
                 param_name: on_site_params[..., param_idx, :]
@@ -270,21 +346,35 @@ class HamiltonianConstructor(nn.Module):
           hamiltonian_matrix: torch.Tensor with shape (..., 2, 4 x seq_size, 4 x seq_size)
         '''
         block_size = 4
+
+        on_site_params, inter_site_params = self._convert_constant_params(on_site_params, inter_site_params)
+
         flattened_on_site_params = on_site_params.flatten(start_dim=0, end_dim=-3)
         flattened_on_site_real_params = flattened_on_site_params[:, :self.num_on_site_real_params]
         flattened_on_site_imag_params = flattened_on_site_params[:, self.num_on_site_real_params:]
+
+        flattened_on_site_real_params = self._convert_periodic_params(flattened_on_site_real_params, self.on_site_real_block_names)
         
         on_site_block_seq = torch.stack((
-            BlockConstructor.generate_block_sequence(flattened_on_site_real_params.transpose(0, 1), self.on_site_real_block_names, lower_block_transpose=False), # real part
+            BlockConstructor.generate_block_sequence(flattened_on_site_real_params, list(filter(lambda x: 'amplitude' not in x, self.on_site_real_block_names)), lower_block_transpose=False), # real part
             BlockConstructor.generate_block_sequence(flattened_on_site_imag_params.transpose(0, 1), self.on_site_imag_block_names, lower_block_transpose=False) # imaginary part
         ), dim=-3)
 
         flattened_inter_site_params = inter_site_params.flatten(start_dim=0, end_dim=-4)
         flattened_inter_site_real_params = flattened_inter_site_params[:, :, :self.num_inter_site_real_params]
         flattened_inter_site_imag_params = flattened_inter_site_params[:, :, self.num_inter_site_real_params:]
+
+        flattened_inter_site_real_params = self._convert_periodic_params(flattened_inter_site_real_params, self.inter_site_real_block_names)
+
         inter_site_block_seq = torch.cat([
             torch.stack((
-                BlockConstructor.generate_block_sequence(flattened_inter_site_real_params[:, inter_site_interaction_range_idx].transpose(0, 1), self.inter_site_real_block_names), # real part
+                BlockConstructor.generate_block_sequence(
+                    [
+                        params[:, :, inter_site_interaction_range_idx]
+                        for params in flattened_inter_site_real_params
+                    ], 
+                    list(filter(lambda x: 'amplitude' not in x, self.inter_site_real_block_names))
+                ), # real part
                 BlockConstructor.generate_block_sequence(flattened_inter_site_imag_params[:, inter_site_interaction_range_idx].transpose(0, 1), self.inter_site_imag_block_names) # imaginary part
             ), dim=-3)
             for inter_site_interaction_range_idx in range(flattened_inter_site_params.shape[-3])
@@ -306,6 +396,30 @@ class HamiltonianConstructor(nn.Module):
         hamiltonian_matrix_hermitian = upper_triangular_matrix + lower_triangular_matrix
         hamiltonian_matrix_unflattened = torch.unflatten(hamiltonian_matrix_hermitian, dim=0, sizes=on_site_params.shape[:-2])
         return hamiltonian_matrix_unflattened
+    
+    @staticmethod
+    def _convert_periodic_params(params: torch.Tensor, block_names: t.List[str]) -> t.List[torch.Tensor]:
+        '''
+        NOTE: Currently only supports real periodic params with 2 channels (amplitude and phase)
+        Args:
+            params: torch.Tensor with shape (..., num_params, seq_size)
+        Returns:
+            List[torch.Tensor]: list of tensors with shape (..., seq_size) for each block in block_names
+        '''
+        phase_patterns = ["sin", "cos"]
+        phase_ids = [i for i, x in enumerate(block_names) if any(phase in x for phase in phase_patterns)]
+        amplitude_ids = [i for i, x in enumerate(block_names) if 'amplitude' in x]
+        phase_params = params[..., phase_ids, :].mean(dim=-2, keepdim=True).expand(*[-1]*(len(params.shape) - 2), len(phase_ids), -1)
+        amplitude_params = params[..., amplitude_ids, :].expand(*[-1]*(len(params.shape) - 2), len(phase_ids), -1)
+        periodic_params = torch.stack((amplitude_params, phase_params), dim=0) # shape (2, batch_size, inter_site_interaction_range, len(phase_ids), seq_size)
+        
+        all_params = []
+        for i in range(len(block_names)):
+            if i not in (phase_ids + amplitude_ids):
+                all_params.append(params[..., i, :])
+            elif i in phase_ids:
+                all_params.append(periodic_params[..., phase_ids.index(i), :])
+        return all_params
 
 
 class HamiltonianExtractor(nn.Module):
@@ -371,7 +485,7 @@ class HamiltonianExtractor(nn.Module):
         on_site_params, inter_site_params = self._extract_params_from_hamiltonian_matrix(hamiltonian)
         return on_site_params, inter_site_params
     
-    def from_params_map(self, params_map: t.Dict[str, torch.Tensor]) -> torch.Tensor:
+    def from_params_map(self, params_map: t.Dict[str, t.Dict[str, torch.Tensor]]) -> torch.Tensor:
         '''
         Args:
           params_map: dict
@@ -389,7 +503,6 @@ class HamiltonianExtractor(nn.Module):
         inter_site_params = torch.stack([*inter_site_real_params, *inter_site_imag_params], dim=-2)
         return on_site_params, inter_site_params
 
-
     def _extract_params_from_hamiltonian_matrix(self, hamiltonian: torch.Tensor) -> t.Tuple[torch.Tensor, torch.Tensor]:
         '''
         Args:
@@ -401,19 +514,59 @@ class HamiltonianExtractor(nn.Module):
         '''
         block_size = 4
         on_site_strip = get_strip(hamiltonian, 0, 'hamiltonian', block_size)
-        on_site_real_params = BlockExtractor.extract_block_sequences(on_site_strip[:, 0], self.on_site_real_block_names)
-        on_site_imag_params = BlockExtractor.extract_block_sequences(on_site_strip[:, 1], self.on_site_imag_block_names)
+        on_site_real_params = BlockExtractor.extract_block_sequences(on_site_strip[:, 0], list(filter(lambda x: 'amplitude' not in x, self.on_site_real_block_names)))
+        on_site_imag_params = BlockExtractor.extract_block_sequences(on_site_strip[:, 1], list(filter(lambda x: 'amplitude' not in x, self.on_site_imag_block_names)))
+        on_site_real_params = self._extract_periodic_params(on_site_real_params, self.on_site_real_block_names)
+        
         on_site_params = torch.cat([on_site_real_params, on_site_imag_params], dim=-2)
 
         inter_site_strips = torch.stack([
             get_strip(hamiltonian, strip_idx, 'hamiltonian', block_size)
             for strip_idx in range(self.min_inter_site_interaction_range, self.max_inter_site_interaction_range)
         ], dim=1)
-        inter_site_real_params = BlockExtractor.extract_block_sequences(inter_site_strips.flatten(0, 1)[:, 0], self.inter_site_real_block_names)
-        inter_site_imag_params = BlockExtractor.extract_block_sequences(inter_site_strips.flatten(0, 1)[:, 1], self.inter_site_imag_block_names)
+        inter_site_real_params = BlockExtractor.extract_block_sequences(inter_site_strips.flatten(0, 1)[:, 0], list(filter(lambda x: 'amplitude' not in x, self.inter_site_real_block_names)))
+        inter_site_imag_params = BlockExtractor.extract_block_sequences(inter_site_strips.flatten(0, 1)[:, 1], list(filter(lambda x: 'amplitude' not in x, self.inter_site_imag_block_names)))
+        inter_site_real_params = self._extract_periodic_params(inter_site_real_params, self.inter_site_real_block_names)
+        
         inter_site_params = torch.cat([inter_site_real_params, inter_site_imag_params], dim=-2)
         inter_site_params = torch.unflatten(inter_site_params, dim=0, sizes=(inter_site_strips.shape[0], inter_site_strips.shape[1]))
         return on_site_params, inter_site_params
+    
+    @staticmethod
+    def _extract_periodic_params(params: torch.Tensor, block_names: t.List[str]) -> torch.Tensor:
+        '''
+        It support only single periodic parameter, which consists of 'sin', 'cos' and 'amplitude'
+        NOTE: in the current version it does not support imaginary periodic parameters, so it assumes that the params are real
+        assumes:
+            params.shape = (batch_size, num_params, seq_size)
+        returns:
+            torch.Tensor with shape (batch_size, num_params, seq_size)
+        '''
+        sin_id = [i for i, block in enumerate(block_names) if 'sin' in block][0] if any('sin' in block for block in block_names) else None
+        cos_id = [i for i, block in enumerate(block_names) if 'cos' in block][0] if any('cos' in block for block in block_names) else None
+        amplitude_id = block_names.index('amplitude') if 'amplitude' in block_names else None
+        if (sin_id is None) or (cos_id is None) or (amplitude_id is None):
+            return params
+
+        sin_id_reduced = sin_id - 1 if sin_id > amplitude_id else sin_id
+        cos_id_reduced = cos_id - 1 if cos_id > amplitude_id else cos_id
+
+        t1 = params[:, sin_id_reduced, :]
+        t2 = params[:, cos_id_reduced, :]
+        amplitude = torch.sqrt(t1**2 + t2**2)
+        phase = torch.atan2(t1, t2)
+
+        all_params = []
+        for i in range(len(block_names)):
+            if i == sin_id:
+                all_params.append(phase)
+            elif i == cos_id:
+                all_params.append(phase)
+            elif i == amplitude_id:
+                all_params.append(amplitude)
+            else:
+                all_params.append(params[:, i, :])
+        return torch.stack(all_params, dim=-2)  # shape (batch_size, num_params, seq_size)
 
 
 class HamiltonianConverter(nn.Module):
@@ -425,7 +578,7 @@ class HamiltonianConverter(nn.Module):
         self.hamiltonian_constructor = HamiltonianConstructor(hamiltonian_params, **kwargs)
         self.hamiltonian_extractor = HamiltonianExtractor(hamiltonian_params, **kwargs)
     
-    def from_matrix_to_params(self, hamiltonian: torch.Tensor) -> t.Dict[str, torch.Tensor]:
+    def from_matrix_to_params(self, hamiltonian: torch.Tensor) -> t.Dict[str, t.Dict[str, torch.Tensor]]:
         '''
         Args:
           hamiltonian matrix: torch.Tensor with shape (batch_size, 2, 4 x seq_size, 4 x seq_size)     
@@ -435,7 +588,7 @@ class HamiltonianConverter(nn.Module):
         on_site_params, inter_site_params = self.hamiltonian_extractor(hamiltonian)
         return self.hamiltonian_constructor.get_params_map(on_site_params, inter_site_params)
     
-    def from_params_to_matrix(self, hamiltonian_params: t.Dict[str, torch.Tensor]) -> torch.Tensor:
+    def from_params_to_matrix(self, hamiltonian_params: t.Dict[str, t.Dict[str, torch.Tensor]]) -> torch.Tensor:
         '''
         Args:
           hamiltonian_params: dict
@@ -451,9 +604,12 @@ def get_block_pair(pair_name: str):
     assumes:
       pair_name = eg. '1x 1z', 'xx', 'iyz', 'zz'
         if pair_name contains 'space' then all blocks withing the pair_name are summed
+        if pair_name contains '_' then the prefix is ignored, e.g. 'hamiltonian_1x 1z' -> '1x 1z'
     returns:
       block_a, block_b
     '''
+    if '_' in pair_name:
+        _, pair_name = pair_name.split('_', 1)
     block_a_name, block_b_name = parse_string_to_pair(pair_name)
     pauli_blocks_a = [PAULI_BLOCKS[block_name] for block_name in block_a_name]
     pauli_blocks_b = [PAULI_BLOCKS[block_name] for block_name in block_b_name]
@@ -464,10 +620,10 @@ def parse_string_to_pair(string: str):
     blocks_a = []
     blocks_b = []
     for block in string.split(' '):
-        if not 'i' in block:
+        if (not 'i' in block) and (not '-' in block):
             blocks_a.append(block[0])
             blocks_b.append(block[1])
-        elif block[0] == 'i':
+        elif (block[0] == 'i') or (block[0] == '-'):
             blocks_a.append(block[:2])
             blocks_b.append(block[2:])
         else:
@@ -525,4 +681,6 @@ def get_strip(x: torch.Tensor, offset: int, fill_mode: str = 'zeros', block_size
         return strip
     else:
         raise ValueError(f'Fill mode: {fill_mode} not implemented')
+
+
     

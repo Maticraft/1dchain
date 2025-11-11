@@ -15,7 +15,7 @@ import os
 import typing as t
 from functools import reduce
 
-from src.hamiltonian.utils import calculate_gap, majoranization
+from src.hamiltonian.utils import calculate_gap, calculate_mzm_main_bands_gap, majoranization
 
 
 class HamiltionianDataset(Dataset):
@@ -235,6 +235,7 @@ class HamiltonianFromParametersDataset(Dataset):
         random_noise: bool = False,
         assert_noise_majoranas_destruction: bool = False,
         n_dots: int = 3,
+        site_independent_noise: bool = True,
         **kwargs,
     ):
         param_dict_path = os.path.join(data_dir, PARAMS_DICTIONARY_NAME)
@@ -256,6 +257,7 @@ class HamiltonianFromParametersDataset(Dataset):
         self.random_noise = random_noise
         self.assert_noise_majoranas_destruction = assert_noise_majoranas_destruction
         self.n_dots = n_dots
+        self.site_independent_noise = site_independent_noise
 
     def load_label_dict(self, filepath: str) -> t.List[t.List[str]]:
         with open(filepath, 'r') as dictionary:
@@ -303,7 +305,6 @@ class HamiltonianFromParametersDataset(Dataset):
                     band_gap = calculate_gap(tensor_complex.numpy())
                     label = majoranization(tensor_complex.numpy(), self.n_dots)
                     are_majoranas_present = (label > 0.0) or (band_gap < 2*MZM_THRESHOLD)
-                    
                     it = 0
                     while (are_majoranas_present and (it < 100)):
                         hamiltonian_params = self.add_noise_to_params(hamiltonian_params, params_noise_config)
@@ -407,7 +408,11 @@ class HamiltonianFromParametersDataset(Dataset):
                 noisy_params[key] = self.add_noise_to_params(params[key], value)
             else:
                 params_array = np.array(noisy_params[key])
-                noisy_params[key] = (1 - value[0]) * params_array + value[0]*np.random.normal(0, value[1], params_array.shape)
+                if self.site_independent_noise:
+                    noise = np.random.normal(0, value[1], params_array.shape)
+                else:
+                    noise = np.random.normal(0, value[1])
+                noisy_params[key] = (1 - value[0]) * params_array + value[0]*noise
         return noisy_params
 
     def get_label(self, idx: int, label_idx: t.Union[int, t.Tuple, t.List]) -> t.Union[float, t.List[float]]:

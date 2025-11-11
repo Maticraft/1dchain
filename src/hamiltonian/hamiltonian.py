@@ -163,6 +163,15 @@ class Hamiltonian(abc.ABC):
     @abc.abstractmethod
     def set_parameter(self, parameter_name: str, value: t.Any):
         pass
+
+    @abc.abstractmethod
+    def get_parameter(self, parameter_name: str) -> t.Any:
+        pass
+
+    @property
+    @abc.abstractmethod
+    def num_sites(self) -> int:
+        pass
     
 
 class TestHamiltonian(Hamiltonian):
@@ -188,21 +197,27 @@ class TestHamiltonian(Hamiltonian):
 
 
 REAL_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR = {
-    'potential': 'z1',
+    'potential': '-z1', # TODO: should be negative
     'magnetic_field': 'zz',
     'delta': 'iyiy',
     'spin_twist': 'zx',
     'hopping_same': 'z1', # ok, comes from exp(0*sigma_z) = 1
-    'hopping_spin_flip': 'zx' # it was '1iy' but it is not correct for QDH
+    't': 'amplitude', # it is not a block pair, but a scalar
+    't_phase_diag': 'cos_z1',
+    't_phase_antidiag': 'sin_ziy',
+    'hopping_spin_flip': 'ziy' # it was '1iy' but it is not correct for QDH
 }
 IMAG_HAMILTONIAN_PROPERTY_TO_BLOCK_PAIR = {
-    'potential': 'z1',
+    'potential': '-z1',
     'magnetic_field': 'zz',
     'delta': 'xiy',
     'spin_twist': '1iy',
     'hopping_same': 'zz',
-    'hopping_same_qd': '1z', # does not exist in default QDH
+    'hopping_same_qd': '11', # does not exist in default QDH (11 or 1z?)
     'hopping_spin_flip': 'zx',
     'hopping_spin_flip_qd': '1x', # ok
+    # 't': 'amplitude', # it is not a block pair, but a scalar
+    # 't_phase_diag': 'sin_1z', - NOT SUPPORTED
+    # 't_phase_antidiag': 'sin_1x', - NOT SUPPORTED
 }
     

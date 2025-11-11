@@ -25,7 +25,7 @@ xnorm = 1/AtomicUnits.Eh
 ynorm = 1/AtomicUnits.Eh
 
 # Paths
-data_path = './data/quantum_dots/3dots1level_majoranas_separated'
+data_path = './data/quantum_dots/simple_fixed_t_3dots1level_majoranization0_0_mzm_gap0_25'
 data_mean_std_path = f'{data_path}/mean_std.pkl'
 
 # test_dir_name = 'tests_subspace_{}_latent_ep{}'
