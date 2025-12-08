@@ -22,9 +22,9 @@ from src.hamiltonian.utils import plot_eigvals_levels
 from src.torch_utils import TorchHamiltonian
 
 # Paths
-data_path = './data/quantum_dots/3dots1level_majoranas_gap_pol_verified_with_conductance'
+data_path = './data/quantum_dots/3dots1level_majoranas_separated'
 normalization_params_path = f'{data_path}/normalization_params_4maps.pkl'
-save_dir = './conductance/quantum_dots/3dots1level_majoranas_gap_pol_verified'
+save_dir = './conductance/quantum_dots/3dots1level_majoranas_separated'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
 distribution_dir_name = 'tests_majoranas_latent_ep_{}'
@@ -95,8 +95,6 @@ dit_h2c_config = {
     'max_inter_site_interaction_range': 2,
     'input_embedder': 'hamiltonian',
     'output_unpatcher': 'patch',
-    # 'on_site_block_names': ['iy1'],
-    # 'inter_site_block_names': ['1z 1x iy1 iyx'],
 }
 
 defaults = DefaultParameters()
@@ -196,7 +194,7 @@ except:
 print('Normalization params:', normalization_params)
 
 # data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, params_noise_config, label_idx=[1, 2], format='csr', threshold=0.05, gt_threshold=True, normalization_mean=mean, normalization_std=std, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down, conductance_config=conductance_config, noisy_conductance=True, target_condcuctance=True)
-data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, label_idx=[1, 2], format='csr', threshold=0.05, gt_threshold=True, normalization_params=normalization_params, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down, conductance_config=conductance_config, noisy_conductance=False, target_condcuctance=True)
+data = HamiltonianFromParametersDataset(data_path, QuantumDotsHamiltonian, params_noise_config, label_idx=[1, 2], format='csr', threshold=0.05, gt_threshold=True, normalization_params=normalization_params, representation_mapping=RepresentationMapping.majorana_plus_minus_up_down, conductance_config=conductance_config, noisy_conductance=True, target_condcuctance=True)
 
 train_size = int(0.99*len(data))
 test_size = len(data) - train_size
