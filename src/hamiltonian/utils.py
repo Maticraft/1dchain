@@ -157,6 +157,7 @@ def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: np.ndarray, filename: 
     m1 = np.concatenate([np.array([1,1,-1,-1]), np.array([0,0,0,0]*(model.num_sites-2)), np.array([1,1,1,1])]).T/2.
     m2 = np.concatenate([np.array([1,1,-1,-1])*-1., np.array([0,0,0,0]*(model.num_sites-2)), np.array([1,1,1,1])]).T/2.
 
+    m_color = 'darkred'
 
     for x in xparams:
         current_model = deepcopy(model)
@@ -246,16 +247,27 @@ def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: np.ndarray, filename: 
         ax.set_title(kwargs['title'])
 
     # set min and max for color scale
-    plot = ax.scatter(np.expand_dims(xparams, axis=1).repeat(12, axis=1), energies, c=color_values, vmin=vmin, vmax=vmax, s=.2)    
+    if color == "occupations":
+        cmap = "viridis"
+    elif color == "electron-hole-diff":
+        cmap = "bwr_r"
+    else:
+        cmap = None
+    plot = ax.scatter(np.expand_dims(xparams, axis=1).repeat(energies.shape[1], axis=1), energies, c=color_values, vmin=vmin, vmax=vmax, cmap=cmap, s=.2)    
     if kwargs.get('left_label', True):
-        ax.set_ylabel('$E$ [meV]')
-    ax.yaxis.set_label_coords(-0.14, 0.5)
+        ax.set_ylabel('$E$ (meV)')
+    ax.yaxis.set_label_coords(-0.16, 0.5)
+    ax.set_yticks([-.5, 0., .5])
 
+    ax.set_xlim(xparams[0], xparams[-1])
     x_vmin, x_vmax = ax.get_xlim()
     x_mid = 0.5 * (x_vmin + x_vmax)
     ax.set_xticks([ x_vmin, x_mid, x_vmax ])
     ax.set_xticklabels([ f'{x_vmin:.2f}', f'{x_mid:.2f}', f'{x_vmax:.2f}'])
-        
+    
+    x_vline = kwargs.get('x_vline', x_mid)
+    ax.axvline(x_vline, c='grey', ls='--')
+
     if kwargs.get('right_label', True):
         ax.xaxis.get_majorticklabels()[0].set_horizontalalignment('left')
     else:
@@ -267,14 +279,14 @@ def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: np.ndarray, filename: 
     if majoranization:
         ax2 = ax.twinx()
         if kwargs.get('right_label', True):
-            ax2.set_ylabel(r'$\mathcal{M}$', color='red', rotation=0)
+            ax2.set_ylabel(r'$\mathcal{M}$', color=m_color, rotation=0)
             ax2.yaxis.set_label_coords(1.2, 0.53)  # Move ylabel further right
-            ax2.tick_params(axis='y', labelcolor='red')
+            ax2.tick_params(axis='y', labelcolor=m_color)
         else:
             ax2.set_axis_off()
 
         # Set the color of the second axis to red and plot majoranization values
-        ax2.plot(xparams, np.array(majoranization_values), color='red')
+        ax2.plot(xparams, np.array(majoranization_values), color=m_color)
         ax2.set_ylim(0, 1.)  # Set y-axis limits for majoranization
 
 
@@ -282,11 +294,11 @@ def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: np.ndarray, filename: 
     #     plt.xlabel(f'{xaxis}/{xnorm}')
     # else:
     if xaxis == 'potential' or xaxis == 'mu':
-        ax.set_xlabel('$\mu$ [meV]')
+        ax.set_xlabel('$\mu$ (meV)')
     else:
         ax.set_xlabel(f'{xaxis}')
 
-    ax.xaxis.set_label_coords(0.5, -0.13)
+    ax.xaxis.set_label_coords(0.5, -0.16)
 
 
     # ax.text(-0.15, 0.485, "E", color='black', rotation='vertical', transform=ax.transAxes)

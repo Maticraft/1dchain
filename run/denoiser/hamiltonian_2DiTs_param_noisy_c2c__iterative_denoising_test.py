@@ -254,7 +254,7 @@ for sample_idx in range(num_samples):
                         xtick_range=x_tick_range,
                         ytick_range=y_tick_range,
                         xlabel="$B$ [mV]",
-                        ylabel="$E_F$ [meV]",
+                        ylabel="$E_F$ (meV)",
                         title=f'Noise amplitude: {noise_k.item():.2f}'
                     )
         
@@ -282,7 +282,7 @@ for sample_idx in range(num_samples):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ (meV)"
             )
 
         for i, cmap_config in enumerate(conductance_config['cmap_list']):
@@ -300,7 +300,7 @@ for sample_idx in range(num_samples):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ (meV)"
             )
 
         mapped_h_predicted = torch.complex(h_predicted_denorm[0], h_predicted_denorm[1])
@@ -319,7 +319,7 @@ for sample_idx in range(num_samples):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ (meV)"
             )
 
 
@@ -344,7 +344,7 @@ for sample_idx in range(num_samples):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ (meV)"
             )
 
 
@@ -365,5 +365,5 @@ for sample_idx in range(num_samples):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ (meV)"
             )

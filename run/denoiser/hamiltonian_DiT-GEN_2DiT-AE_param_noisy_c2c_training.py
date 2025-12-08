@@ -507,7 +507,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel=f"${x_name}$ [mV]",
-                ylabel="$E_F$ [meV]",
+                ylabel="$E_F$ (meV)",
                 title=f'Noise amplitude: {real_noise_amplitude.item():.2f}, Majoranization: {h_noisy_label}'
             )
 
@@ -535,7 +535,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel=f"${x_name}$ [mV]",
-                ylabel="$E_F$ [meV]",
+                ylabel="$E_F$ (meV)",
                 title=f'Majoranization: {h_label}'
             )
 
@@ -564,7 +564,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel=f"${x_name}$ [mV]",
-                ylabel="$E_F$ [meV]",
+                ylabel="$E_F$ (meV)",
                 title=f'Majoranization: {h_predicted_label}'
             )
 
@@ -620,7 +620,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel=f"${x_name}$ [mV]",
-                ylabel="$E_F$ [meV]",
+                ylabel="$E_F$ (meV)",
                 title=f'Majoranization: {h_rec_label}'
             )
 
@@ -667,7 +667,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel=f"${x_name}$ [mV]",
-                ylabel="$E_F$ [meV]",
+                ylabel="$E_F$ (meV)",
                 title=f'Majoranization: {h_rec_noisy_label}'
             )
 
@@ -714,7 +714,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel=f"${x_name}$ [mV]",
-                ylabel="$E_F$ [meV]",
+                ylabel="$E_F$ (meV)",
                 title=f'Majoranization: {h_rec_imp_label}'
             )    
 

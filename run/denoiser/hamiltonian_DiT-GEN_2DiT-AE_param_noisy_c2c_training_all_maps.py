@@ -50,7 +50,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Model name
 # model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-mu-fixed_min-majoranization-loss-eh-with-reg0-1_2DiT-AE-patch4-1_improve-selected-params_majorana-destructing-noise1-extra-params_relative-1b-3mu-maps50x50_norm-c2c_lr1e-4-decreasing'
-model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-mu-fixed_min-majoranization-loss-eh-with-reg0-1_2DiT-AE-patch4-1_improve-selected-mu-b-const-params_majorana-destructing-noise1-extra-params_relative-4b-12mu-maps50x50_norm-c2c_lr1e-4-decreasing'
+model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-mu-fixed_min-majoranization-loss-eh-with-reg0-1_2DiT-AE-patch4-1_improve-selected-mu-t-l-params_majorana-destructing-noise1-extra-params_relative-4b-12mu-maps50x50_norm-c2c_lr1e-4-decreasing'
 
 # Pretrained model
 # pretrained_model_name = 'QDH-1lvl-no-interlevel_2DiTs_real_12_patch1_4maps50x50embed_norm_triple-c2c_lr1e-4decreasing'
@@ -93,12 +93,13 @@ dit_c2h_config = {
     'output_unpatcher': 'hamiltonian',
     # 'output_hamiltonian_params': HamiltonianParams(),
     "output_hamiltonian_params": HamiltonianParams(
-        on_site_real_params=("potential", "magnetic_field"),
+        on_site_real_params=("potential",),
+        # on_site_real_params=("potential", "magnetic_field"),
         on_site_imag_params=(()),
-        inter_site_real_params=(()),
-        # inter_site_real_params=("t", "t_phase_diag", "t_phase_antidiag"),
+        # inter_site_real_params=(()),
+        inter_site_real_params=("t", "t_phase_diag", "t_phase_antidiag"),
         inter_site_imag_params=(()),
-        site_constant_params=("magnetic_field",),
+        # site_constant_params=("magnetic_field",),
     )    
     # 'on_site_block_names': ['iy1'],
     # 'inter_site_block_names': ['1z 1x iy1 iyx'],
@@ -513,7 +514,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel=f"${x_name}$ [mV]",
-                ylabel="$E_F$ [meV]",
+                ylabel="$E_F$ (meV)",
                 title=f'Noise amplitude: {real_noise_amplitude.item():.2f}, Majoranization: {h_noisy_label}'
             )
 
@@ -541,7 +542,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel=f"${x_name}$ [mV]",
-                ylabel="$E_F$ [meV]",
+                ylabel="$E_F$ (meV)",
                 title=f'Majoranization: {h_label}'
             )
 
@@ -570,7 +571,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel=f"${x_name}$ [mV]",
-                ylabel="$E_F$ [meV]",
+                ylabel="$E_F$ (meV)",
                 title=f'Majoranization: {h_predicted_label}'
             )
 
@@ -626,7 +627,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel=f"${x_name}$ [mV]",
-                ylabel="$E_F$ [meV]",
+                ylabel="$E_F$ (meV)",
                 title=f'Majoranization: {h_rec_label}'
             )
 
@@ -673,7 +674,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel=f"${x_name}$ [mV]",
-                ylabel="$E_F$ [meV]",
+                ylabel="$E_F$ (meV)",
                 title=f'Majoranization: {h_rec_noisy_label}'
             )
 
@@ -720,7 +721,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel=f"${x_name}$ [mV]",
-                ylabel="$E_F$ [meV]",
+                ylabel="$E_F$ (meV)",
                 title=f'Majoranization: {h_rec_imp_label}'
             )    
 

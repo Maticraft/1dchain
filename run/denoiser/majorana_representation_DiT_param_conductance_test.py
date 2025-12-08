@@ -133,7 +133,7 @@ for i in range(n_samples_to_plot):
     test_matrix_path = os.path.join(sample_dir, hamiltonian_plot_name)
     plot_matrix(h_predicted[0].detach().cpu().numpy(), test_matrix_path.format('denoised_real'), vmin=-vscale, vmax=vscale)
     plot_matrix(h_predicted[1].detach().cpu().numpy(), test_matrix_path.format('denoised_imag'), vmin=-vscale, vmax=vscale)
-    plot_conductance_map(h_conductance[0, 0].detach().cpu().numpy(), os.path.join(sample_dir, 'conductance_map.png'), xlabel="$V$ [mV]", ylabel="$E_F$ [meV]")
+    plot_conductance_map(h_conductance[0, 0].detach().cpu().numpy(), os.path.join(sample_dir, 'conductance_map.png'), xlabel="$V$ [mV]", ylabel="$E_F$ (meV)")
 
 
     mapped_h_predicted = transform_majorana_plus_minus_up_down_representation_to_default(torch.complex(h_torch_denormalized[0], h_torch_denormalized[1]))
@@ -148,7 +148,7 @@ for i in range(n_samples_to_plot):
         n_levels=1,
         gamma=0.1
     )
-    plot_conductance_map(predicted_cmap[0].detach().cpu().numpy(), os.path.join(sample_dir, 'ref_conductance_map.png'), xlabel="$V$ [mV]", ylabel="$E_F$ [meV]")
+    plot_conductance_map(predicted_cmap[0].detach().cpu().numpy(), os.path.join(sample_dir, 'ref_conductance_map.png'), xlabel="$V$ [mV]", ylabel="$E_F$ (meV)")
 
 
 
@@ -164,4 +164,4 @@ for i in range(n_samples_to_plot):
         n_levels=1,
         gamma=0.1
     )
-    plot_conductance_map(predicted_cmap[0].detach().cpu().numpy(), os.path.join(sample_dir, 'predicted_conductance_map.png'), xlabel="$V$ [mV]", ylabel="$E_F$ [meV]")
+    plot_conductance_map(predicted_cmap[0].detach().cpu().numpy(), os.path.join(sample_dir, 'predicted_conductance_map.png'), xlabel="$V$ [mV]", ylabel="$E_F$ (meV)")

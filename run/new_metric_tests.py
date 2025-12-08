@@ -138,7 +138,7 @@ for i, cmap_config in enumerate(conductance_config['cmap_list']):
         xtick_range=x_tick_range,
         ytick_range=y_tick_range,
         xlabel=f"${x_name}$ [mV]",
-        ylabel="$E_F$ [meV]"
+        ylabel="$E_F$ (meV)"
     )
 
 

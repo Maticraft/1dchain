@@ -29,7 +29,9 @@ from src.hamiltonian.torch_hamiltonian import TorchHamiltonian
 # Paths
 data_path = './data/quantum_dots/simple_fixed_t_3dots1level_majoranization0_0_mzm_gap0_25'
 # normalization_params_path = f'{data_path}/std_rep_normalization_params_4b-maps.pkl'
-normalization_params_path = f'{data_path}/std_rep_normalization_params_1b-3mu-maps.pkl'
+# normalization_params_path = f'{data_path}/std_rep_normalization_params_1b-3mu-maps.pkl'
+normalization_params_path = f'{data_path}/std_rep_normalization_params_4b-12mu-maps.pkl'
+
 save_dir = './conductance/quantum_dots/simple_fixed_t_3dots1level_majoranization0_0_mzm_gap0_25'
 loss_file = 'loss.txt'
 convergence_file = 'convergence.png'
@@ -39,15 +41,16 @@ hamiltonian_plot_name = 'hamiltonian_{}.png'
 
 
 num_samples = 10
-epoch = 260 #170
+# epoch = 170  # 260
+epoch = 130
 
 # Reference eigvals plot params
 tests_sub_dir = f'noise1_reconstruction_tests_ep_{epoch}'
 x_axis = 'potential'
-x_values = np.linspace(-.5/AtomicUnits.Eh, .5/AtomicUnits.Eh, 100)
+x_values = np.linspace(-.6/AtomicUnits.Eh, .6/AtomicUnits.Eh, 100)
 xnorm=1/AtomicUnits.Eh
 ynorm=1/AtomicUnits.Eh
-ylim = (-2., 2.)
+ylim = (-0.75, 0.75)
 vscale = 1/AtomicUnits.Eh
 n_dots = 3
 
@@ -65,8 +68,13 @@ device = torch.device('cpu')
 # model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-mu-fixed_min-majoranization-loss-eh-with-reg0-1_2DiT-AE-patch4-1_improve-selected-mu-b-const-params_majorana-destructing-noise1-extra-params_relative-1b-3mu-maps50x50_norm-c2c_lr1e-4-decreasing'
 
 
+# New model all maps
+# model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-mu-fixed_min-majoranization-loss-eh-with-reg0-1_2DiT-AE-patch4-1_improve-selected-mu-b-const-params_majorana-destructing-noise1-extra-params_relative-4b-12mu-maps50x50_norm-c2c_lr1e-4-decreasing'
+model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-mu-fixed_min-majoranization-loss-eh-with-reg0-1_2DiT-AE-patch4-1_improve-selected-mu-t-l-params_majorana-destructing-noise1-extra-params_relative-4b-12mu-maps50x50_norm-c2c_lr1e-4-decreasing'
+
+
 # Paper model
-model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-mu-fixed_min-majoranization-loss-eh-with-reg0-1_2DiT-AE-patch4-1_improve-selected-params_majorana-destructing-noise1-extra-params_relative-1b-3mu-maps50x50_norm-c2c_lr1e-4-decreasing'
+# model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-mu-fixed_min-majoranization-loss-eh-with-reg0-1_2DiT-AE-patch4-1_improve-selected-params_majorana-destructing-noise1-extra-params_relative-1b-3mu-maps50x50_norm-c2c_lr1e-4-decreasing'
 
 
 # Params
@@ -87,8 +95,10 @@ params = {
 
 # Set params
 # sample_name = 'noisy_params_mu_0_75_d_0_7'
-# sample_name = 'noisy_params_l0_0_5_l1_2_5'
-sample_name = 'noisy_params_t0_0_17_t1_0'
+sample_name = 'noisy_params_l0_1_95_l1_1_3'
+# sample_name = 'noisy_params_t0_0_06_t1_0_06'
+# sample_name = 'noisy_params_l0_3_14_l1_2_826'
+
 # sample_name = 'default_params'
 defaults = DefaultParameters()
 # defaults.t_default = 2./AtomicUnits.Eh
@@ -103,69 +113,14 @@ h_params = QuantumDotsHamiltonianParameters(3, 1, defaults)
 # h_params.d[2] = 1./AtomicUnits.Eh
 # h_params.mu[0] = 1.15/AtomicUnits.Eh
 # h_params.mu[1] = 1.2/AtomicUnits.Eh
-h_params.t[0] = 0.17/AtomicUnits.Eh
-h_params.t[1] = 0./AtomicUnits.Eh
-# h_params.l[0] = 0.5
-# h_params.l[1] = 2.5
+# h_params.t[0] = 0.06/AtomicUnits.Eh
+# h_params.t[1] = 0.06/AtomicUnits.Eh
+h_params.l[0] = 1.95
+h_params.l[1] = 1.3
+# h_params.l[0] = 3.14
+# h_params.l[1] = 2.826
 # h_params.d[0] = 0.25/AtomicUnits.Eh
 # h_params.d[1] = 1.25/AtomicUnits.Eh
-
-conductance_config = {
-    'cmap_list': [
-    {
-        'cmap2': {
-            'i':0,
-            'j':0,
-            'gamma': 0.1,
-            'b_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
-            'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-            'b_num': 50,
-            'ef_num': 50,
-            'with_embedding': False
-        },
-    },
-    {
-        'cmap0': {
-            'i':0,
-            'j':0,
-            'gamma': 0.1,
-            'mu_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
-            'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-            'mu_num': 50,
-            'ef_num': 50,
-            'site_index': 1,
-            'with_embedding': False,
-        },
-    },
-    {
-        'cmap0': {
-            'i':0,
-            'j':0,
-            'gamma': 0.1,
-            'mu_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
-            'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-            'mu_num': 50,
-            'ef_num': 50,
-            'site_index': 0,
-            'with_embedding': False,
-        },
-    },
-    {
-        'cmap0': {
-            'i':0,
-            'j':0,
-            'gamma': 0.1,
-            'mu_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
-            'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-            'mu_num': 50,
-            'ef_num': 50,
-            'site_index': 2,
-            'with_embedding': False
-        },
-    },
-    ],
-}
-
 
 # conductance_config = {
 #     'cmap_list': [
@@ -182,43 +137,108 @@ conductance_config = {
 #         },
 #     },
 #     {
-#         'cmap2': {
+#         'cmap0': {
 #             'i':0,
-#             'j':1,
-#             'gamma': 0.1,
-#             'b_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
-#             'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-#             'b_num': 50,
-#             'ef_num': 50,
-#             'with_embedding': False
-#         },
-#     },
-#         {
-#         'cmap2': {
-#             'i':1,
 #             'j':0,
 #             'gamma': 0.1,
-#             'b_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
+#             'mu_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
 #             'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-#             'b_num': 50,
+#             'mu_num': 50,
 #             'ef_num': 50,
-#             'with_embedding': False
+#             'site_index': 1,
+#             'with_embedding': False,
 #         },
 #     },
 #     {
-#         'cmap2': {
-#             'i':1,
-#             'j':1,
+#         'cmap0': {
+#             'i':0,
+#             'j':0,
 #             'gamma': 0.1,
-#             'b_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
+#             'mu_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
 #             'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
-#             'b_num': 50,
+#             'mu_num': 50,
 #             'ef_num': 50,
+#             'site_index': 0,
+#             'with_embedding': False,
+#         },
+#     },
+#     {
+#         'cmap0': {
+#             'i':0,
+#             'j':0,
+#             'gamma': 0.1,
+#             'mu_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
+#             'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
+#             'mu_num': 50,
+#             'ef_num': 50,
+#             'site_index': 2,
 #             'with_embedding': False
 #         },
 #     },
 #     ],
 # }
+
+
+cmap_lists = [
+    [
+        {
+            'cmap2': {
+                'i':i,
+                'j':j,
+                'gamma': 0.1,
+                'b_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
+                'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
+                'b_num': 50,
+                'ef_num': 50,
+                'with_embedding': False
+            },
+        },
+        {
+            'cmap0': {
+                'i':i,
+                'j':j,
+                'gamma': 0.1,
+                'mu_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
+                'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
+                'mu_num': 50,
+                'ef_num': 50,
+                'site_index': 1,
+                'with_embedding': False,
+            },
+        },
+        {
+            'cmap0': {
+                'i':i,
+                'j':j,
+                'gamma': 0.1,
+                'mu_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
+                'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
+                'mu_num': 50,
+                'ef_num': 50,
+                'site_index': 0,
+                'with_embedding': False,
+            },
+        },
+        {
+            'cmap0': {
+                'i':i,
+                'j':j,
+                'gamma': 0.1,
+                'mu_range': (-0.5/AtomicUnits.Eh, 0.5/AtomicUnits.Eh),
+                'ef_range': (-1./AtomicUnits.Eh, 1./AtomicUnits.Eh),
+                'mu_num': 50,
+                'ef_num': 50,
+                'site_index': 2,
+                'with_embedding': False
+            },
+        },
+    ] for i in range(2) for j in range(2)
+]
+
+conductance_config = {
+    'cmap_list': [cmap for sublist in cmap_lists for cmap in sublist],
+}
+
 
 
 conductance_config_hq = deepcopy(conductance_config)
@@ -269,6 +289,10 @@ hamiltonian_converter = HamiltonianConverter(
 model_c2h = load_model(DiT, dit_c2h_config, root_dir, epoch=epoch, suffix='_c2h')
 model_c2h.to(device)
 model_c2h.eval()
+
+num_parameters_c2h = sum(p.numel() for p in model_c2h.parameters() if p.requires_grad)
+print(f'Number of trainable parameters in model_c2h: {num_parameters_c2h}')
+
 
 
 h_mean, h_std = normalization_params[0]
@@ -328,12 +352,41 @@ with open(os.path.join(sample_dir, 'h_denoised_map.json'), 'w') as f:
 
 plt.rcParams.update({'font.size': 20})
 
+fig, axs = plt.subplots(1, 2, figsize=(10, 6), sharey=True)
+
+eigvals_occ_path = os.path.join(sample_dir, eigvals_plot_name.format(f'occ_original'))
+plot1 = plot_eigvals(hamiltonian, xaxis='mu', xparams=x_values, filename=eigvals_occ_path, color='occupations', ylim=ylim, majoranization=True, xnorm=xnorm, ynorm=ynorm, ax=axs[0], right_label=False)
+eigvals_eh_path = os.path.join(sample_dir, eigvals_plot_name.format(f'eh_original'))
+plot2 = plot_eigvals(hamiltonian, xaxis='mu', xparams=x_values, filename=eigvals_eh_path, color='electron-hole-diff', ylim=ylim, majoranization=True, xnorm=xnorm, ynorm=ynorm, ax=axs[1], left_label=False)
+
+plt.subplots_adjust(wspace=0.02)
+
+cbar1 = fig.colorbar(plot1, ax=axs[0], orientation='horizontal', fraction=0.035, pad=0.18)
+cbar1.set_label('edge occupations')
+vmin1, vmax1 = plot1.get_clim()
+center1 = (vmin1 + vmax1) / 2
+cbar1.set_ticks([vmin1, center1, vmax1])
+cbar1.set_ticklabels([f'{vmin1:.1f}', f'{center1:.1f}', f'{vmax1:.1f}'])
+
+cbar2 = fig.colorbar(plot2, ax=axs[1], orientation='horizontal', fraction=0.035, pad=0.18)
+cbar2.set_label('electron-hole symmetry')
+vmin2, vmax2 = plot2.get_clim()
+center2 = (vmin2 + vmax2) / 2
+cbar2.set_ticks([vmin2, center2, vmax2])
+cbar2.set_ticklabels([f'{vmin2:.1f}', f'{center2:.1f}', f'{vmax2:.1f}'])
+
+plt.savefig(os.path.join(sample_dir, eigvals_plot_name.format(f'original')), bbox_inches='tight', dpi=300)
+plt.close(fig)
+
+
+plt.rcParams.update({'font.size': 20})
+
 fig, axs = plt.subplots(2, 2, figsize=(10, 12), sharey=True)
 
 eigvals_occ_path = os.path.join(sample_dir, eigvals_plot_name.format(f'occ_original'))
-plot1 = plot_eigvals(hamiltonian, xaxis='mu', xparams=x_values, filename=eigvals_occ_path, color='occupations', ylim=ylim, majoranization=True, xnorm=xnorm, ynorm=ynorm, ax=axs[0, 0], right_label=False)
+plot1 = plot_eigvals(hamiltonian, xaxis='mu', xparams=x_values, filename=eigvals_occ_path, color='occupations', ylim=ylim, majoranization=True, xnorm=xnorm, ynorm=ynorm, ax=axs[0, 0], right_label=False, x_vline=defaults.mu_default * AtomicUnits.Eh)
 eigvals_eh_path = os.path.join(sample_dir, eigvals_plot_name.format(f'eh_original'))
-plot2 = plot_eigvals(hamiltonian, xaxis='mu', xparams=x_values, filename=eigvals_eh_path, color='electron-hole-diff', ylim=ylim, majoranization=True, xnorm=xnorm, ynorm=ynorm, ax=axs[0, 1], left_label=False)
+plot2 = plot_eigvals(hamiltonian, xaxis='mu', xparams=x_values, filename=eigvals_eh_path, color='electron-hole-diff', ylim=ylim, majoranization=True, xnorm=xnorm, ynorm=ynorm, ax=axs[0, 1], left_label=False, x_vline=defaults.mu_default * AtomicUnits.Eh)
 
 # plt.subplots_adjust(wspace=0.02)
 
@@ -360,9 +413,9 @@ plot2 = plot_eigvals(hamiltonian, xaxis='mu', xparams=x_values, filename=eigvals
 # fig, axs = plt.subplots(1, 2, figsize=(10, 6), sharey=True)
 
 eigvals_occ_path = os.path.join(sample_dir, eigvals_plot_name.format(f'occ_denoised'))
-plot1 = plot_eigvals(test_hamiltonian, xaxis='potential', xparams=x_values, filename=eigvals_occ_path, color='occupations', ylim=ylim, majoranization=True, xnorm=xnorm, ynorm=ynorm, ax=axs[1, 0], right_label=False)
+plot1 = plot_eigvals(test_hamiltonian, xaxis='potential', xparams=x_values, filename=eigvals_occ_path, color='occupations', ylim=ylim, majoranization=True, xnorm=xnorm, ynorm=ynorm, ax=axs[1, 0], right_label=False, x_vline=defaults.mu_default * AtomicUnits.Eh)
 eigvals_eh_path = os.path.join(sample_dir, eigvals_plot_name.format(f'eh_denoised'))
-plot2 = plot_eigvals(test_hamiltonian, xaxis='potential', xparams=x_values, filename=eigvals_eh_path, color='electron-hole-diff', ylim=ylim, majoranization=True, xnorm=xnorm, ynorm=ynorm, ax=axs[1, 1], left_label=False)
+plot2 = plot_eigvals(test_hamiltonian, xaxis='potential', xparams=x_values, filename=eigvals_eh_path, color='electron-hole-diff', ylim=ylim, majoranization=True, xnorm=xnorm, ynorm=ynorm, ax=axs[1, 1], left_label=False, x_vline=defaults.mu_default * AtomicUnits.Eh)
 
 plt.subplots_adjust(wspace=0.02, hspace=0.25)
 
@@ -399,12 +452,24 @@ h_conductance_hq = generate_conductance_tensor(h_tensor_complex, conductance_con
 plt.rcParams.update({'font.size': 30})
 fig, axs = plt.subplots(2, 2, figsize=(10, 8), sharey=True)
 
-for i, cmap_config in enumerate(conductance_config_hq['cmap_list']):
+index_map = {
+    1: 'L',
+    2: 'C',
+    3: 'R',
+}
+
+for i, cmap_config in enumerate(conductance_config_hq['cmap_list'][:4]):
     conductance_path = os.path.join(sample_dir, 'original_conductance')
     os.makedirs(conductance_path, exist_ok=True)
     cmap_name = list(cmap_config.keys())[0]
     x_name = 'b' if cmap_name == 'cmap2' else 'mu'
-    x_label = '$B$' if cmap_name == 'cmap2' else r'$\mu_{}$'.format(cmap_config[cmap_name]['site_index'] + 1)
+    
+    if cmap_name == 'cmap2':
+        x_label = '$\Delta B_Z$'
+    else:
+        index = cmap_config[cmap_name]['site_index'] + 1
+        index_label = index_map.get(index, str(index))
+        x_label = r'$\Delta \mu_{}$'.format(index_label)
 
     x_tick_range = np.array(cmap_config[cmap_name][f'{x_name}_range']) * AtomicUnits.Eh
     y_tick_range = np.array(cmap_config[cmap_name]['ef_range']) * AtomicUnits.Eh
@@ -421,8 +486,8 @@ for i, cmap_config in enumerate(conductance_config_hq['cmap_list']):
         os.path.join(conductance_path, f'{cmap_name}_i{i_val}_j{j_val}{filename_suffix}.png'),
         xtick_range=x_tick_range,
         ytick_range=y_tick_range,
-        xlabel=f"{x_label} [meV]",
-        ylabel="$E_F$ [meV]" if i//2 == 0 else '',
+        xlabel=f"{x_label} (meV)",
+        ylabel="$E_F$ (meV)" if i//2 == 0 else '',
         title='', # r'$\mathcal{M}$: ' + f'{h_label:.2f}'
         ax=axs[i%2, i//2],
         right_xtick=i//2==1
@@ -436,7 +501,7 @@ plt.subplots_adjust(wspace=-0.4, hspace=0.4)  # Reduce horizontal and vertical s
 
 
 cbar = fig.colorbar(axs[0,0].images[0], ax=axs, orientation='vertical', fraction=0.035, pad=0.05)
-cbar.ax.set_title('$C$')
+cbar.ax.set_title('$G_{LL}$', pad=20)
 # plt.tight_layout()
 plt.savefig(os.path.join(conductance_path, 'all_conductance_maps.png'), bbox_inches='tight', dpi=300)
 plt.close(fig)
@@ -456,12 +521,17 @@ h_conductance_hq = generate_conductance_tensor(h_complex_tensor, conductance_con
 plt.rcParams.update({'font.size': 30})
 fig, axs = plt.subplots(2, 2, figsize=(10, 8), sharey=True)
 
-for i, cmap_config in enumerate(conductance_config_hq['cmap_list']):
+for i, cmap_config in enumerate(conductance_config_hq['cmap_list'][:4]):
     conductance_path = os.path.join(sample_dir, 'denoised_conductance')
     os.makedirs(conductance_path, exist_ok=True)
     cmap_name = list(cmap_config.keys())[0]
     x_name = 'b' if cmap_name == 'cmap2' else 'mu'
-    x_label = '$B$' if cmap_name == 'cmap2' else r'$\mu_{}$'.format(cmap_config[cmap_name]['site_index'] + 1)
+    if cmap_name == 'cmap2':
+        x_label = '$\Delta B_Z$'
+    else:
+        index = cmap_config[cmap_name]['site_index'] + 1
+        index_label = index_map.get(index, str(index))
+        x_label = r'$\Delta \mu_{}$'.format(index_label)
 
     x_tick_range = np.array(cmap_config[cmap_name][f'{x_name}_range']) * AtomicUnits.Eh
     y_tick_range = np.array(cmap_config[cmap_name]['ef_range']) * AtomicUnits.Eh
@@ -478,8 +548,8 @@ for i, cmap_config in enumerate(conductance_config_hq['cmap_list']):
         os.path.join(conductance_path, f'{cmap_name}_i{i_val}_j{j_val}{filename_suffix}.png'),
         xtick_range=x_tick_range,
         ytick_range=y_tick_range,
-        xlabel=f"{x_label} [meV]",
-        ylabel="$E_F$ [meV]" if i//2 == 0 else '',
+        xlabel=f"{x_label} (meV)",
+        ylabel="$E_F$ (meV)" if i//2 == 0 else '',
         title='', # r'$\mathcal{M}$: ' + f'{h_predicted_label:.2f}'
         ax=axs[i%2, i//2],
         right_xtick=i//2==1
@@ -492,7 +562,7 @@ plt.subplots_adjust(wspace=-0.4, hspace=0.4)  # Reduce horizontal and vertical s
 # plt.subplots_adjust(wspace=-0.37, hspace=0.3)  # Reduce horizontal and vertical spacing
 
 cbar = fig.colorbar(axs[0,0].images[0], ax=axs, orientation='vertical', fraction=0.035, pad=0.05)
-cbar.ax.set_title("$C'$")
+cbar.ax.set_title("$G_{LL}'$", pad=25)
 # plt.tight_layout()
 plt.savefig(os.path.join(conductance_path, 'all_conductance_maps.png'), bbox_inches='tight', dpi=300)
 plt.close(fig)

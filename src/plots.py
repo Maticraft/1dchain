@@ -1,4 +1,5 @@
 from copy import deepcopy
+from collections import defaultdict
 import os
 import typing as t
 
@@ -19,7 +20,7 @@ from src.hamiltonian.hamiltonian_torch_handlers import BlockConstructor, Hamilto
 from src.data.utils import Denormalize
 from src.models.diffusion_transformer import DiT
 from src.models.gan import Generator
-from src.models.utils import deep_update, get_eigvals, reconstruct_hamiltonian
+from src.models.utils import deep_update, get_eigvals, reconstruct_hamiltonian, weighted_update, deep_copy
 from src.models.files import DELIMITER, load_metrics_from_file
 from src.hamiltonian.torch_hamiltonian import TorchHamiltonian
 
@@ -71,7 +72,7 @@ def plot_dataset_from_params_samples(
                     xtick_range=x_tick_range,
                     ytick_range=y_tick_range,
                     xlabel=f"${x_name}$ [mV]",
-                    ylabel="$E_F$ [meV]",
+                    ylabel="$E_F$ (meV)",
                     title=f'Majoranization: {label}',
                 )
 
@@ -646,6 +647,7 @@ def plot_majoranization_denoising_map(
     save_log: str = None,
     dot_index_x: int = None,
     dot_index_y: int = None,
+    iterations: int = 1,
 ):
     
     plt.rcParams['font.size'] = 20
@@ -658,6 +660,8 @@ def plot_majoranization_denoising_map(
 
     x_param_name = f'{x_param}_{dot_index_x}' if dot_index_x is not None else x_param
     y_param_name = f'{y_param}_{dot_index_y}' if dot_index_y is not None else y_param
+
+    # noise_amplitudes = np.geomspace(noise_amplitude, 1.e-1, iterations)
 
     if save_log:
         with open(save_log, 'w') as f:
@@ -688,19 +692,34 @@ def plot_majoranization_denoising_map(
 
             axs[0].scatter(x_value, y_value, c=[m_ref_value], cmap='viridis', s=40, vmin=0, vmax=1.)
 
-            conductance = generate_conductance_tensor(h_tensor_complex, cmap_config)
-            conductance_normalized = cmap_normalize(conductance).unsqueeze(0)
+            for i in range(iterations):
+                # current_noise_amplitude = noise_amplitudes[i]
+                current_noise_amplitude = noise_amplitude * (iterations - i) / iterations
+                # current_noise_amplitude = noise_amplitude
 
-            t = torch.tensor(noise_amplitude, device=device).view(1, 1)
-            improve_map = denoiser.forward_to_params(conductance_normalized, t, None)
-            
-            h_tensor_norm = h_normalize(h_tensor.unsqueeze(0))
-            h_map = hamiltonian_converter.from_matrix_to_params(h_tensor_norm)
-            improved_map = deep_update(h_map, improve_map, detach=False)
-            h_predicted = hamiltonian_converter.from_params_to_matrix(improved_map)
-            h_predicted_denorm = h_denormalize(h_predicted)[0]
-            h_complex_tensor = torch.complex(h_predicted_denorm[0], h_predicted_denorm[1])
-            m_value = majoranization(h_complex_tensor.detach().cpu().numpy(), n_dots)
+                conductance = generate_conductance_tensor(h_tensor_complex, cmap_config)
+                conductance_normalized = cmap_normalize(conductance).unsqueeze(0)
+
+                t = torch.tensor(current_noise_amplitude, device=device).view(1, 1)
+                if i > 0:
+                    previous_map = deep_copy(improve_map)
+
+                improve_map = denoiser.forward_to_params(conductance_normalized, t, None)
+                
+                h_tensor_norm = h_normalize(h_tensor.unsqueeze(0))
+                h_map = hamiltonian_converter.from_matrix_to_params(h_tensor_norm)
+
+                if i > 0:
+                    current_improve_map = weighted_update(previous_map, improve_map, 0.75)
+                    improved_map = deep_update(h_map, current_improve_map, detach=False, alpha=0.1)
+                else:
+                    improved_map = deep_update(h_map, improve_map, detach=False, alpha=0.1)
+                # improved_map = weighted_update(h_map, improve_map, current_noise_amplitude)
+
+                h_predicted = hamiltonian_converter.from_params_to_matrix(improved_map)
+                h_tensor = h_denormalize(h_predicted)[0]
+                h_tensor_complex = torch.complex(h_tensor[0], h_tensor[1])
+                m_value = majoranization(h_tensor_complex.detach().cpu().numpy(), n_dots)
 
             axs[1].scatter(x_value, y_value, c=[m_value], cmap='viridis', s=40, vmin=0, vmax=1.)
 
@@ -779,8 +798,8 @@ def plot_majoranization_denoising_map_from_file(
     # for x_value, y_value, m_ref_value, m_value in tqdm(zip(x_values, y_values, m_ref_values, m_values), desc='Plotting majoranization denoising map'):
     axs[0].scatter(x_values, y_values, c=m_ref_values, cmap='viridis', s=20, vmin=0, vmax=1, marker='s')
     axs[1].scatter(x_values, y_values, c=m_values, cmap='viridis', s=20, vmin=0, vmax=1, marker='s')
-    axs[0].scatter(default_x_value, default_y_value, c='red', s=20, label='Default values')
-    axs[1].scatter(default_x_value, default_y_value, c='red', s=20, label='Default values')
+    axs[0].scatter(default_x_value, default_y_value, c='red', s=20, label='Reference values')
+    axs[1].scatter(default_x_value, default_y_value, c='red', s=20, label='Reference values')
 
     if (x_dataset_range is not None) and (y_dataset_range is not None):
         if denormalize_x:
@@ -799,35 +818,42 @@ def plot_majoranization_denoising_map_from_file(
     
     draw_x_pi = False
     draw_y_pi = False
+
+    index_map = {
+        '_0': '_L',
+        '_1': '_C',
+        '_2': '_R',
+    }
+
     if x_param.startswith('mu'):
-        x_param = r'$\mu{}$'.format(x_param[2:])
+        x_param = r'$\mu{}$'.format(index_map.get(x_param[2:], x_param[2:]))
     elif x_param.startswith('l'):
         x_param = r'$\lambda{}$'.format(x_param[1:])
         draw_x_pi = True
     elif x_param.startswith('d'):
-        x_param = r'$\Delta{}$'.format(x_param[1:])
+        x_param = r'$\Delta{}$'.format(index_map.get(x_param[1:], x_param[1:]))
     elif x_param.startswith('b'):
-        x_param = r'$B{}$'.format(x_param[1:])
+        x_param = r'$B_Z{}$'.format(index_map.get(x_param[1:], x_param[1:]))
     else:
         x_param = r'${}$'.format(x_param)
 
     if not draw_x_pi:
-        x_param = f"{x_param} [meV]"
+        x_param = f"{x_param} (meV)"
 
     if y_param.startswith('mu'):
-        y_param = r'$\mu{}$'.format(y_param[2:])
+        y_param = r'$\mu{}$'.format(index_map.get(y_param[2:], y_param[2:]))
     elif y_param.startswith('l'):
         y_param = r'$\lambda{}$'.format(y_param[1:])
         draw_y_pi = True
     elif y_param.startswith('d'):
-        y_param = r'$\Delta{}$'.format(y_param[1:])
+        y_param = r'$\Delta{}$'.format(index_map.get(y_param[1:], y_param[1:]))
     elif y_param.startswith('b'):
-        y_param = r'$B{}$'.format(y_param[1:])
+        y_param = r'$B_Z{}$'.format(index_map.get(y_param[1:], y_param[1:]))
     else:
         y_param = r'${}$'.format(y_param)
 
     if not draw_y_pi:
-        y_param = f"{y_param} [meV]"
+        y_param = f"{y_param} (meV)"
 
 
     # axs[0].set_title('Input')
@@ -835,7 +861,7 @@ def plot_majoranization_denoising_map_from_file(
         axs[0].set_xlabel(x_param)
         axs[0].xaxis.set_label_coords(0.5, -0.1)
         # axs[0].tick_params(axis='x', pad=10)
-        xticks = np.round(np.linspace(x_range[0], x_range[1], 4), 1)
+        xticks = np.linspace(x_range[0], x_range[1], 4)
         axs[0].set_xticks(xticks)
         if draw_x_pi:
             xtick_labels = [f'{val/np.pi:.1f}π' for val in xticks]
@@ -843,7 +869,7 @@ def plot_majoranization_denoising_map_from_file(
         axs[0].xaxis.get_majorticklabels()[3].set_horizontalalignment('right')
     
     axs[0].set_ylabel(y_param)
-    yticks = np.round(np.linspace(*y_range, 4), 1)
+    yticks = np.linspace(*y_range, 4)
     # yticks[0] += (0.05 if not draw_y_pi else 0.11)
     # yticks[-1] -= (0.05 if not draw_y_pi else 0.1)
     ytick_labels = [f'{val:.1f}' for val in yticks]
@@ -865,7 +891,7 @@ def plot_majoranization_denoising_map_from_file(
         axs[1].xaxis.set_label_coords(0.5, -0.1)
         # axs[1].tick_params(axis='x', pad=10)
         if draw_x_pi:
-            xticks = np.round(np.linspace(*y_range, 4), 1)
+            xticks = np.linspace(*x_range, 4)
             xtick_labels = [f'{val/np.pi:.1f}π' for val in xticks]
             axs[1].set_xticks(xticks)
             axs[1].set_xticklabels(xtick_labels)

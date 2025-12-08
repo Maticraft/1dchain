@@ -363,7 +363,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ (meV)"
             )
 
         for i, cmap_config in enumerate(conductance_config['cmap_list']):
@@ -381,7 +381,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ (meV)"
             )
 
         mapped_h_predicted = torch.complex(h_predicted_denorm[0], h_predicted_denorm[1])
@@ -400,7 +400,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ (meV)"
             )
 
 
@@ -425,7 +425,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ (meV)"
             )
 
 
@@ -446,7 +446,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ (meV)"
             )
 
 plot_convergence(loss_path, convergence_path, read_label=True)

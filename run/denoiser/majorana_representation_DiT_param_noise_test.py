@@ -159,7 +159,7 @@ for i in range(n_samples_to_plot):
         xtick_range=x_tick_range,
         ytick_range=y_tick_range,
         xlabel="$B$ [mV]",
-        ylabel="$E_F$ [meV]"
+        ylabel="$E_F$ (meV)"
     )
     
     for dir_path in [amplitude_noise_dir, full_noise_dir]:
@@ -224,7 +224,7 @@ for i in range(n_samples_to_plot):
             xtick_range=x_tick_range,
             ytick_range=y_tick_range,
             xlabel="$B$ [mV]",
-            ylabel="$E_F$ [meV]"
+            ylabel="$E_F$ (meV)"
         )
 
         # Denoised conductance map
@@ -239,5 +239,5 @@ for i in range(n_samples_to_plot):
             xtick_range=x_tick_range,
             ytick_range=y_tick_range,
             xlabel="$B$ [mV]",
-            ylabel="$E_F$ [meV]"
+            ylabel="$E_F$ (meV)"
         )

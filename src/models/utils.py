@@ -415,13 +415,13 @@ def deep_copy(d: t.Dict[str, t.Any], detach: bool = False):
     return d_new
 
 
-def deep_update(d: t.Dict[str, t.Any], u: t.Dict[str, t.Any], detach: bool = False):
+def deep_update(d: t.Dict[str, t.Any], u: t.Dict[str, t.Any], detach: bool = False, alpha: float = 1.0):
     d_new = deep_copy(d, detach)
     for k, v in u.items():
         if isinstance(v, dict):
-            d_new[k] = deep_update(d_new.get(k, {}), v, detach)
+            d_new[k] = deep_update(d_new.get(k, {}), v, detach, alpha)
         else:
-            d_new[k] = d_new[k] + v
+            d_new[k] = d_new[k] + alpha * v
     return d_new
 
 

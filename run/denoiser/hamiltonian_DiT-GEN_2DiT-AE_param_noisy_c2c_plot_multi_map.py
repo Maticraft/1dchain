@@ -23,8 +23,10 @@ hamiltonian_plot_name = 'hamiltonian_{}.png'
 
 num_samples = 10
 # epoch = 160
-epoch = 170
+# epoch = 170
 # epoch = 260
+epoch = 170
+# epoch = 130
 
 # Reference eigvals plot params
 tests_sub_dir = f'noise1_reconstruction_tests_ep_{epoch}'
@@ -49,7 +51,12 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # New model
 # model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-mu-fixed_min-majoranization-loss-eh-with-reg0-1_2DiT-AE-patch4-1_improve-selected-mu-b-params_majorana-destructing-noise1-extra-params_relative-1b-3mu-maps50x50_norm-c2c_lr1e-4-decreasing'
-model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-mu-fixed_min-majoranization-loss-eh-with-reg0-1_2DiT-AE-patch4-1_improve-selected-mu-b-const-params_majorana-destructing-noise1-extra-params_relative-1b-3mu-maps50x50_norm-c2c_lr1e-4-decreasing'
+# model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-mu-fixed_min-majoranization-loss-eh-with-reg0-1_2DiT-AE-patch4-1_improve-selected-mu-b-const-params_majorana-destructing-noise1-extra-params_relative-1b-3mu-maps50x50_norm-c2c_lr1e-4-decreasing'
+
+# New model all maps
+model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-mu-fixed_min-majoranization-loss-eh-with-reg0-1_2DiT-AE-patch4-1_improve-selected-mu-b-const-params_majorana-destructing-noise1-extra-params_relative-4b-12mu-maps50x50_norm-c2c_lr1e-4-decreasing'
+# model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-mu-fixed_min-majoranization-loss-eh-with-reg0-1_2DiT-AE-patch4-1_improve-selected-mu-t-l-params_majorana-destructing-noise1-extra-params_relative-4b-12mu-maps50x50_norm-c2c_lr1e-4-decreasing'
+
 
 # paper model
 # model_name = 'Hamiltionian-QDH-1lvl-no-interlevel_DiT-mu-fixed_min-majoranization-loss-eh-with-reg0-1_2DiT-AE-patch4-1_improve-selected-params_majorana-destructing-noise1-extra-params_relative-1b-3mu-maps50x50_norm-c2c_lr1e-4-decreasing'
@@ -95,7 +102,7 @@ fig, axs = plt.subplots(len(y_param_names), 2, figsize=(12, 5*len(y_param_names)
 
 for i, (x_param_name, y_param_name) in enumerate(zip(x_param_names, y_param_names)):
 
-    defaults = DefaultParameters()
+    defaults = DefaultParameters(lambda_max=0.995)
 
     x_default = getattr(defaults, f'{x_param_name}_default')
     x_dataset_range = getattr(defaults, f'{x_param_name}_range')
@@ -152,8 +159,8 @@ for i, (x_param_name, y_param_name) in enumerate(zip(x_param_names, y_param_name
         denormalize_y=True if y_param_name != 'l' else False,
         x_range=(0., 1.5/AtomicUnits.Eh) if x_param_name != 'l' else (0., np.pi),
         y_range=(0., 1.5/AtomicUnits.Eh) if y_param_name != 'l' else (0., np.pi),
-        x_dataset_range=x_dataset_range if x_param_name != 'l' else None,
-        y_dataset_range=y_dataset_range if y_param_name != 'l' else None,
+        x_dataset_range=x_dataset_range,
+        y_dataset_range=y_dataset_range,
         normalize_majoranization=False,
         legend=False,
         pad_inches=margin,

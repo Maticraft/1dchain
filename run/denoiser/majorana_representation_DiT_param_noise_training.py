@@ -221,7 +221,7 @@ for epoch in range(0, params['epochs'] + 1):
             xtick_range=x_tick_range,
             ytick_range=y_tick_range,
             xlabel="$B$ [mV]",
-            ylabel="$E_F$ [meV]"
+            ylabel="$E_F$ (meV)"
         )
         
         for dir_path in [amplitude_noise_dir, full_noise_dir]:
@@ -281,7 +281,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ (meV)"
             )
 
             # Denoised conductance map
@@ -296,7 +296,7 @@ for epoch in range(0, params['epochs'] + 1):
                 xtick_range=x_tick_range,
                 ytick_range=y_tick_range,
                 xlabel="$B$ [mV]",
-                ylabel="$E_F$ [meV]"
+                ylabel="$E_F$ (meV)"
             )
 
 

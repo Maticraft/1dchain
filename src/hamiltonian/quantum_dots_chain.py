@@ -27,7 +27,7 @@ MZM_THRESHOLD = 0.07/ AtomicUnits.Eh # to adjust?
 class DefaultParameters:
     def __init__(self, mu_max: float = 1., t_max: float = 1., b_max: float = 1., d_max: float = 1., lambda_max: float = 1.):
         # potential within a dot (meV)
-        self.mu_default = 0.62/AtomicUnits.Eh
+        self.mu_default = 0.6/AtomicUnits.Eh
         self.mu_range = [-mu_max/AtomicUnits.Eh, mu_max/AtomicUnits.Eh]
         # energy level separation within the dot (meV)
         self.dot_split = 1./AtomicUnits.Eh
@@ -46,7 +46,7 @@ class DefaultParameters:
         # SOI field
         # amplitude:
         self.l_default = .1333*np.pi*2. # .1666 for 5QD
-        self.l_range = np.array([0., lambda_max])*np.pi*2.
+        self.l_range = np.array([0., lambda_max])*np.pi
         #angles:
         self.l_rho_default = np.pi/2.
         self.l_rho_range = [0., np.pi]
@@ -305,11 +305,13 @@ class Plotting:
         plt.close()
 
 
-def generate_parameters(n_samples: int, num_verified_majoranas: int = 0):
+def generate_parameters(n_samples: int, num_verified_majoranas: int = 0, n_dots: int = 3):
     num_hamiltonians_with_majoranas = 0
     total_num_hamiltonians = 0
     default_params = DefaultParameters(mu_max=1., t_max=1., b_max=1, d_max=1, lambda_max=1)
-    params = QuantumDotsHamiltonianParameters(no_dots=3, no_levels=1, default_parameters=default_params)
+    if n_dots == 7:
+        default_params.mu_default = 0.45/AtomicUnits.Eh
+    params = QuantumDotsHamiltonianParameters(no_dots=n_dots, no_levels=1, default_parameters=default_params)
     while total_num_hamiltonians < n_samples:
         # params.set_random_parameters_const()
         params.set_random_reduced_parameters()
@@ -317,7 +319,8 @@ def generate_parameters(n_samples: int, num_verified_majoranas: int = 0):
             hamiltonian = QuantumDotsHamiltonian(params)
             label = hamiltonian.get_label()
             label = label.split(', ')
-            if (float(label[0]) * float(label[1]) >= 0.1) and (float(label[5]) < MZM_THRESHOLD) and (float(label[7]) >= 0.9) and (0.25/AtomicUnits.Eh < float(label[6])):
+            # if (float(label[0]) * float(label[1]) >= 0.1) and (float(label[5]) < MZM_THRESHOLD) and (float(label[7]) >= 0.9) and (0.25/AtomicUnits.Eh < float(label[6]))
+            if (float(label[5]) < MZM_THRESHOLD) and (float(label[7]) >= 0.5) and (0.1/AtomicUnits.Eh < float(label[6])):
                 total_num_hamiltonians += 1
                 num_hamiltonians_with_majoranas + 1
                 yield {'parameters': params.to_dict()}  

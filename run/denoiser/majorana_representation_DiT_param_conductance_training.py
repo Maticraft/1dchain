@@ -182,7 +182,7 @@ for epoch in range(0, params['epochs'] + 1):
         test_matrix_path = os.path.join(epoch_dir, hamiltonian_plot_name)
         plot_matrix(h_denoised[0].detach().cpu().numpy(), test_matrix_path.format('denoised_real'), vmin=-vscale, vmax=vscale)
         plot_matrix(h_denoised[1].detach().cpu().numpy(), test_matrix_path.format('denoised_imag'), vmin=-vscale, vmax=vscale)
-        plot_conductance_map(h_torch_noisy[0, 0].detach().cpu().numpy(), os.path.join(epoch_dir, 'conductance_map.png'), xlabel="$V$ [mV]", ylabel="$E_F$ [meV]")
+        plot_conductance_map(h_torch_noisy[0, 0].detach().cpu().numpy(), os.path.join(epoch_dir, 'conductance_map.png'), xlabel="$V$ [mV]", ylabel="$E_F$ (meV)")
 
 
 plot_convergence(loss_path, convergence_path, read_label=True)

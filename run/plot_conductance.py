@@ -28,7 +28,7 @@ mu_range = (-2./au.Eh, 2./au.Eh)
 C_map = transport.c_map0(0, 0, ef_range, mu_range) # shape (N, 3), with x values in the first column, y values in the second column, and the actual conductance values in the third column
 # transform c_map to a 2D array with shape (N, N)
 
-plot_conductance_map(C_map, filename=plot_path.format("mu_Ef"), xtick_range=ef_range, ytick_range=mu_range, xlabel="$V$ [mV]", ylabel="$E_F$ [meV]")
+plot_conductance_map(C_map, filename=plot_path.format("mu_Ef"), xtick_range=ef_range, ytick_range=mu_range, xlabel="$V$ [mV]", ylabel="$E_F$ (meV)")
 
 C_map = transport.c_map1(0, 0, mu_range)
 plot_conductance_map(C_map, filename=plot_path.format("mul_mur"), xtick_range=mu_range, ytick_range=mu_range, xlabel="$V_L$ [mV]", ylabel="$V_R$ [mV]")
