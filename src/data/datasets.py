@@ -236,6 +236,7 @@ class HamiltonianFromParametersDataset(Dataset):
         assert_noise_majoranas_destruction: bool = False,
         n_dots: int = 3,
         site_independent_noise: bool = True,
+        assert_majoranization_decrease: bool = False,
         **kwargs,
     ):
         param_dict_path = os.path.join(data_dir, PARAMS_DICTIONARY_NAME)
@@ -258,6 +259,7 @@ class HamiltonianFromParametersDataset(Dataset):
         self.assert_noise_majoranas_destruction = assert_noise_majoranas_destruction
         self.n_dots = n_dots
         self.site_independent_noise = site_independent_noise
+        self.assert_majoranization_decrease = assert_majoranization_decrease
 
     def load_label_dict(self, filepath: str) -> t.List[t.List[str]]:
         with open(filepath, 'r') as dictionary:
@@ -296,8 +298,12 @@ class HamiltonianFromParametersDataset(Dataset):
 
         if self.params_noise_config is not None:
             hamiltonian_params = self.add_noise_to_params(hamiltonian_params, params_noise_config)
-            
             try:
+                model = self.hamiltionian_class(**hamiltonian_params)
+                tensor = model.get_hamiltonian_tensor()
+                tensor_complex = torch.complex(tensor[0], tensor[1])                
+                original_majoranization = majoranization(tensor_complex.numpy(), self.n_dots)
+
                 if self.assert_noise_majoranas_destruction:
                     model = self.hamiltionian_class(**hamiltonian_params)
                     tensor = model.get_hamiltonian_tensor()
@@ -314,6 +320,16 @@ class HamiltonianFromParametersDataset(Dataset):
                         band_gap = calculate_gap(tensor_complex.numpy())
                         label = majoranization(tensor_complex.numpy(), self.n_dots)
                         are_majoranas_present = (label > 0.0) or (band_gap < 2*MZM_THRESHOLD)
+                        it += 1
+                elif self.assert_majoranization_decrease:
+                    current_majoranization = original_majoranization + 1.0  # just to enter the loop
+                    it = 0
+                    while (current_majoranization > original_majoranization and (it < 100)):
+                        hamiltonian_params = self.add_noise_to_params(hamiltonian_params, params_noise_config)
+                        model = self.hamiltionian_class(**hamiltonian_params)
+                        tensor = model.get_hamiltonian_tensor()
+                        tensor_complex = torch.complex(tensor[0], tensor[1])                
+                        current_majoranization = majoranization(tensor_complex.numpy(), self.n_dots)
                         it += 1
             except:
                 pass
