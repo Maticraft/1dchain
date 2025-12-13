@@ -128,21 +128,14 @@ def majoranization(H: np.ndarray, n_dots: int):
 
     # theoretical max
     """
-    Reason:
-
-    1. ms_i = |⟨ψ_i | (m1 - m2)⟩| * exp(-|E_i|/...) ≤ ||m1 - m2|| since eigenvectors are unit norm and energy factor ≤ 1 (at E=0).
-    2. d = m1 - m2 has non‑zero entries only on the first 4 components: [1, 1, -1, -1], so ||d|| = 2. Thus each ms_i ≤ 2.
-    3. With two lowest-|E| orthonormal eigenvectors ψ1, ψ2, you can distribute overlap with d: let their projections be 2 cos θ
-        and 2 sin θ (θ ∈ [0, π/2]). Then ms1 + ms2 ≤ 2( sin θ + cos θ ) maximized at θ = π/4 → ms1 = ms2 = √2, sum = 2√2.
-        Any additional modes should have zero overlap (otherwise they'd subtract in ms[2:] sum).
-    4. ehs[0] ≤ 1, maximized when its two aggregated components are each 1/2.
-    
-    Thus majoranization = (ms0 + ms1) * ehs[0] ≤ 2√2 * 1. Achievable in principle by choosing two zero-energy modes sharing
-    the d overlap equally and making the first mode electron–hole balanced.
-
-    So: maximal value = 2√2.
+    max_value = 2
+    Reasoning:
+    - max of ms[0] + ms[1] is 2 (both modes fully localized on the edges)
+    - min of sum of other ms is 0 (no other modes)
+    - max of ehs[0] is 1 (mode fully electron or holeic)
+    Thus max majoranization is 2*1 / 2 = 1
     """
-    max_value = 2*np.sqrt(2)
+    max_value = 2
 
     majoranization = np.amax([0., ms[0]+ms[1]-ms[2:].sum()])*ehs[0] / max_value
     return majoranization
@@ -209,7 +202,7 @@ def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: np.ndarray, filename: 
             ms = np.array(ms)[np.abs(eigs).argsort()]  # # sort MZM_i using |E_i|
             ehs = np.array(ehs)[np.abs(eigs).argsort()]  # same here
 
-            max_value = 2*np.sqrt(2)
+            max_value = 2
             majoranization_val = np.amax([0., ms[0]+ms[1]-ms[2:].sum()])*ehs[0] / max_value
             majoranization_values.append(majoranization_val)
 
