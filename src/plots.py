@@ -710,7 +710,7 @@ def plot_majoranization_denoising_map(
                 h_map = hamiltonian_converter.from_matrix_to_params(h_tensor_norm)
 
                 if i > 0:
-                    current_improve_map = weighted_update(previous_map, improve_map, 0.75)
+                    current_improve_map = weighted_update(previous_map, improve_map, 0.5)
                     improved_map = deep_update(h_map, current_improve_map, detach=False, alpha=0.1)
                 else:
                     improved_map = deep_update(h_map, improve_map, detach=False, alpha=0.1)
@@ -759,6 +759,7 @@ def plot_majoranization_denoising_map_from_file(
     fig: plt.Figure = None,
     axs: plt.Axes = None,
     plot_xlabel: bool = True,
+    analytics_fn: t.Optional[t.Callable[[float], float]] = None,
 ):
     # plt.rcParams['font.size'] = 20
     save_fig = False
@@ -796,10 +797,12 @@ def plot_majoranization_denoising_map_from_file(
         m_values = m_values / max_value
 
     # for x_value, y_value, m_ref_value, m_value in tqdm(zip(x_values, y_values, m_ref_values, m_values), desc='Plotting majoranization denoising map'):
-    axs[0].scatter(x_values, y_values, c=m_ref_values, cmap='viridis', s=20, vmin=0, vmax=1, marker='s')
-    axs[1].scatter(x_values, y_values, c=m_values, cmap='viridis', s=20, vmin=0, vmax=1, marker='s')
-    axs[0].scatter(default_x_value, default_y_value, c='red', s=20, label='Reference values')
-    axs[1].scatter(default_x_value, default_y_value, c='red', s=20, label='Reference values')
+    s_size = 2000 / np.sqrt(len(x_values))
+
+    axs[0].scatter(x_values, y_values, c=m_ref_values, cmap='viridis', s=s_size, vmin=0, vmax=1, marker='s')
+    axs[1].scatter(x_values, y_values, c=m_values, cmap='viridis', s=s_size, vmin=0, vmax=1, marker='s')
+    axs[0].scatter(default_x_value, default_y_value, c='red', s=s_size, label='Reference values')
+    axs[1].scatter(default_x_value, default_y_value, c='red', s=s_size, label='Reference values')
 
     if (x_dataset_range is not None) and (y_dataset_range is not None):
         if denormalize_x:
@@ -833,7 +836,7 @@ def plot_majoranization_denoising_map_from_file(
     elif x_param.startswith('d'):
         x_param = r'$\Delta{}$'.format(index_map.get(x_param[1:], x_param[1:]))
     elif x_param.startswith('b'):
-        x_param = r'$B_Z{}$'.format(index_map.get(x_param[1:], x_param[1:]))
+        x_param = r'$V_Z{}$'.format(index_map.get(x_param[1:], x_param[1:]))
     else:
         x_param = r'${}$'.format(x_param)
 
@@ -848,7 +851,7 @@ def plot_majoranization_denoising_map_from_file(
     elif y_param.startswith('d'):
         y_param = r'$\Delta{}$'.format(index_map.get(y_param[1:], y_param[1:]))
     elif y_param.startswith('b'):
-        y_param = r'$B_Z{}$'.format(index_map.get(y_param[1:], y_param[1:]))
+        y_param = r'$V_Z{}$'.format(index_map.get(y_param[1:], y_param[1:]))
     else:
         y_param = r'${}$'.format(y_param)
 
@@ -905,6 +908,11 @@ def plot_majoranization_denoising_map_from_file(
     if y_range is not None:
         axs[0].set_ylim(y_range)
         axs[1].set_ylim(y_range)
+
+    if analytics_fn is not None:
+        axs[0].plot(x_values,   analytics_fn(x_values), '--', c='orange')
+        # axs[1].plot(x_values, analytics_fn(x_values), '--', c='orange', label='Analytics')
+ 
     
     if legend:
         colorbar = fig.colorbar(axs[1].collections[0], ax=axs, orientation='horizontal', fraction=0.07, pad=.15)
