@@ -661,7 +661,7 @@ def plot_majoranization_denoising_map(
     x_param_name = f'{x_param}_{dot_index_x}' if dot_index_x is not None else x_param
     y_param_name = f'{y_param}_{dot_index_y}' if dot_index_y is not None else y_param
 
-    # noise_amplitudes = np.geomspace(noise_amplitude, 1.e-1, iterations)
+    noise_amplitudes = np.geomspace(noise_amplitude, 1.e-2, iterations)
 
     if save_log:
         with open(save_log, 'w') as f:
@@ -710,11 +710,11 @@ def plot_majoranization_denoising_map(
                 h_map = hamiltonian_converter.from_matrix_to_params(h_tensor_norm)
 
                 if i > 0:
-                    current_improve_map = weighted_update(previous_map, improve_map, 0.75)
-                    improved_map = deep_update(h_map, current_improve_map, detach=False, alpha=0.1)
+                    current_improve_map = weighted_update(previous_map, improve_map, 0.5)
+                    improved_map = deep_update(h_map, current_improve_map, detach=False, alpha=current_noise_amplitude)
                 else:
-                    improved_map = deep_update(h_map, improve_map, detach=False, alpha=0.1)
-                # improved_map = weighted_update(h_map, improve_map, current_noise_amplitude)
+                    improved_map = deep_update(h_map, improve_map, detach=False, alpha=current_noise_amplitude)
+                # improved_map = weighted_update(h_map, improve_map, 1.)
 
                 h_predicted = hamiltonian_converter.from_params_to_matrix(improved_map)
                 h_tensor = h_denormalize(h_predicted)[0]
@@ -795,11 +795,13 @@ def plot_majoranization_denoising_map_from_file(
         m_ref_values = m_ref_values / max_value
         m_values = m_values / max_value
 
+    s_size = 2000 / np.sqrt(len(x_values))
+
     # for x_value, y_value, m_ref_value, m_value in tqdm(zip(x_values, y_values, m_ref_values, m_values), desc='Plotting majoranization denoising map'):
-    axs[0].scatter(x_values, y_values, c=m_ref_values, cmap='viridis', s=20, vmin=0, vmax=1, marker='s')
-    axs[1].scatter(x_values, y_values, c=m_values, cmap='viridis', s=20, vmin=0, vmax=1, marker='s')
-    axs[0].scatter(default_x_value, default_y_value, c='red', s=20, label='Reference values')
-    axs[1].scatter(default_x_value, default_y_value, c='red', s=20, label='Reference values')
+    axs[0].scatter(x_values, y_values, c=m_ref_values, cmap='viridis', s=s_size, vmin=0, vmax=1, marker='s')
+    axs[1].scatter(x_values, y_values, c=m_values, cmap='viridis', s=s_size, vmin=0, vmax=1, marker='s')
+    axs[0].scatter(default_x_value, default_y_value, c='red', s=s_size, label='Reference values')
+    axs[1].scatter(default_x_value, default_y_value, c='red', s=s_size, label='Reference values')
 
     if (x_dataset_range is not None) and (y_dataset_range is not None):
         if denormalize_x:
