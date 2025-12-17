@@ -304,7 +304,13 @@ class HamiltonianFromParametersDataset(Dataset):
                 tensor_complex = torch.complex(tensor[0], tensor[1])                
                 original_majoranization = majoranization(tensor_complex.numpy(), self.n_dots)
 
-                if self.assert_noise_majoranas_destruction:
+                if (
+                    self.assert_noise_majoranas_destruction
+                    or (
+                        self.assert_majoranization_decrease
+                        and idx % 2 == 1
+                    )
+                ):
                     model = self.hamiltionian_class(**hamiltonian_params)
                     tensor = model.get_hamiltonian_tensor()
                     tensor_complex = torch.complex(tensor[0], tensor[1])                

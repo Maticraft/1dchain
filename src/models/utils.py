@@ -82,8 +82,10 @@ def torch_majoranization_loss(x_hat: torch.Tensor, reduction: str = 'mean') -> t
     '''
     x_hat = torch.complex(x_hat[..., 0, :, :], x_hat[..., 1, :, :])
     n_dots = x_hat.shape[-1] // 4
-    m1 = torch.cat([torch.tensor([1,1,-1,-1]), torch.tensor([0,0,0,0]*(n_dots-1))])/2.
-    m2 = torch.cat([torch.tensor([0,0,0,0]*(n_dots-1)), torch.tensor([1,1,-1,-1])])/2.
+    # m1 = torch.cat([torch.tensor([1,1,-1,-1]), torch.tensor([0,0,0,0]*(n_dots-1))])/2.
+    # m2 = torch.cat([torch.tensor([0,0,0,0]*(n_dots-1)), torch.tensor([1,1,-1,-1])])/2.
+    m1 = torch.cat([torch.tensor([1,1,-1,-1]), torch.tensor([0,0,0,0]*(n_dots-2)), torch.tensor([1,1,1,1])])/2.
+    m2 = torch.cat([torch.tensor([1,1,-1,-1])*-1., torch.tensor([0,0,0,0]*(n_dots-2)), torch.tensor([1,1,1,1])])/2.
     m1 = m1.to(x_hat.device).to(x_hat.dtype)
     m2 = m2.to(x_hat.device).to(x_hat.dtype)
 
@@ -95,7 +97,7 @@ def torch_majoranization_loss(x_hat: torch.Tensor, reduction: str = 'mean') -> t
         ml = torch.conj(eigvecs[..., ie])@m1
         mr = torch.conj(eigvecs[..., ie])@m2
         zm = torch.exp(-10 * torch.abs(eig)) #/AtomicUnits.Eh))
-        ms.append(torch.abs(ml+mr)*zm)  # mode projection on left + right majoranas
+        ms.append(torch.abs(ml-mr)*zm)  # mode projection on left + right majoranas
 
         eh = (torch.abs(eigvecs[..., ie])**2).reshape(*eigvecs.shape[:-2], n_dots, 2, 2).sum(axis=(-3,-1))
         eh_total = eh[..., 0]*eh[..., 1]*4-0.5  # smaller than 0.5 are filtered out

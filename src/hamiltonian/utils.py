@@ -108,8 +108,10 @@ def majorana_polarization_product(zero_mode: np.ndarray, representation_mapping:
 
 
 def majoranization(H: np.ndarray, n_dots: int):
-    m1 = np.concatenate([np.array([1,1,-1,-1]), np.array([0,0,0,0]*(n_dots-1))]).T/2.
-    m2 = np.concatenate([np.array([0,0,0,0]*(n_dots-1)), np.array([1,1,-1,-1])]).T/2.
+    # m1 = np.concatenate([np.array([1,1,-1,-1]), np.array([0,0,0,0]*(n_dots-1))]).T/2.
+    # m2 = np.concatenate([np.array([0,0,0,0]*(n_dots-1)), np.array([1,1,-1,-1])]).T/2.
+    m1 = np.concatenate([np.array([1,1,-1,-1]), np.array([0,0,0,0]*(n_dots-2)), np.array([1,1,1,1])]).T/2.
+    m2 = np.concatenate([np.array([1,1,-1,-1])*-1., np.array([0,0,0,0]*(n_dots-2)), np.array([1,1,1,1])]).T/2.
 
     eigvals, eigvecs = np.linalg.eigh(H)
     ms = []
@@ -118,7 +120,8 @@ def majoranization(H: np.ndarray, n_dots: int):
         ml = np.conj(eigvecs[:,ie])@m1
         mr = np.conj(eigvecs[:,ie])@m2
         zm = np.exp(-np.abs(eig)/(0.1/AtomicUnits.Eh))
-        ms.append(np.abs(ml+mr)*zm)  # mode projection on left + right majoranas
+        # ms.append(np.abs(ml+mr)*zm)  # mode projection on left + right majoranas
+        ms.append(np.abs(ml-mr)*zm)  # mode projection on left + right majoranas
 
         eh = (np.abs(eigvecs[:,ie])**2).reshape(-1,2,2).sum(axis=(0,2))
         ehs.append(np.amax([0., eh[0]*eh[1]*4-0.5])*2.)  # smaller than 0.5 are filtered out
@@ -135,7 +138,8 @@ def majoranization(H: np.ndarray, n_dots: int):
     - max of ehs[0] is 1 (mode fully electron or holeic)
     Thus max majoranization is 2*1 / 2 = 1
     """
-    max_value = 2
+    # max_value = 2
+    max_value = 2*np.sqrt(2)
 
     majoranization = np.amax([0., ms[0]+ms[1]-ms[2:].sum()])*ehs[0] / max_value
     return majoranization
@@ -147,8 +151,10 @@ def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: np.ndarray, filename: 
     energies = []
     color_values = []
     majoranization_values = []
-    m1 = np.concatenate([np.array([1,1,-1,-1]), np.array([0,0,0,0]*(model.num_sites-1))]).T/2.
-    m2 = np.concatenate([np.array([0,0,0,0]*(model.num_sites-1)), np.array([1,1,-1,-1])]).T/2.
+    m1 = np.concatenate([np.array([1,1,-1,-1]), np.array([0,0,0,0]*(model.num_sites-2)), np.array([1,1,1,1])]).T/2.
+    m2 = np.concatenate([np.array([1,1,-1,-1])*-1., np.array([0,0,0,0]*(model.num_sites-2)), np.array([1,1,1,1])]).T/2.
+    # m1 = np.concatenate([np.array([1,1,-1,-1]), np.array([0,0,0,0]*(model.num_sites-1))]).T/2.
+    # m2 = np.concatenate([np.array([0,0,0,0]*(model.num_sites-1)), np.array([1,1,-1,-1])]).T/2.
 
     m_color = 'darkred'
 
@@ -190,7 +196,7 @@ def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: np.ndarray, filename: 
                 ml = np.conj(eigvecs[:,i])@m1
                 mr = np.conj(eigvecs[:,i])@m2
                 zm = np.exp(-np.abs(eigs[i])/(0.1/AtomicUnits.Eh))
-                ms.append(np.abs(ml+mr)*zm)  # mode projection on left + right majoranas
+                ms.append(np.abs(ml-mr)*zm)  # mode projection on left + right majoranas
 
                 eh = (np.abs(eigvecs[:,i])**2).reshape(-1,2,2).sum(axis=(0,2))
                 ehs.append(np.amax([0., eh[0]*eh[1]*4-0.5])*2.)  # smaller than 0.5 are filtered out
@@ -202,7 +208,7 @@ def plot_eigvals(model: Hamiltonian, xaxis: str, xparams: np.ndarray, filename: 
             ms = np.array(ms)[np.abs(eigs).argsort()]  # # sort MZM_i using |E_i|
             ehs = np.array(ehs)[np.abs(eigs).argsort()]  # same here
 
-            max_value = 2
+            max_value = 2*np.sqrt(2)
             majoranization_val = np.amax([0., ms[0]+ms[1]-ms[2:].sum()])*ehs[0] / max_value
             majoranization_values.append(majoranization_val)
 
