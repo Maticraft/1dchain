@@ -649,6 +649,7 @@ def plot_majoranization_denoising_map(
     dot_index_x: int = None,
     dot_index_y: int = None,
     iterations: int = 1,
+    enforce_majoranization_increase: bool = False,
 ):
     
     plt.rcParams['font.size'] = 20
@@ -691,6 +692,7 @@ def plot_majoranization_denoising_map(
             h_tensor = hamiltonian.get_hamiltonian_tensor()
             h_tensor_complex = torch.complex(h_tensor[0], h_tensor[1]).to(device)
             m_ref_value = majoranization(h_tensor_complex.detach().cpu().numpy(), n_dots)
+            m_best_value = m_ref_value
 
             axs[0].scatter(x_value, y_value, c=[m_ref_value], cmap='viridis', s=40, vmin=0, vmax=1.)
 
@@ -723,6 +725,12 @@ def plot_majoranization_denoising_map(
                 h_tensor_complex = torch.complex(h_tensor[0], h_tensor[1])
                 m_value = majoranization(h_tensor_complex.detach().cpu().numpy(), n_dots)
 
+                if enforce_majoranization_increase:
+                    if (m_value < m_best_value):
+                        m_value = m_best_value
+                    else:
+                        m_best_value = m_value
+                
             axs[1].scatter(x_value, y_value, c=[m_value], cmap='viridis', s=40, vmin=0, vmax=1.)
 
             if save_log:
