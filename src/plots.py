@@ -648,6 +648,7 @@ def plot_majoranization_denoising_map(
     dot_index_x: int = None,
     dot_index_y: int = None,
     iterations: int = 1,
+    enforce_majoranization_increase: bool = False,
 ):
     
     plt.rcParams['font.size'] = 20
@@ -689,6 +690,7 @@ def plot_majoranization_denoising_map(
             h_tensor = hamiltonian.get_hamiltonian_tensor()
             h_tensor_complex = torch.complex(h_tensor[0], h_tensor[1]).to(device)
             m_ref_value = majoranization(h_tensor_complex.detach().cpu().numpy(), n_dots)
+            m_best_value = m_ref_value
 
             axs[0].scatter(x_value, y_value, c=[m_ref_value], cmap='viridis', s=40, vmin=0, vmax=1.)
 
@@ -710,10 +712,10 @@ def plot_majoranization_denoising_map(
                 h_map = hamiltonian_converter.from_matrix_to_params(h_tensor_norm)
 
                 if i > 0:
-                    current_improve_map = weighted_update(previous_map, improve_map, 0.5)
-                    improved_map = deep_update(h_map, current_improve_map, detach=False, alpha=current_noise_amplitude)
+                    # current_improve_map = weighted_update(previous_map, improve_map, 0.5)
+                    improved_map = deep_update(h_map, improve_map, detach=False, alpha=1.)
                 else:
-                    improved_map = deep_update(h_map, improve_map, detach=False, alpha=current_noise_amplitude)
+                    improved_map = deep_update(h_map, improve_map, detach=False, alpha=1.)
                 # improved_map = weighted_update(h_map, improve_map, 1.)
 
                 h_predicted = hamiltonian_converter.from_params_to_matrix(improved_map)
@@ -721,6 +723,12 @@ def plot_majoranization_denoising_map(
                 h_tensor_complex = torch.complex(h_tensor[0], h_tensor[1])
                 m_value = majoranization(h_tensor_complex.detach().cpu().numpy(), n_dots)
 
+                if enforce_majoranization_increase:
+                    if (m_value < m_best_value):
+                        m_value = m_best_value
+                    else:
+                        m_best_value = m_value
+                
             axs[1].scatter(x_value, y_value, c=[m_value], cmap='viridis', s=40, vmin=0, vmax=1.)
 
             if save_log:
