@@ -23,6 +23,7 @@ from src.models.gan import Generator
 from src.models.utils import deep_update, get_eigvals, reconstruct_hamiltonian, weighted_update, deep_copy
 from src.models.files import DELIMITER, load_metrics_from_file
 from src.hamiltonian.torch_hamiltonian import TorchHamiltonian
+from matplotlib.patches import FancyArrowPatch
 
 
 def plot_dataset_from_params_samples(
@@ -661,7 +662,8 @@ def plot_majoranization_denoising_map(
     x_param_name = f'{x_param}_{dot_index_x}' if dot_index_x is not None else x_param
     y_param_name = f'{y_param}_{dot_index_y}' if dot_index_y is not None else y_param
 
-    noise_amplitudes = np.geomspace(noise_amplitude, 1.e-2, iterations)
+    # noise_amplitudes = np.geomspace(noise_amplitude, 1.e-2, iterations)
+    noise_amplitudes = np.linspace(noise_amplitude, 0.1, iterations)
 
     if save_log:
         with open(save_log, 'w') as f:
@@ -694,8 +696,8 @@ def plot_majoranization_denoising_map(
 
             for i in range(iterations):
                 # current_noise_amplitude = noise_amplitudes[i]
-                current_noise_amplitude = noise_amplitude * (iterations - i) / iterations
-                # current_noise_amplitude = noise_amplitude
+                # current_noise_amplitude = noise_amplitude * (iterations - i) / iterations
+                current_noise_amplitude = noise_amplitude
 
                 conductance = generate_conductance_tensor(h_tensor_complex, cmap_config)
                 conductance_normalized = cmap_normalize(conductance).unsqueeze(0)
@@ -710,10 +712,10 @@ def plot_majoranization_denoising_map(
                 h_map = hamiltonian_converter.from_matrix_to_params(h_tensor_norm)
 
                 if i > 0:
-                    current_improve_map = weighted_update(previous_map, improve_map, 0.5)
-                    improved_map = deep_update(h_map, current_improve_map, detach=False, alpha=current_noise_amplitude)
+                    # current_improve_map = weighted_update(previous_map, improve_map, 0.5)
+                    improved_map = deep_update(h_map, improve_map, detach=False, alpha=1.)
                 else:
-                    improved_map = deep_update(h_map, improve_map, detach=False, alpha=current_noise_amplitude)
+                    improved_map = deep_update(h_map, improve_map, detach=False, alpha=1.)
                 # improved_map = weighted_update(h_map, improve_map, 1.)
 
                 h_predicted = hamiltonian_converter.from_params_to_matrix(improved_map)
@@ -759,7 +761,9 @@ def plot_majoranization_denoising_map_from_file(
     fig: plt.Figure = None,
     axs: plt.Axes = None,
     plot_xlabel: bool = True,
+    plot_ylabel: bool = True,
     analytics_fn: t.Optional[t.Callable[[float], float]] = None,
+    plot_input: bool = True,
 ):
     # plt.rcParams['font.size'] = 20
     save_fig = False
@@ -799,10 +803,14 @@ def plot_majoranization_denoising_map_from_file(
     s_size = 2000 / np.sqrt(len(x_values))
 
     # for x_value, y_value, m_ref_value, m_value in tqdm(zip(x_values, y_values, m_ref_values, m_values), desc='Plotting majoranization denoising map'):
-    axs[0].scatter(x_values, y_values, c=m_ref_values, cmap='viridis', s=s_size, vmin=0, vmax=1, marker='s')
-    axs[1].scatter(x_values, y_values, c=m_values, cmap='viridis', s=s_size, vmin=0, vmax=1, marker='s')
-    axs[0].scatter(default_x_value, default_y_value, c='red', s=s_size, label='Reference values')
-    axs[1].scatter(default_x_value, default_y_value, c='red', s=s_size, label='Reference values')
+    if plot_input:
+        axs[0].scatter(x_values, y_values, c=m_ref_values, cmap='viridis', s=s_size, vmin=0, vmax=1, marker='s')
+        axs[1].scatter(x_values, y_values, c=m_values, cmap='viridis', s=s_size, vmin=0, vmax=1, marker='s')
+        axs[0].scatter(default_x_value, default_y_value, c='red', s=s_size, label='Reference values')
+        axs[1].scatter(default_x_value, default_y_value, c='red', s=s_size, label='Reference values')
+    else:
+        axs[0].scatter(x_values, y_values, c=m_values, cmap='viridis', s=s_size, vmin=0, vmax=1, marker='s')
+        axs[0].scatter(default_x_value, default_y_value, c='red', s=s_size, label='Reference values')
 
     if (x_dataset_range is not None) and (y_dataset_range is not None):
         if denormalize_x:
@@ -810,15 +818,17 @@ def plot_majoranization_denoising_map_from_file(
         if denormalize_y:
             y_dataset_range = (y_dataset_range[0] * AtomicUnits.Eh, y_dataset_range[1] * AtomicUnits.Eh)
         # Plot dataset range as a rectangle
+        
         axs[0].add_patch(plt.Rectangle((x_dataset_range[0], y_dataset_range[0]), 
-                                        x_dataset_range[1] - x_dataset_range[0], 
-                                        y_dataset_range[1] - y_dataset_range[0], 
-                                        fill=False, edgecolor='gray', linewidth=4, label='Dataset range'))
-        axs[1].add_patch(plt.Rectangle((x_dataset_range[0], y_dataset_range[0]), 
-                                        x_dataset_range[1] - x_dataset_range[0], 
-                                        y_dataset_range[1] - y_dataset_range[0], 
-                                        fill=False, edgecolor='gray', linewidth=4, label='Dataset range'))
-    
+                                x_dataset_range[1] - x_dataset_range[0], 
+                                y_dataset_range[1] - y_dataset_range[0], 
+                                fill=False, edgecolor='gray', linewidth=4, label='Dataset range'))
+        if plot_input:
+            axs[1].add_patch(plt.Rectangle((x_dataset_range[0], y_dataset_range[0]), 
+                                            x_dataset_range[1] - x_dataset_range[0], 
+                                            y_dataset_range[1] - y_dataset_range[0], 
+                                            fill=False, edgecolor='gray', linewidth=4, label='Dataset range'))
+        
     draw_x_pi = False
     draw_y_pi = False
 
@@ -831,6 +841,8 @@ def plot_majoranization_denoising_map_from_file(
     if x_param.startswith('mu'):
         x_param = r'$\mu{}$'.format(index_map.get(x_param[2:], x_param[2:]))
     elif x_param.startswith('l'):
+        if len(x_param) > 2:
+            x_param = f"{x_param[1:2]}{int(x_param[2:])+1}"
         x_param = r'$\lambda{}$'.format(x_param[1:])
         draw_x_pi = True
     elif x_param.startswith('d'):
@@ -838,6 +850,8 @@ def plot_majoranization_denoising_map_from_file(
     elif x_param.startswith('b'):
         x_param = r'$V_Z{}$'.format(index_map.get(x_param[1:], x_param[1:]))
     else:
+        if len(x_param) > 2:
+            x_param = f"{x_param[1:2]}{int(x_param[2:])+1}"
         x_param = r'${}$'.format(x_param)
 
     if not draw_x_pi:
@@ -846,6 +860,8 @@ def plot_majoranization_denoising_map_from_file(
     if y_param.startswith('mu'):
         y_param = r'$\mu{}$'.format(index_map.get(y_param[2:], y_param[2:]))
     elif y_param.startswith('l'):
+        if len(y_param) > 2:
+            y_param = f"{y_param[1:2]}{int(y_param[2:])+1}"
         y_param = r'$\lambda{}$'.format(y_param[1:])
         draw_y_pi = True
     elif y_param.startswith('d'):
@@ -853,6 +869,8 @@ def plot_majoranization_denoising_map_from_file(
     elif y_param.startswith('b'):
         y_param = r'$V_Z{}$'.format(index_map.get(y_param[1:], y_param[1:]))
     else:
+        if len(y_param) > 2:
+            y_param = f"{y_param[1:2]}{int(y_param[2:])+1}"
         y_param = r'${}$'.format(y_param)
 
     if not draw_y_pi:
@@ -862,52 +880,58 @@ def plot_majoranization_denoising_map_from_file(
     # axs[0].set_title('Input')
     if plot_xlabel:
         axs[0].set_xlabel(x_param)
-        axs[0].xaxis.set_label_coords(0.5, -0.1)
+        axs[0].xaxis.set_label_coords(0.5, -0.08)
         # axs[0].tick_params(axis='x', pad=10)
         xticks = np.linspace(x_range[0], x_range[1], 4)
         axs[0].set_xticks(xticks)
         if draw_x_pi:
             xtick_labels = [f'{val/np.pi:.1f}π' for val in xticks]
             axs[0].set_xticklabels(xtick_labels)
+        axs[0].xaxis.get_majorticklabels()[0].set_horizontalalignment('left')
         axs[0].xaxis.get_majorticklabels()[3].set_horizontalalignment('right')
     
-    axs[0].set_ylabel(y_param)
-    yticks = np.linspace(*y_range, 4)
-    # yticks[0] += (0.05 if not draw_y_pi else 0.11)
-    # yticks[-1] -= (0.05 if not draw_y_pi else 0.1)
-    ytick_labels = [f'{val:.1f}' for val in yticks]
-    ytick_labels[0] = str(y_range[0])
-    ytick_labels[-1] = str(y_range[1])
-    axs[0].set_yticks(yticks)
-    axs[0].set_yticklabels(ytick_labels)
-    axs[0].yaxis.get_majorticklabels()[0].set_verticalalignment('bottom')
-    axs[0].yaxis.get_majorticklabels()[3].set_verticalalignment('top')
-
-    if draw_y_pi:
-        ytick_labels = [f'{val/np.pi:.1f}π' for val in yticks]
+    if plot_ylabel:
+        axs[0].set_ylabel(y_param)
+        yticks = np.linspace(*y_range, 4)
+        # yticks[0] += (0.05 if not draw_y_pi else 0.11)
+        # yticks[-1] -= (0.05 if not draw_y_pi else 0.1)
+        ytick_labels = [f'{val:.1f}' for val in yticks]
+        ytick_labels[0] = str(y_range[0])
+        ytick_labels[-1] = str(y_range[1])
+        axs[0].set_yticks(yticks)
         axs[0].set_yticklabels(ytick_labels)
-        axs[0].yaxis.set_label_coords(-0.16, 0.5)
+        axs[0].yaxis.get_majorticklabels()[0].set_verticalalignment('bottom')
+        axs[0].yaxis.get_majorticklabels()[3].set_verticalalignment('top')
 
+        if draw_y_pi:
+            ytick_labels = [f'{val/np.pi:.1f}π' for val in yticks]
+            axs[0].set_yticklabels(ytick_labels)
+            axs[0].yaxis.set_label_coords(-0.16, 0.5)
+
+    if plot_input:
     # axs[1].set_title('NN')
-    if plot_xlabel:
-        axs[1].set_xlabel(x_param)
-        axs[1].xaxis.set_label_coords(0.5, -0.1)
-        # axs[1].tick_params(axis='x', pad=10)
-        if draw_x_pi:
-            xticks = np.linspace(*x_range, 4)
-            xtick_labels = [f'{val/np.pi:.1f}π' for val in xticks]
-            axs[1].set_xticks(xticks)
-            axs[1].set_xticklabels(xtick_labels)
-        axs[1].xaxis.get_majorticklabels()[0].set_horizontalalignment('left')
+        if plot_xlabel:
+            axs[1].set_xlabel(x_param)
+            axs[1].xaxis.set_label_coords(0.5, -0.08)
+            # axs[1].tick_params(axis='x', pad=10)
+            if draw_x_pi:
+                xticks = np.linspace(*x_range, 4)
+                xtick_labels = [f'{val/np.pi:.1f}π' for val in xticks]
+                axs[1].set_xticks(xticks)
+                axs[1].set_xticklabels(xtick_labels)
+            axs[1].xaxis.get_majorticklabels()[0].set_horizontalalignment('left')
+            axs[1].xaxis.get_majorticklabels()[3].set_horizontalalignment('right')
 
     # axs[1].set_ylabel(y_param)
     
     if x_range is not None:
         axs[0].set_xlim(x_range)
-        axs[1].set_xlim(x_range)
+        if plot_input:
+            axs[1].set_xlim(x_range)
     if y_range is not None:
         axs[0].set_ylim(y_range)
-        axs[1].set_ylim(y_range)
+        if plot_input:
+            axs[1].set_ylim(y_range)
 
     if analytics_fn is not None:
         axs[0].plot(x_values,   analytics_fn(x_values), '--', c='orange')
@@ -929,3 +953,331 @@ def plot_majoranization_denoising_map_from_file(
         plt.subplots_adjust(wspace=0.)
         plt.savefig(save_path, bbox_inches='tight', dpi=300, pad_inches=pad_inches)
         plt.close()
+
+
+def plot_majoranization_denoising_multi_map_from_files(
+    load_path_1it: str,
+    load_path_10it: str,
+    save_path: str,
+    x_param: str,
+    y_param: str,
+    default_x_value: t.Optional[float] = None,
+    default_y_value: t.Optional[float] = None,
+    denormalize_x: bool = False,
+    denormalize_y: bool = False,
+    x_range: t.Optional[t.Tuple[float, float]] = None,
+    y_range: t.Optional[t.Tuple[float, float]] = None,
+    x_dataset_range: t.Optional[t.Tuple[float, float]] = None,
+    y_dataset_range: t.Optional[t.Tuple[float, float]] = None,
+    normalize_majoranization: bool = False,
+    legend: bool = True,
+    pad_inches: float = None,
+):
+    """Plot three majoranization maps (noisy, 1 iteration, 10 iterations) side by side.
+
+    The first column shows the original ("noisy") majoranization values, the second
+    column uses the denoised values from ``load_path_1it`` (1 NN iteration), and the
+    third column uses the denoised values from ``load_path_10it`` (10 NN iterations).
+
+    Styling (axes, normalization, colorbar) is consistent with
+    ``plot_majoranization_denoising_map_from_file``.
+    """
+
+    # Load data from logs
+    data_1it = load_metrics_from_file(load_path_1it)
+    data_10it = load_metrics_from_file(load_path_10it)
+
+    x_values_1 = data_1it[x_param]
+    y_values_1 = data_1it[y_param]
+    m_ref_values = data_1it['Original Majoranization']
+    m_1it_values = data_1it['Denoised Majoranization']
+
+    x_values_10 = data_10it[x_param]
+    y_values_10 = data_10it[y_param]
+    m_10it_values = data_10it['Denoised Majoranization']
+
+    # Optional energy-unit denormalization for parameters and ranges
+    if denormalize_x:
+        x_values_1 = x_values_1 * AtomicUnits.Eh
+        x_values_10 = x_values_10 * AtomicUnits.Eh
+        if default_x_value is not None:
+            default_x_value = default_x_value * AtomicUnits.Eh
+        if x_range is not None:
+            x_range = (x_range[0] * AtomicUnits.Eh, x_range[1] * AtomicUnits.Eh)
+
+    if denormalize_y:
+        y_values_1 = y_values_1 * AtomicUnits.Eh
+        y_values_10 = y_values_10 * AtomicUnits.Eh
+        if default_y_value is not None:
+            default_y_value = default_y_value * AtomicUnits.Eh
+        if y_range is not None:
+            y_range = (y_range[0] * AtomicUnits.Eh, y_range[1] * AtomicUnits.Eh)
+
+    # Optional normalization of majoranization values
+    if normalize_majoranization:
+        max_value = 2 * np.sqrt(2)
+        m_ref_values = m_ref_values / max_value
+        m_1it_values = m_1it_values / max_value
+        m_10it_values = m_10it_values / max_value
+
+    # Marker size consistent with existing implementation
+    s_size = 2000 / np.sqrt(len(x_values_1)) if len(x_values_1) > 0 else 10.0
+
+    plt.rcParams['font.size'] = 30
+
+    # Create figure and three columns (slightly wider to avoid overlap)
+    if legend:
+        fig, axs = plt.subplots(1, 3, figsize=(18, 5), sharey=True)
+    else:
+        fig, axs = plt.subplots(1, 3, figsize=(18, 4), sharey=True)
+
+    # First column: original (noisy) majoranization map
+    sc0 = axs[0].scatter(
+        x_values_1,
+        y_values_1,
+        c=m_ref_values,
+        cmap='viridis',
+        s=s_size,
+        vmin=0,
+        vmax=1,
+        marker='s',
+    )
+
+    # Second column: 1-iteration denoised map
+    sc1 = axs[1].scatter(
+        x_values_1,
+        y_values_1,
+        c=m_1it_values,
+        cmap='viridis',
+        s=s_size,
+        vmin=0,
+        vmax=1,
+        marker='s',
+    )
+
+    # Third column: 10-iteration denoised map
+    sc2 = axs[2].scatter(
+        x_values_10,
+        y_values_10,
+        c=m_10it_values,
+        cmap='viridis',
+        s=s_size,
+        vmin=0,
+        vmax=1,
+        marker='s',
+    )
+
+    # Mark reference parameter values on all maps (if provided)
+    if (default_x_value is not None) and (default_y_value is not None):
+        for ax in axs:
+            ax.scatter(default_x_value, default_y_value, c='red', s=s_size, label='Reference values')
+
+    # Plot dataset range as a rectangle, if provided
+    if (x_dataset_range is not None) and (y_dataset_range is not None):
+        if denormalize_x:
+            x_dataset_range = (x_dataset_range[0] * AtomicUnits.Eh, x_dataset_range[1] * AtomicUnits.Eh)
+        if denormalize_y:
+            y_dataset_range = (y_dataset_range[0] * AtomicUnits.Eh, y_dataset_range[1] * AtomicUnits.Eh)
+
+        for ax in axs:
+            ax.add_patch(
+                plt.Rectangle(
+                    (x_dataset_range[0], y_dataset_range[0]),
+                    x_dataset_range[1] - x_dataset_range[0],
+                    y_dataset_range[1] - y_dataset_range[0],
+                    fill=False,
+                    edgecolor='gray',
+                    linewidth=4,
+                    label='Dataset range',
+                )
+            )
+
+    # Prepare pretty axis labels (reuse logic from plot_majoranization_denoising_map_from_file)
+    draw_x_pi = False
+    draw_y_pi = False
+
+    index_map = {
+        '_0': '_L',
+        '_1': '_C',
+        '_2': '_R',
+    }
+
+    # X label
+    if x_param.startswith('mu'):
+        x_label = r'\mu{}'.format(index_map.get(x_param[2:], x_param[2:]))
+    elif x_param.startswith('l'):
+        if len(x_param) > 2:
+            x_tmp = f"{x_param[1:2]}{int(x_param[2:]) + 1}"
+        else:
+            x_tmp = x_param[1:]
+        x_label = r'\lambda{}'.format(x_tmp)
+        draw_x_pi = True
+    elif x_param.startswith('d'):
+        x_label = r'\Delta{}'.format(index_map.get(x_param[1:], x_param[1:]))
+    elif x_param.startswith('b'):
+        x_label = r'V_Z{}'.format(index_map.get(x_param[1:], x_param[1:]))
+    else:
+        if len(x_param) > 2:
+            x_tmp = f"{x_param[1:2]}{int(x_param[2:]) + 1}"
+        else:
+            x_tmp = x_param
+        x_label = x_tmp
+
+    x_label = f"${x_label}$"
+    if not draw_x_pi:
+        x_label = f"{x_label} (meV)"
+
+    # Y label
+    if y_param.startswith('mu'):
+        y_label = r'\mu{}'.format(index_map.get(y_param[2:], y_param[2:]))
+    elif y_param.startswith('l'):
+        if len(y_param) > 2:
+            y_tmp = f"{y_param[1:2]}{int(y_param[2:]) + 1}"
+        else:
+            y_tmp = y_param[1:]
+        y_label = r'\lambda{}'.format(y_tmp)
+        draw_y_pi = True
+    elif y_param.startswith('d'):
+        y_label = r'\Delta{}'.format(index_map.get(y_param[1:], y_param[1:]))
+    elif y_param.startswith('b'):
+        y_label = r'V_Z{}'.format(index_map.get(y_param[1:], y_param[1:]))
+    else:
+        if len(y_param) > 2:
+            y_tmp = f"{y_param[1:2]}{int(y_param[2:]) + 1}"
+        else:
+            y_tmp = y_param
+        y_label = y_tmp
+
+    y_label = f"${y_label}$"
+    if not draw_y_pi:
+        y_label = f"{y_label} (meV)"
+
+    # Common axis limits
+    if x_range is not None:
+        for ax in axs:
+            ax.set_xlim(x_range)
+    if y_range is not None:
+        for ax in axs:
+            ax.set_ylim(y_range)
+
+    # Ticks and labels for the first axis; others share x tick locations but no labels
+    if x_range is not None:
+        xticks = np.linspace(x_range[0], x_range[1], 4)
+        axs[0].set_xticks(xticks)
+        if draw_x_pi:
+            xtick_labels = [f'{val/np.pi:.1f}π' for val in xticks]
+            axs[0].set_xticklabels(xtick_labels)
+        axs[0].xaxis.get_majorticklabels()[0].set_horizontalalignment('left')
+        axs[0].xaxis.get_majorticklabels()[-1].set_horizontalalignment('right')
+
+        for ax in axs[1:]:
+            ax.set_xticks(xticks)
+            if draw_x_pi:
+                ax.set_xticklabels([f'{val/np.pi:.1f}π' for val in xticks])
+
+    if y_range is not None:
+        yticks = np.linspace(y_range[0], y_range[1], 4)
+        ytick_labels = [f'{val:.1f}' for val in yticks]
+        ytick_labels[0] = str(y_range[0])
+        ytick_labels[-1] = str(y_range[1])
+        axs[0].set_yticks(yticks)
+        axs[0].set_yticklabels(ytick_labels)
+        axs[0].yaxis.get_majorticklabels()[0].set_verticalalignment('bottom')
+        axs[0].yaxis.get_majorticklabels()[-1].set_verticalalignment('top')
+
+        if draw_y_pi:
+            ytick_labels = [f'{val/np.pi:.1f}π' for val in yticks]
+            axs[0].set_yticklabels(ytick_labels)
+            axs[0].yaxis.set_label_coords(-0.16, 0.5)
+
+    # Axis labels
+    axs[0].set_xlabel(x_label)
+    axs[0].xaxis.set_label_coords(0.5, -0.2)
+    axs[1].set_xlabel(x_label)
+    axs[1].xaxis.set_label_coords(0.5, -0.2)
+    axs[2].set_xlabel(x_label)
+    axs[2].xaxis.set_label_coords(0.5, -0.2)
+
+    axs[0].set_ylabel(y_label)
+
+    # Add arrows between columns to indicate tuning direction
+    bbox0 = axs[0].get_position()
+    bbox1 = axs[1].get_position()
+    bbox2 = axs[2].get_position()
+
+    # Arrow from noisy -> 1 iteration (figure-level arrow)
+    x0 = bbox0.x1 - 0.008
+    y0 = 0.5 * (bbox0.y0 + bbox0.y1)
+    x1 = bbox1.x0 + 0.005
+    y1 = 0.5 * (bbox1.y0 + bbox1.y1)
+    arrow_1 = FancyArrowPatch(
+        (x0, y0),
+        (x1, y1),
+        transform=fig.transFigure,
+        arrowstyle='-|>',
+        lw=3,
+        mutation_scale=20,
+        color='black',
+        zorder=5,
+    )
+    fig.add_artist(arrow_1)
+    fig.text(0.5 * (x0 + x1) - 0.004, y0 + 0.03, '1', ha='center', va='bottom')
+    fig.text(0.5 * (x0 + x1) - 0.004, y0 - 0.12, 'step', ha='center', va='bottom')
+
+
+    # Arrow from 1 iteration -> 10 iterations (figure-level arrow)
+    x1b = bbox1.x1
+    y1b = 0.5 * (bbox1.y0 + bbox1.y1)
+    x2 = bbox2.x0 + 0.01
+    y2 = 0.5 * (bbox2.y0 + bbox2.y1)
+    arrow_2 = FancyArrowPatch(
+        (x1b, y1b),
+        (x2, y2),
+        transform=fig.transFigure,
+        arrowstyle='-|>',
+        lw=3,
+        mutation_scale=20,
+        color='black',
+        zorder=5,
+    )
+    fig.add_artist(arrow_2)
+    fig.text(0.5 * (x1b + x2), y1b + 0.03, '10', ha='center', va='bottom')
+    fig.text(0.5 * (x1b + x2), y1b - 0.12, 'steps', ha='center', va='bottom')
+
+
+    # Shared colorbar
+    if legend:
+        colorbar = fig.colorbar(sc2, ax=axs, orientation='horizontal', fraction=0.07, pad=0.15)
+        colorbar.set_label(r'$\mathcal{M}$')
+        colorbar.ax.tick_params(labelsize=16)
+
+        # Legend for reference/dataset range
+        handles, labels = axs[0].get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        if by_label:
+            fig.legend(
+                by_label.values(),
+                by_label.keys(),
+                loc='lower left',
+                fontsize=20,
+                frameon=False,
+                bbox_to_anchor=(0.02, 0.0),
+                bbox_transform=fig.transFigure,
+            )
+
+    # Add some horizontal space so maps and arrows do not overlap
+    plt.subplots_adjust(wspace=0.35)
+
+    colorbar = fig.colorbar(axs[0].collections[0], ax=axs, orientation='horizontal', fraction=0.1, pad=.1)
+    colorbar.set_label(r'$\mathcal{M}$')
+    colorbar.ax.tick_params(labelsize=25)
+    colorbar.ax.set_position([0.35, -0.1, 0.55, 0.07]) 
+
+    # Plot legend in lower left corner, but make it extra tight to not add too much space and assert that label values are not duplicated, hence plot single legend per figure and not per axis
+    handles, labels = axs[0].get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    fig.legend(by_label.values(), by_label.keys(), loc='lower left', fontsize=30, frameon=False, bbox_to_anchor=(0.1, -0.35), bbox_transform=fig.transFigure)
+
+
+    plt.savefig(save_path, bbox_inches='tight', dpi=300, pad_inches=pad_inches)
+    plt.close()
